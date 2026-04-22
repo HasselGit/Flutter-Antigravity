@@ -1,26 +1,8 @@
-import '/backend/supabase/supabase.dart';
-import '/flutter_flow/flutter_flow_drop_down.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
-import '/flutter_flow/form_field_controller.dart';
-import 'dart:ui';
-import '/index.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'agregar_item_model.dart';
-export 'agregar_item_model.dart';
-
-/// Boton de Agregar Item
 class AgregarItemWidget extends StatefulWidget {
-  const AgregarItemWidget({
-    super.key,
-    required this.paradaId,
-  });
-
-  /// paradaId
+  const AgregarItemWidget({super.key, required this.paradaId});
   final String? paradaId;
 
   @override
@@ -28,258 +10,82 @@ class AgregarItemWidget extends StatefulWidget {
 }
 
 class _AgregarItemWidgetState extends State<AgregarItemWidget> {
-  late AgregarItemModel _model;
-
-  @override
-  void setState(VoidCallback callback) {
-    super.setState(callback);
-    _model.onUpdate();
-  }
+  final _textController = TextEditingController();
+  String? _selectedProduct;
+  List<Map<String, dynamic>> _productos = [];
 
   @override
   void initState() {
     super.initState();
-    _model = createModel(context, () => AgregarItemModel());
-
-    _model.textController ??= TextEditingController();
-    _model.textFieldFocusNode ??= FocusNode();
+    _loadProductos();
   }
 
-  @override
-  void dispose() {
-    _model.maybeDispose();
-
-    super.dispose();
+  Future<void> _loadProductos() async {
+    final response = await Supabase.instance.client.from('productos').select();
+    setState(() {
+      _productos = response;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.max,
-      children: [
-        Text(
-          'Agregar Item',
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                font: GoogleFonts.inter(
-                  fontWeight:
-                      FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                  fontStyle: FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-                ),
-                letterSpacing: 0.0,
-                fontWeight: FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                fontStyle: FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-              ),
-        ),
-        FutureBuilder<List<ProductosRow>>(
-          future: ProductosTable().queryRows(
-            queryFn: (q) => q,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Agregar Item',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
-          builder: (context, snapshot) {
-            // Customize what your widget looks like when it's loading.
-            if (!snapshot.hasData) {
-              return Center(
-                child: SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      FlutterFlowTheme.of(context).primary,
-                    ),
-                  ),
-                ),
-              );
-            }
-            List<ProductosRow> dropDownProductosRowList = snapshot.data!;
-
-            return FlutterFlowDropDown<String>(
-              key: ValueKey('Productos'),
-              controller: _model.dropDownValueController ??=
-                  FormFieldController<String>(null),
-              options: dropDownProductosRowList
-                  .map((e) => valueOrDefault<String>(
-                        e.descripcion,
-                        '--',
-                      ))
-                  .toList(),
-              onChanged: (val) =>
-                  safeSetState(() => _model.dropDownValue = val),
-              width: 200,
-              height: 40,
-              textStyle: FlutterFlowTheme.of(context).bodyMedium.override(
-                    font: GoogleFonts.inter(
-                      fontWeight:
-                          FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                      fontStyle:
-                          FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-                    ),
-                    letterSpacing: 0.0,
-                    fontWeight:
-                        FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                    fontStyle:
-                        FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-                  ),
-              hintText: 'Seleccionar Producto',
-              icon: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: FlutterFlowTheme.of(context).secondaryText,
-                size: 24,
-              ),
-              fillColor: FlutterFlowTheme.of(context).secondaryBackground,
-              elevation: 2,
-              borderColor: Colors.transparent,
-              borderWidth: 0,
-              borderRadius: 8,
-              margin: EdgeInsetsDirectional.fromSTEB(12, 0, 12, 0),
-              hidesUnderline: true,
-              isOverButton: false,
-              isSearchable: false,
-              isMultiSelect: false,
-            );
-          },
-        ),
-        Container(
-          width: 200,
-          child: TextFormField(
-            controller: _model.textController,
-            focusNode: _model.textFieldFocusNode,
-            autofocus: false,
-            enabled: true,
-            obscureText: false,
-            decoration: InputDecoration(
-              isDense: true,
-              labelStyle: FlutterFlowTheme.of(context).labelMedium.override(
-                    font: GoogleFonts.inter(
-                      fontWeight:
-                          FlutterFlowTheme.of(context).labelMedium.fontWeight,
-                      fontStyle:
-                          FlutterFlowTheme.of(context).labelMedium.fontStyle,
-                    ),
-                    letterSpacing: 0.0,
-                    fontWeight:
-                        FlutterFlowTheme.of(context).labelMedium.fontWeight,
-                    fontStyle:
-                        FlutterFlowTheme.of(context).labelMedium.fontStyle,
-                  ),
-              hintText: 'TextField',
-              hintStyle: FlutterFlowTheme.of(context).labelMedium.override(
-                    font: GoogleFonts.inter(
-                      fontWeight:
-                          FlutterFlowTheme.of(context).labelMedium.fontWeight,
-                      fontStyle:
-                          FlutterFlowTheme.of(context).labelMedium.fontStyle,
-                    ),
-                    letterSpacing: 0.0,
-                    fontWeight:
-                        FlutterFlowTheme.of(context).labelMedium.fontWeight,
-                    fontStyle:
-                        FlutterFlowTheme.of(context).labelMedium.fontStyle,
-                  ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: Color(0x00000000),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: Color(0x00000000),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: FlutterFlowTheme.of(context).error,
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderSide: BorderSide(
-                  color: FlutterFlowTheme.of(context).error,
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: FlutterFlowTheme.of(context).secondaryBackground,
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedProduct,
+            hint: const Text('Seleccionar Producto'),
+            items: _productos.map((prod) => DropdownMenuItem(
+              value: prod['codigo']?.toString(),
+              child: Text(prod['descripcion']?.toString() ?? '--'),
+            )).toList(),
+            onChanged: (val) => setState(() => _selectedProduct = val),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _textController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Cantidad',
+              border: OutlineInputBorder(),
             ),
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  font: GoogleFonts.inter(
-                    fontWeight:
-                        FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                    fontStyle:
-                        FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-                  ),
-                  letterSpacing: 0.0,
-                  fontWeight:
-                      FlutterFlowTheme.of(context).bodyMedium.fontWeight,
-                  fontStyle: FlutterFlowTheme.of(context).bodyMedium.fontStyle,
-                ),
-            cursorColor: FlutterFlowTheme.of(context).primaryText,
-            enableInteractiveSelection: true,
-            validator: _model.textControllerValidator.asValidator(context),
           ),
-        ),
-        FFButtonWidget(
-          onPressed: () async {
-            _model.prodSel = await ProductosTable().queryRows(
-              queryFn: (q) => q.eqOrNull(
-                'descripcion',
-                _model.dropDownValue,
-              ),
-            );
-            await ParadaItemsTable().insert({
-              'parada_id': widget!.paradaId,
-              'producto_codigo': _model.prodSel?.elementAtOrNull(0)?.codigo,
-              'cantidad': double.tryParse(_model.textController.text),
-            });
-            Navigator.pop(context);
-
-            context.goNamed(
-              ParadaDetalleWidget.routeName,
-              queryParameters: {
-                'paradaId': serializeParam(
-                  widget!.paradaId,
-                  ParamType.String,
-                ),
-              }.withoutNulls,
-              extra: <String, dynamic>{
-                '__transition_info__': TransitionInfo(
-                  hasTransition: true,
-                  transitionType: PageTransitionType.fade,
-                  duration: Duration(milliseconds: 0),
-                ),
-              },
-            );
-
-            safeSetState(() {});
-          },
-          text: 'Guardar',
-          options: FFButtonOptions(
-            height: 40,
-            padding: EdgeInsetsDirectional.fromSTEB(16, 0, 16, 0),
-            iconPadding: EdgeInsetsDirectional.fromSTEB(0, 0, 0, 0),
-            color: FlutterFlowTheme.of(context).primary,
-            textStyle: FlutterFlowTheme.of(context).titleSmall.override(
-                  font: GoogleFonts.interTight(
-                    fontWeight:
-                        FlutterFlowTheme.of(context).titleSmall.fontWeight,
-                    fontStyle:
-                        FlutterFlowTheme.of(context).titleSmall.fontStyle,
-                  ),
-                  color: Colors.white,
-                  letterSpacing: 0.0,
-                  fontWeight:
-                      FlutterFlowTheme.of(context).titleSmall.fontWeight,
-                  fontStyle: FlutterFlowTheme.of(context).titleSmall.fontStyle,
-                ),
-            elevation: 0,
-            borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () async {
+              if (widget.paradaId != null && _selectedProduct != null) {
+                await Supabase.instance.client.from('parada_items').insert({
+                  'parada_id': widget.paradaId,
+                  'producto_codigo': _selectedProduct,
+                  'cantidad': double.tryParse(_textController.text),
+                });
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              backgroundColor: Theme.of(context).primaryColor,
+            ),
+            child: const Text('Guardar', style: TextStyle(color: Colors.white, fontSize: 16)),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
