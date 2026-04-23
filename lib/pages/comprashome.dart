@@ -23,66 +23,80 @@ class _ComprasHomeWidgetState extends State<ComprasHomeWidget> {
         key: scaffoldKey,
         backgroundColor: const Color(0xFFF4F5F0),
         appBar: AppBar(
-          backgroundColor: const Color(0xFFF4F5F0),
+          backgroundColor: const Color(0xFF1E352F),
           automaticallyImplyLeading: false,
-          toolbarHeight: 120,
-          flexibleSpace: FlexibleSpaceBar(
-            title: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 15.0, right: 50.0, bottom: 10.0),
-                child: Text(
-                  'Encargado de Compras',
-                  style: GoogleFonts.interTight(
-                    color: const Color(0xFF2D2D2D),
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
+          toolbarHeight: 64,
+          title: Text(
+            'Panel de Compras',
+            style: GoogleFonts.interTight(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
             ),
-            background: Opacity(
-              opacity: 0.3,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-                child: Image.asset(
-                  'assets/images/fonfoWelcome_4.png',
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-            centerTitle: true,
           ),
-          elevation: 2,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              onPressed: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) {
+                  context.go('/');
+                }
+              },
+            ),
+          ],
         ),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    await Supabase.instance.client.auth.signOut();
-                    
-                    if (context.mounted) {
-                      context.go('/welcome');
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    elevation: 0,
+                Text(
+                  'Bienvenido, Encargado',
+                  style: GoogleFonts.interTight(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E352F),
                   ),
-                  child: Text(
-                    'Log Out',
-                    style: GoogleFonts.interTight(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Desde aquí podrás gestionar las adquisiciones de miel y suministros.',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 30),
+                // Placeholder for features
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Color(0xFF4A5D23)),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Text(
+                          'Módulo de órdenes de compra en desarrollo.',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

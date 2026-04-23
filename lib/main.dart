@@ -5,14 +5,17 @@ import 'package:go_router/go_router.dart';
 
 import 'pages/choferhome.dart';
 import 'pages/comprashome.dart';
-import 'pages/logged.dart';
+import 'pages/homepage.dart';
+import 'pages/rutas_page.dart';
+import 'pages/viajes_page.dart';
+
+import 'index.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Inicializar Supabase solo en plataformas no-web
   if (!kIsWeb) {
-    // ATENCIÓN: Debes reemplazar estos valores con los de tu proyecto de Supabase
     await Supabase.initialize(
       url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
       anonKey: 'sb_publishable_H6MPPGj7rIO4Oih0o7f6cg_x7bsgKFo',
@@ -23,8 +26,24 @@ void main() async {
 }
 
 final _router = GoRouter(
-  initialLocation: '/choferHome',
+  initialLocation: '/',
+  debugLogDiagnostics: true,
   routes: [
+    GoRoute(
+      path: '/',
+      name: 'Root',
+      builder: (context, state) => const WelcomePageWidget(),
+    ),
+    GoRoute(
+      path: '/WelcomePage',
+      name: 'WelcomePage',
+      builder: (context, state) => const WelcomePageWidget(),
+    ),
+    GoRoute(
+      path: '/login',
+      name: 'Login',
+      builder: (context, state) => const LoginWidget(),
+    ),
     GoRoute(
       path: '/choferHome',
       name: 'ChoferHome',
@@ -36,9 +55,32 @@ final _router = GoRouter(
       builder: (context, state) => const ComprasHomeWidget(),
     ),
     GoRoute(
-      path: '/logged',
-      name: 'Logged',
-      builder: (context, state) => const LoggedWidget(),
+      path: '/depositoHome',
+      name: 'DepositoHome',
+      builder: (context, state) => const DepositoHomeWidget(),
+    ),
+    GoRoute(
+      path: '/home',
+      name: 'Home',
+      builder: (context, state) => const HomePageWidget(),
+    ),
+    GoRoute(
+      path: '/rutas',
+      name: 'Rutas',
+      builder: (context, state) => const RutasPageWidget(),
+    ),
+    GoRoute(
+      path: '/viajes',
+      name: 'Viajes',
+      builder: (context, state) => const ViajesPageWidget(),
+    ),
+    GoRoute(
+      path: '/viajedetalle',
+      name: 'ViajeDetalle',
+      builder: (context, state) {
+        final viajeId = state.uri.queryParameters['viajeId'] ?? '';
+        return ViajeDetalleWidget(viajeId: viajeId);
+      },
     ),
   ],
 );

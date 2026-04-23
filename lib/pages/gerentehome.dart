@@ -12,20 +12,40 @@ class GerenteHomeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F5F0),
       appBar: AppBar(
-        title: Text('Gerencia', style: GoogleFonts.interTight()),
+        backgroundColor: const Color(0xFFC68E17), // Gold/Mustard for Gerencia
+        title: Text(
+          'Panel de Gerencia',
+          style: GoogleFonts.interTight(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
-              if (context.mounted) context.go('/welcome');
+              if (context.mounted) context.go('/');
             },
           )
         ],
       ),
-      body: const Center(
-        child: Text('Pantalla de Gerencia'),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.analytics_outlined, size: 80, color: Color(0xFFC68E17)),
+            const SizedBox(height: 20),
+            Text(
+              'Reportes y Decisiones',
+              style: GoogleFonts.interTight(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Módulo estratégico en preparación.',
+              style: GoogleFonts.inter(color: Colors.black54),
+            ),
+          ],
+        ),
       ),
     );
   }

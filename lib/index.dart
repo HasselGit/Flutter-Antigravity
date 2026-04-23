@@ -1,0 +1,10 @@
+export 'pages/welcomepage.dart';
+export 'pages/login.dart';
+export 'pages/choferhome.dart';
+export 'pages/comprashome.dart';
+export 'pages/depositohome.dart';
+export 'pages/gerentehome.dart';
+export 'pages/viaje_detalle.dart';
+export 'pages/paradadetalle.dart';
+export 'pages/pesajesitem.dart';
+export 'pages/logged.dart';
