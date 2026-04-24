@@ -40,23 +40,67 @@ abstract class FlutterFlowTheme {
 
 class LightModeTheme extends FlutterFlowTheme {
   LightModeTheme() {
-    primary = const Color(0xFF4A5D23);
-    secondary = const Color(0xFFC68E17);
+    primary = const Color(0xFF08201A);
+    secondary = const Color(0xFF7D5700);
     tertiary = const Color(0xFF1E352F);
-    alternate = const Color(0xFFE0E3E7);
-    primaryText = const Color(0xFF14181B);
-    secondaryText = const Color(0xFF57636C);
-    primaryBackground = const Color(0xFFF1F4F8);
+    alternate = const Color(0xFFE4E2E2);
+    primaryText = const Color(0xFF1B1C1C);
+    secondaryText = const Color(0xFF424846);
+    primaryBackground = const Color(0xFFFBF9F8);
     secondaryBackground = const Color(0xFFFFFFFF);
-    accent1 = const Color(0xFF4B39EF);
-    accent2 = const Color(0xFF39D2C0);
+    accent1 = const Color(0xFF4B635C);
+    accent2 = const Color(0xFFFDBE49);
     accent3 = const Color(0xFFEE8B60);
-    accent4 = const Color(0xFF616161);
+    accent4 = const Color(0xFFE4E2E2);
     success = const Color(0xFF249689);
     warning = const Color(0xFFF9CF58);
-    error = const Color(0xFFFF5963);
+    error = const Color(0xFFBA1A1A);
     info = const Color(0xFFFFFFFF);
   }
+
+  @override
+  TextStyle get displayLarge => GoogleFonts.manrope(
+        fontSize: 32,
+        fontWeight: FontWeight.bold,
+        letterSpacing: -0.02,
+        color: primaryText,
+      );
+
+  @override
+  TextStyle get headlineMedium => GoogleFonts.manrope(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        color: primaryText,
+      );
+
+  @override
+  TextStyle get titleSmall => GoogleFonts.manrope(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: primaryText,
+      );
+
+  @override
+  TextStyle get bodyLarge => GoogleFonts.inter(
+        fontSize: 16,
+        fontWeight: FontWeight.normal,
+        color: primaryText,
+      );
+
+  @override
+  TextStyle get bodyMedium => GoogleFonts.inter(
+        fontSize: 14,
+        fontWeight: FontWeight.normal,
+        color: primaryText,
+      );
+
+  @override
+  TextStyle get labelSmall => GoogleFonts.workSans(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.05,
+        color: secondaryText,
+      );
 }
 
 extension TextStyleHelper on TextStyle {

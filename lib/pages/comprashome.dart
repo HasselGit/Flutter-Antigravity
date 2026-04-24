@@ -1,3 +1,4 @@
+import '/flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,84 +16,136 @@ class _ComprasHomeWidgetState extends State<ComprasHomeWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = FlutterFlowTheme.of(context);
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: const Color(0xFFF4F5F0),
+        backgroundColor: theme.primaryBackground,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1E352F),
+          backgroundColor: const Color(0xFFFBF9F8),
           automaticallyImplyLeading: false,
-          toolbarHeight: 64,
-          title: Text(
+          toolbarHeight: 70,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          title: const Text(
             'Panel de Compras',
-            style: GoogleFonts.interTight(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
+            style: TextStyle(
+              fontFamily: 'Manrope',
+              color: Color(0xFF08201A),
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () async {
-                await Supabase.instance.client.auth.signOut();
-                if (context.mounted) {
-                  context.go('/');
-                }
-              },
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: const Icon(Icons.logout_rounded, color: Color(0xFF08201A)),
+                onPressed: () async {
+                  await Supabase.instance.client.auth.signOut();
+                  if (context.mounted) {
+                    context.go('/');
+                  }
+                },
+              ),
             ),
           ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: const Color(0xFF08201A).withOpacity(0.08)),
+          ),
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Bienvenido, Encargado',
-                  style: GoogleFonts.interTight(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E352F),
+                  'Gestión de Adquisiciones',
+                  style: theme.displayLarge.override(
+                    fontFamily: 'Manrope',
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: theme.primary,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
-                  'Desde aquí podrás gestionar las adquisiciones de miel y suministros.',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: Colors.black54,
+                  'Control central de miel y suministros apícolas.',
+                  style: theme.bodyMedium.override(
+                    fontFamily: 'Inter',
+                    color: theme.secondaryText,
                   ),
                 ),
-                const SizedBox(height: 30),
-                // Placeholder for features
+                const SizedBox(height: 32),
+                // Featured Module Card
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: theme.primary.withOpacity(0.05),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+                        color: theme.primary.withOpacity(0.03),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      const Icon(Icons.info_outline, color: Color(0xFF4A5D23)),
-                      const SizedBox(width: 15),
-                      Expanded(
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.secondary.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.shopping_cart_rounded, size: 40, color: theme.secondary),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Módulo de Órdenes',
+                        style: theme.titleSmall.override(
+                          fontFamily: 'Manrope',
+                          fontWeight: FontWeight.bold,
+                          color: theme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Próximamente: Integración total con proveedores y seguimiento de stocks.',
+                        textAlign: TextAlign.center,
+                        style: theme.bodyMedium.override(
+                          fontFamily: 'Inter',
+                          color: theme.secondaryText,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: theme.primary.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                         child: Text(
-                          'Módulo de órdenes de compra en desarrollo.',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w500,
+                          'EN DESARROLLO',
+                          style: theme.labelSmall.override(
+                            fontFamily: 'Work Sans',
+                            fontWeight: FontWeight.bold,
+                            color: theme.primary,
+                            fontSize: 10,
+                            letterSpacing: 1,
                           ),
                         ),
                       ),

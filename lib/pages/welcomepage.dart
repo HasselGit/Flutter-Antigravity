@@ -2,6 +2,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
+import 'dart:math';
 import '/index.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -34,12 +35,13 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
   @override
   void dispose() {
     _model.dispose();
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = FlutterFlowTheme.of(context);
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -47,16 +49,14 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
+        backgroundColor: theme.primaryBackground,
         body: Stack(
           children: [
-            // Light Technical Background
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  fit: BoxFit.cover,
-                  image: AssetImage('assets/images/fondoWelcome_4.png'),
+            // Honeycomb Pattern Background
+            Positioned.fill(
+              child: CustomPaint(
+                painter: HoneycombPainter(
+                  color: theme.primary.withOpacity(0.03),
                 ),
               ),
             ),
@@ -69,71 +69,106 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Spacer(flex: 3),
-                      // Fluid Logo (Restored Visibility)
-                      Image.asset(
-                        'assets/images/logo_Geologistica_Verde.png',
-                        height: 200,
-                        fit: BoxFit.contain,
+                      // Logo Container
+                      Container(
+                        width: 180,
+                        height: 180,
+                        decoration: const BoxDecoration(
+                          color: Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: theme.primary.withOpacity(0.1),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/images/logo_Geologistica_Verde.png',
+                                  height: 160,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 40),
                       Text(
                         'GeoLogística',
-                        style: GoogleFonts.interTight(
-                          fontSize: 48,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF1E352F),
-                          letterSpacing: -1.5,
+                        style: theme.displayLarge.override(
+                          fontFamily: 'Manrope',
+                          color: theme.primary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1.0,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      // Highlighted Text with secondary color
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: const Color(0xFFC68E17), width: 2),
-                          ),
-                        ),
-                        child: Text(
-                          'TECNOLOGÍA Y LOGÍSTICA APÍCOLA',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF4A5D23).withOpacity(0.8),
-                            letterSpacing: 3,
-                          ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'TECNOLOGÍA Y LOGÍSTICA APÍCOLA',
+                        textAlign: TextAlign.center,
+                        style: theme.labelSmall.override(
+                          fontFamily: 'Work Sans',
+                          color: theme.secondary,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2.0,
                         ),
                       ),
                       const Spacer(flex: 4),
-                      // New Premium Button with Guaranteed Gold Border
+                      // Premium Button
                       Padding(
                         padding: const EdgeInsets.only(bottom: 60),
-                        child: SizedBox(
+                        child: Container(
                           width: double.infinity,
                           height: 65,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: theme.primary.withOpacity(0.2),
+                                blurRadius: 30,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
                           child: ElevatedButton(
                             onPressed: () => context.pushNamed('Login'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E352F),
+                              backgroundColor: theme.tertiary,
                               foregroundColor: Colors.white,
-                              elevation: 10,
-                              shadowColor: Colors.black45,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                side: const BorderSide(
-                                  color: Color(0xFFC68E17),
-                                  width: 3,
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: theme.secondary,
+                                  width: 2,
                                 ),
                               ),
+                              elevation: 0,
                             ),
-                            child: Text(
-                              'INGRESAR AL SISTEMA',
-                              style: GoogleFonts.inter(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                              ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.login_rounded, size: 20),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'INGRESAR',
+                                  style: theme.titleSmall.override(
+                                    fontFamily: 'Manrope',
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -148,4 +183,48 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
       ),
     );
   }
+}
+
+class HoneycombPainter extends CustomPainter {
+  final Color color;
+  HoneycombPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    const double radius = 30.0;
+    final double height = radius * 2;
+    final double width = radius * 1.732; // sqrt(3) * radius
+
+    for (double y = 0; y < size.height + height; y += height * 0.75) {
+      bool offset = (y / (height * 0.75)).floor() % 2 != 0;
+      for (double x = 0; x < size.width + width; x += width) {
+        double currentX = x + (offset ? width / 2 : 0);
+        _drawHexagon(canvas, paint, currentX, y, radius);
+      }
+    }
+  }
+
+  void _drawHexagon(Canvas canvas, Paint paint, double x, double y, double r) {
+    final path = Path();
+    for (int i = 0; i < 6; i++) {
+      double angle = (30 + 60 * i) * 3.14159 / 180;
+      double px = x + r * cos(angle);
+      double py = y + r * sin(angle);
+      if (i == 0) {
+        path.moveTo(px, py);
+      } else {
+        path.lineTo(px, py);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

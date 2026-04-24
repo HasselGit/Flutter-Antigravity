@@ -7,14 +7,22 @@ void main() async {
   );
 
   try {
-    print('--- Verificando Tabla Viajes ---');
-    final response = await client.from('viajes').select().limit(1);
+    print('--- Verificando Tabla Paradas ---');
+    final response = await client.from('paradas').select().limit(1);
     if (response.isNotEmpty) {
-      print('Columnas detectadas: ${response.first.keys.toList()}');
+      print('Columnas paradas: ${response.first.keys.toList()}');
     } else {
-      print('La tabla viajes está vacía.');
+      print('La tabla paradas está vacía.');
+    }
+
+    print('--- Verificando Tabla parada_items ---');
+    final response2 = await client.from('parada_items').select().limit(1);
+    if (response2.isNotEmpty) {
+      print('Columnas parada_items: ${response2.first.keys.toList()}');
+    } else {
+      print('La tabla parada_items está vacía.');
     }
   } catch (e) {
-    print('Error al consultar viajes: $e');
+    print('Error: $e');
   }
 }

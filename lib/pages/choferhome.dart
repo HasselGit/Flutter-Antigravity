@@ -1,105 +1,443 @@
+import '/flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 class ChoferHomeWidget extends StatefulWidget {
   const ChoferHomeWidget({super.key});
 
+  static String routeName = 'ChoferHome';
+  static String routePath = '/choferHome';
+
   @override
   State<ChoferHomeWidget> createState() => _ChoferHomeWidgetState();
 }
 
 class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
+  List<Map<String, dynamic>> _viajes = [];
+  bool _loading = true;
+  String? _error;
+  String? _choferNombre;
+  int _selectedTab = 0; // 0=Todos, 1=En Curso, 2=Planificado
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select('nombre, apellido')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (profile != null) {
+          _choferNombre = '${profile['nombre'] ?? ''} ${profile['apellido'] ?? ''}'.trim();
+        }
+      }
+
+      final data = await Supabase.instance.client
+          .from('viajes')
+          .select('*')
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _viajes = List<Map<String, dynamic>>.from(data);
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == 'En Curso').toList();
+    if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == 'Planificado').toList();
+    return _viajes;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = FlutterFlowTheme.of(context);
+    final nombre = _choferNombre ?? 'Chofer';
+    final iniciales = nombre.isNotEmpty
+        ? nombre.split(' ').take(2).map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join()
+        : 'CH';
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F0),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E352F),
-        automaticallyImplyLeading: false,
-        toolbarHeight: 70,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Mis Viajes Asignados', style: GoogleFonts.interTight(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-            Text('CHOFER OPERATIVO', style: GoogleFonts.inter(color: const Color(0xFFC68E17), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-              if (context.mounted) context.go('/');
-            },
+      backgroundColor: theme.primaryBackground,
+      body: Column(
+        children: [
+          // Header premium — Stitch light
+          Container(
+            color: const Color(0xFFFBF9F8),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // Top bar
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFFDBE49), width: 2),
+                            color: const Color(0xFF08201A).withOpacity(0.08),
+                          ),
+                          child: Center(
+                            child: Text(
+                              iniciales,
+                              style: const TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                color: Color(0xFF08201A),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bienvenido',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  color: const Color(0xFF424846).withOpacity(0.6),
+                                ),
+                              ),
+                              Text(
+                                nombre,
+                                style: const TextStyle(
+                                  fontFamily: 'Manrope',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 17,
+                                  color: Color(0xFF08201A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Badge chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFDBE49).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFFDBE49).withOpacity(0.4)),
+                          ),
+                          child: const Text(
+                            'CHOFER',
+                            style: TextStyle(
+                              fontFamily: 'Work Sans',
+                              fontWeight: FontWeight.w800,
+                              fontSize: 9,
+                              color: Color(0xFF7D5700),
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.logout_rounded, color: Color(0xFF08201A), size: 22),
+                          onPressed: () async {
+                            await Supabase.instance.client.auth.signOut();
+                            if (context.mounted) context.go('/');
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Title row
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Mis Viajes',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontWeight: FontWeight.w800,
+                            fontSize: 24,
+                            color: Color(0xFF08201A),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: _fetchData,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF08201A).withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.refresh_rounded, color: Color(0xFF08201A), size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Tab pills
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Row(
+                      children: [
+                        _tabPill(theme, 0, 'TODOS'),
+                        const SizedBox(width: 8),
+                        _tabPill(theme, 1, 'EN CURSO'),
+                        const SizedBox(width: 8),
+                        _tabPill(theme, 2, 'PLANIFICADOS'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Body
+          Expanded(
+            child: _loading
+                ? Center(child: CircularProgressIndicator(color: theme.secondary))
+                : _error != null
+                    ? _buildError(theme)
+                    : _filtered.isEmpty
+                        ? _buildEmpty(theme)
+                        : RefreshIndicator(
+                            color: theme.secondary,
+                            onRefresh: _fetchData,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                              itemCount: _filtered.length,
+                              itemBuilder: (ctx, i) => _buildTripCard(_filtered[i], theme),
+                            ),
+                          ),
           ),
         ],
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: Supabase.instance.client.from('viajes').stream(primaryKey: ['id']),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return _buildError(snapshot.error.toString());
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          
-          final viajes = snapshot.data!;
-          if (viajes.isEmpty) return _buildEmptyState();
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: viajes.length,
-            itemBuilder: (context, index) {
-              final v = viajes[index];
-              // Simulando desglose profesional de productos para el chofer
-              return _buildChoferTripCard(v);
-            },
-          );
-        },
+      // Bottom nav
+      bottomNavigationBar: _buildBottomNav(theme),
+    );
+  }
+
+  Widget _tabPill(FlutterFlowTheme theme, int idx, String label) {
+    final active = _selectedTab == idx;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTab = idx),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFFFDBE49) : const Color(0xFF08201A).withOpacity(0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active ? const Color(0xFFFDBE49) : const Color(0xFF08201A).withOpacity(0.1),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Work Sans',
+            fontWeight: FontWeight.w800,
+            fontSize: 10,
+            color: active ? const Color(0xFF08201A) : const Color(0xFF08201A).withOpacity(0.5),
+            letterSpacing: 0.5,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildChoferTripCard(Map<String, dynamic> v) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 20),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: InkWell(
-        onTap: () => context.push('/viajedetalle'),
-        borderRadius: BorderRadius.circular(24),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildTripCard(Map<String, dynamic> v, FlutterFlowTheme theme) {
+    final estado = v['estado'] ?? 'Planificado';
+    final id = v['id']?.toString() ?? '';
+    final displayId = id.length > 6 ? id.substring(0, 6).toUpperCase() : id.toUpperCase();
+
+    Color chipColor;
+    Color chipBg;
+    Color leftBorder;
+    if (estado == 'En Curso') {
+      chipColor = const Color(0xFF7D5700);
+      chipBg = const Color(0xFFFDEFCC);
+      leftBorder = const Color(0xFFFDBE49);
+    } else if (estado == 'Terminado') {
+      chipColor = const Color(0xFF1A6B43);
+      chipBg = const Color(0xFFD4F0E1);
+      leftBorder = const Color(0xFF249689);
+    } else {
+      chipColor = const Color(0xFF1565C0);
+      chipBg = const Color(0xFFD6E4FF);
+      leftBorder = const Color(0xFF1565C0);
+    }
+
+    return GestureDetector(
+      onTap: () => context.push('/viajedetalle?viajeId=$id'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF08201A).withOpacity(0.06)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF08201A).withOpacity(0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: IntrinsicHeight(
+          child: Row(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('V-2026-CHOFER', style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 18, color: const Color(0xFF1E352F))),
-                  const Icon(Icons.local_shipping, color: Color(0xFFC68E17)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text('RUTA: Gral. Pico -> Anguil -> Santa Rosa', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const Divider(height: 32),
-              
-              Text('RESUMEN DE CARGA ASIGNADA:', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1)),
-              const SizedBox(height: 12),
-              _itemRow('Cuadros Estándar', '150 u'),
-              _itemRow('Cera Estampada', '45 kg'),
-              _itemRow('Miel a Recolectar', '1.200 kg (aprox)'),
-              
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(color: const Color(0xFF4A5D23).withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                    child: Text('EN CURSO', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w900, color: const Color(0xFF4A5D23))),
+              // Colored left border
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: leftBorder,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
                   ),
-                  Text('INICIAR HOJA DE RUTA', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w900, color: const Color(0xFFC68E17))),
-                ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'HOJA DE RUTA',
+                                style: TextStyle(
+                                  fontFamily: 'Work Sans',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 9,
+                                  color: const Color(0xFF08201A).withOpacity(0.4),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'V-$displayId',
+                                style: const TextStyle(
+                                  fontFamily: 'Manrope',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  color: Color(0xFF08201A),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: chipBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              estado.toUpperCase(),
+                              style: TextStyle(
+                                fontFamily: 'Work Sans',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                                color: chipColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 14),
+                      Divider(height: 1, color: const Color(0xFF08201A).withOpacity(0.06)),
+                      const SizedBox(height: 14),
+
+                      // Description
+                      if (v['descripcion'] != null && v['descripcion'].toString().isNotEmpty)
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, size: 14, color: theme.secondaryText.withOpacity(0.5)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                v['descripcion'].toString(),
+                                style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: Color(0xFF424846)),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Icon(Icons.local_shipping_outlined, size: 14, color: theme.secondaryText.withOpacity(0.5)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Toca para ver el detalle de la ruta',
+                              style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: const Color(0xFF424846).withOpacity(0.6)),
+                            ),
+                          ],
+                        ),
+
+                      const SizedBox(height: 14),
+
+                      // Footer
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (v['fecha_inicio'] != null)
+                            Text(
+                              _formatDate(v['fecha_inicio'].toString()),
+                              style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: theme.secondaryText.withOpacity(0.5)),
+                            )
+                          else
+                            const SizedBox(),
+                          Row(
+                            children: [
+                              Text(
+                                'VER RUTA',
+                                style: TextStyle(
+                                  fontFamily: 'Work Sans',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  color: theme.secondary,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.chevron_right_rounded, size: 16, color: theme.secondary),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -108,33 +446,115 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
     );
   }
 
-  Widget _itemRow(String name, String qty) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(name, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-          Text(qty, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w900, color: const Color(0xFF1E352F))),
-        ],
-      ),
-    );
+  String _formatDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {
+      return iso;
+    }
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmpty(FlutterFlowTheme theme) {
+    final labels = ['viajes', 'viajes en curso', 'viajes planificados'];
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: theme.primary.withOpacity(0.06),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.local_shipping_rounded, size: 36, color: theme.primary.withOpacity(0.3)),
+          ),
           const SizedBox(height: 20),
-          Text('Sin viajes asignados para hoy', style: GoogleFonts.inter(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w600)),
+          Text(
+            'Sin ${labels[_selectedTab]}',
+            style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF08201A)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Los viajes aparecerán aquí cuando sean asignados.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: const Color(0xFF424846).withOpacity(0.6)),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildError(String err) {
-    return Center(child: Padding(padding: const EdgeInsets.all(30), child: Text(err, style: const TextStyle(color: Colors.red))));
+  Widget _buildError(FlutterFlowTheme theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 48, color: theme.error),
+          const SizedBox(height: 16),
+          Text('Error de conexión', style: theme.titleSmall),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: _fetchData,
+            style: ElevatedButton.styleFrom(backgroundColor: theme.primary, foregroundColor: Colors.white),
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNav(FlutterFlowTheme theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: const Color(0xFF08201A).withOpacity(0.07))),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, -2))],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navItem(theme, Icons.home_rounded, 'HOME', false, () => context.go('/home')),
+              _navItem(theme, Icons.alt_route_rounded, 'MIS VIAJES', true, () {}),
+              _navItem(theme, Icons.group_rounded, 'APICULTORES', false, () {}),
+              _navItem(theme, Icons.more_horiz_rounded, 'MÁS', false, () {}),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(FlutterFlowTheme theme, IconData icon, String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: active ? theme.tertiary : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 22, color: active ? theme.secondary : theme.secondaryText.withOpacity(0.5)),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Work Sans',
+              fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+              fontSize: 9,
+              color: active ? theme.tertiary : theme.secondaryText.withOpacity(0.5),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -82,6 +82,40 @@ final _router = GoRouter(
         return ViajeDetalleWidget(viajeId: viajeId);
       },
     ),
+    GoRoute(
+      path: '/logged',
+      name: 'Logged',
+      builder: (context, state) => const LoggedWidget(),
+    ),
+    GoRoute(
+      path: '/paradaDetalle',
+      name: 'ParadaDetalle',
+      builder: (context, state) {
+        final paradaId = state.uri.queryParameters['paradaId'] ?? '';
+        return ParadaDetalleWidget(paradaId: paradaId);
+      },
+    ),
+    GoRoute(
+      path: '/pesajesItem',
+      name: 'PesajesItem',
+      builder: (context, state) {
+        final paradaItemId = state.uri.queryParameters['paradaItemId'] ?? '';
+        return PesajesItemWidget(paradaItemId: paradaItemId);
+      },
+    ),
+    GoRoute(
+      path: '/remito',
+      name: 'RemitoPage',
+      builder: (context, state) {
+        final paradaId = state.uri.queryParameters['paradaId'] ?? '';
+        return RemitoPageWidget(paradaId: paradaId);
+      },
+    ),
+    GoRoute(
+      path: '/planificarViaje',
+      name: 'PlanificarViaje',
+      builder: (context, state) => const PlanificarViajeWidget(),
+    ),
   ],
 );
 
@@ -93,7 +127,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp.router(
       title: 'Geo Logistica',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4A5D23)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF08201A)),
         useMaterial3: true,
       ),
       routerConfig: _router,

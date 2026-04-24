@@ -60,6 +60,9 @@ dependencies:
   sqflite: any
   sqflite_common: any
   storage_client: any
+  signature: any
+  pdf: any
+  printing: any
   supabase: any
   supabase_flutter: any
   timeago: any

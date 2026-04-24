@@ -8,3 +8,5 @@ export 'pages/viaje_detalle.dart';
 export 'pages/paradadetalle.dart';
 export 'pages/pesajesitem.dart';
 export 'pages/logged.dart';
+export 'pages/remito_page.dart';
+export 'pages/planificar_viaje.dart';
