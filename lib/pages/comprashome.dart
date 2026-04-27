@@ -115,7 +115,7 @@ class _ComprasHomeWidgetState extends State<ComprasHomeWidget> {
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        'Módulo de Órdenes',
+                        'Gestión de Necesidades',
                         style: theme.titleSmall.override(
                           fontFamily: 'Manrope',
                           fontWeight: FontWeight.bold,
@@ -124,7 +124,7 @@ class _ComprasHomeWidgetState extends State<ComprasHomeWidget> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Próximamente: Integración total con proveedores y seguimiento de stocks.',
+                        'Gestione las solicitudes de recolección y distribución de miel.',
                         textAlign: TextAlign.center,
                         style: theme.bodyMedium.override(
                           fontFamily: 'Inter',
@@ -132,21 +132,18 @@ class _ComprasHomeWidgetState extends State<ComprasHomeWidget> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.primary.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'EN DESARROLLO',
-                          style: theme.labelSmall.override(
-                            fontFamily: 'Work Sans',
-                            fontWeight: FontWeight.bold,
-                            color: theme.primary,
-                            fontSize: 10,
-                            letterSpacing: 1,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () => context.push('/necesidades'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.secondary,
+                            foregroundColor: theme.primary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
                           ),
+                          child: const Text('GESTIONAR NECESIDADES', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],

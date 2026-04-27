@@ -1,26 +1,24 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() {
-  test('fetch viajes', () async {
-    await Supabase.initialize(
-      url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTEwNTkwMzYsImV4cCI6MjAyNjYzNTAzNn0.tuV6fT5Tq964nZ4j9L-Y46D2M-t-A57y448uE98bL2E',
-      localStorage: const EmptyLocalStorage(),
-    );
+void main() async {
+  print('Iniciando prueba de conexión y perfiles...');
+  await Supabase.initialize(
+    url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+  );
+  
+  try {
+    final client = Supabase.instance.client;
+    print('Consultando tabla profiles...');
+    final data = await client.from('profiles').select().limit(5);
+    print('DATA: $data');
     
-    try {
-      var query = Supabase.instance.client
-          .from('viajes')
-          .select('*, paradas(*, parada_items(*))');
-      
-      final data = await query;
-      print('SUCCESS. Data length: ${data.length}');
-      if (data.length > 0) {
-        print(data[0]);
-      }
-    } catch (e) {
-      print('ERROR IN QUERY: $e');
+    if (data.isNotEmpty) {
+      print('Columnas encontradas: ${data[0].keys.toList()}');
+    } else {
+      print('La tabla profiles está VACÍA.');
     }
-  });
+  } catch (e) {
+    print('ERROR: $e');
+  }
 }

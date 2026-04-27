@@ -1,6 +1,8 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../backend/supabase_service.dart';
 import 'package:go_router/go_router.dart';
 
 class ChoferHomeWidget extends StatefulWidget {
@@ -29,36 +31,37 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   Future<void> _fetchData() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user != null) {
-        final profile = await Supabase.instance.client
-            .from('profiles')
-            .select('nombre, apellido')
-            .eq('user_id', user.id)
-            .maybeSingle();
-        if (profile != null) {
-          _choferNombre = '${profile['nombre'] ?? ''} ${profile['apellido'] ?? ''}'.trim();
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('user_id');
+      _choferNombre = prefs.getString('user_nombre');
+      
+      print('ChoferHome: Iniciando fetch para userId: $userId');
+
+      if (userId != null) {
+        final data = await SupabaseService().getViajes(userId: userId, role: 'Chofer');
+        if (mounted) {
+          setState(() {
+            _viajes = data;
+            _loading = false;
+          });
+        }
+      } else {
+        print('ChoferHome: No hay userId en SharedPreferences');
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = 'Sesión no encontrada. Por favor reingrese.';
+          });
         }
       }
-
-      final data = await Supabase.instance.client
-          .from('viajes')
-          .select('*')
-          .order('created_at', ascending: false);
-
-      if (mounted) {
-        setState(() {
-          _viajes = List<Map<String, dynamic>>.from(data);
-          _loading = false;
-        });
-      }
     } catch (e) {
+      print('ChoferHome: Error general en _fetchData: $e');
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == 'En Curso').toList();
+    if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == 'En Proceso' || v['estado'] == 'En Curso' || v['estado'] == 'Cargado').toList();
     if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == 'Planificado').toList();
     return _viajes;
   }
@@ -271,12 +274,15 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   Widget _buildTripCard(Map<String, dynamic> v, FlutterFlowTheme theme) {
     final estado = v['estado'] ?? 'Planificado';
     final id = v['id']?.toString() ?? '';
-    final displayId = id.length > 6 ? id.substring(0, 6).toUpperCase() : id.toUpperCase();
+    // Use human-readable viaje_codigo if available
+    final displayId = v['viaje_codigo']?.toString() ?? (id.length > 6 ? 'V-${id.substring(0, 6).toUpperCase()}' : 'V-$id').toUpperCase();
+    final vehiculo = v['vehiculo_codigo']?.toString() ?? 'Sin vehículo';
+    final fecha = v['created_at'] != null ? _formatDate(v['created_at'].toString()) : null;
 
     Color chipColor;
     Color chipBg;
     Color leftBorder;
-    if (estado == 'En Curso') {
+    if (estado == 'En Proceso' || estado == 'En Curso') {
       chipColor = const Color(0xFF7D5700);
       chipBg = const Color(0xFFFDEFCC);
       leftBorder = const Color(0xFFFDBE49);
@@ -334,7 +340,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'HOJA DE RUTA',
+                                vehiculo,
                                 style: TextStyle(
                                   fontFamily: 'Work Sans',
                                   fontWeight: FontWeight.w700,
@@ -345,7 +351,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'V-$displayId',
+                                displayId,
                                 style: const TextStyle(
                                   fontFamily: 'Manrope',
                                   fontWeight: FontWeight.w800,
@@ -410,9 +416,9 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          if (v['fecha_inicio'] != null)
+                          if (fecha != null)
                             Text(
-                              _formatDate(v['fecha_inicio'].toString()),
+                              fecha,
                               style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: theme.secondaryText.withOpacity(0.5)),
                             )
                           else

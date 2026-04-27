@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../backend/supabase_service.dart';
 
 class HomePageWidget extends StatefulWidget {
   const HomePageWidget({super.key});
@@ -51,24 +52,19 @@ class _HomePageWidgetState extends State<HomePageWidget> {
         });
       }
 
-      final data = await Supabase.instance.client
-          .from('viajes')
-          .select('estado');
+      final userId = prefs.getString('user_id');
+      print('HomePage: Obteniendo stats para $_userRole ($userId)');
+      
+      final stats = await SupabaseService().getStats(userId: userId, role: _userRole);
 
-      int planificados = 0, enCurso = 0, terminados = 0;
-      for (final v in data) {
-        final e = v['estado'] ?? '';
-        if (e == 'Planificado') planificados++;
-        else if (e == 'En Curso') enCurso++;
-        else if (e == 'Terminado') terminados++;
-      }
       if (mounted) {
         setState(() {
-          _stats = {'planificados': planificados, 'en_curso': enCurso, 'terminados': terminados};
+          _stats = stats;
           _loadingStats = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('HomePage: Error en _fetchData: $e');
       if (mounted) setState(() => _loadingStats = false);
     }
   }
@@ -254,14 +250,51 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                       mainAxisSpacing: 14,
                       childAspectRatio: 1.05,
                       children: [
-                        _moduleCard(
-                          icon: Icons.local_shipping_rounded,
-                          title: (_userRole == 'Chofer') ? 'Mis Viajes' : 'Control de Viajes',
-                          subtitle: (_userRole == 'Chofer') ? 'Rutas asignadas\ny operaciones' : 'Gestión y estado\nglobal de rutas',
-                          bgColor: kPrimary,
-                          accentColor: kSecondaryContainer,
-                          onTap: () => context.push('/viajes'),
-                        ),
+                        if (_userRole == 'Chofer' || _userRole == null)
+                          _moduleCard(
+                            icon: Icons.local_shipping_rounded,
+                            title: 'Mis Viajes',
+                            subtitle: 'Rutas asignadas\ny operaciones',
+                            bgColor: kPrimary,
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/choferHome'),
+                          ),
+                        if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin')
+                          _moduleCard(
+                            icon: Icons.dashboard_customize_rounded,
+                            title: 'Dashboard',
+                            subtitle: 'Estadísticas y\nKPIs de gestión',
+                            bgColor: const Color(0xFF1E352F),
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/gerenteHome'),
+                          ),
+                        if (_userRole != 'Chofer') ...[
+                          _moduleCard(
+                            icon: Icons.assignment_ind_rounded,
+                            title: 'Planificador',
+                            subtitle: 'Crear rutas y\nasignar choferes',
+                            bgColor: kPrimary,
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/planificarViaje'),
+                          ),
+                          _moduleCard(
+                            icon: Icons.list_alt_rounded,
+                            title: 'Necesidades',
+                            subtitle: 'Gestión de carga\ny recolecciones',
+                            bgColor: kPrimary,
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/necesidades'),
+                          ),
+                        ],
+                        if (_userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia')
+                          _moduleCard(
+                            icon: Icons.inventory_2_rounded,
+                            title: 'Depósito',
+                            subtitle: 'Carga de camiones\ny remitos',
+                            bgColor: kPrimary,
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/depositoHome'),
+                          ),
                         _moduleCard(
                           icon: Icons.alt_route_rounded,
                           title: 'Control de Ruta',
@@ -269,22 +302,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                           bgColor: kPrimary,
                           accentColor: kSecondaryContainer,
                           onTap: () => context.push('/rutas'),
-                        ),
-                        _moduleCard(
-                          icon: Icons.scale_rounded,
-                          title: 'Recolecciones',
-                          subtitle: 'Pesajes SENASA\ny tambores',
-                          bgColor: kPrimary,
-                          accentColor: kSecondaryContainer,
-                          onTap: () => context.push('/viajes'),
-                        ),
-                        _moduleCard(
-                          icon: Icons.inventory_2_rounded,
-                          title: 'Distribución',
-                          subtitle: 'Entregas y\nremitos digitales',
-                          bgColor: kPrimary,
-                          accentColor: kSecondaryContainer,
-                          onTap: () => context.push('/viajes'),
                         ),
                       ],
                     ),

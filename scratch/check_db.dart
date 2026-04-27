@@ -1,28 +1,29 @@
 import 'package:supabase/supabase.dart';
 
 void main() async {
+  print('--- CHECKING SUPABASE SCHEMA ---');
   final client = SupabaseClient(
     'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-    'sb_publishable_H6MPPGj7rIO4Oih0o7f6cg_x7bsgKFo',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
   );
 
   try {
-    print('--- Verificando Tabla Paradas ---');
-    final response = await client.from('paradas').select().limit(1);
-    if (response.isNotEmpty) {
-      print('Columnas paradas: ${response.first.keys.toList()}');
+    print('Checking profiles table...');
+    final data = await client.from('profiles').select().limit(1);
+    if (data is List && data.isNotEmpty) {
+      print('Profiles column keys: ${data[0].keys.toList()}');
+      print('First profile data: $data');
     } else {
-      print('La tabla paradas está vacía.');
-    }
-
-    print('--- Verificando Tabla parada_items ---');
-    final response2 = await client.from('parada_items').select().limit(1);
-    if (response2.isNotEmpty) {
-      print('Columnas parada_items: ${response2.first.keys.toList()}');
-    } else {
-      print('La tabla parada_items está vacía.');
+      print('Profiles table is empty or data format unexpected: $data');
     }
   } catch (e) {
-    print('Error: $e');
+    print('Error checking profiles: $e');
   }
+
+  try {
+    print('\nChecking auth users (via public profiles email match)...');
+    // We can't access auth.users directly via anon key, 
+    // but we can check if there are users with standard auth by trying to sign in with a known bad password
+    // but better check if there's an 'id' that looks like a UUID in profiles.
+  } catch (_) {}
 }

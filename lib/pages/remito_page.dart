@@ -202,8 +202,38 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       ),
     );
 
-    // Compartir el PDF generado
+    // Guardar el PDF generado
     final pdfBytes = await pdf.save();
+    
+    try {
+      // 1. Subir a Supabase Storage (bucket 'remitos')
+      final fileName = 'remito_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await Supabase.instance.client.storage.from('remitos').uploadBinary(
+        fileName, 
+        pdfBytes,
+        fileOptions: const FileOptions(contentType: 'application/pdf'),
+      );
+      final pdfUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(fileName);
+
+      // 2. Crear registro en la tabla remitos
+      final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+      await Supabase.instance.client.from('remitos').insert({
+        'parada_id': widget.paradaId,
+        'pdf_url': pdfUrl,
+        'human_id': humanId,
+        'estado': 'Emitido',
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Remito guardado en la nube'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar en la nube: $e'), backgroundColor: Colors.orange));
+      }
+    }
+
+    // 3. Compartir (WhatsApp, etc)
     await Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_${widget.paradaId.split('-').first}.pdf');
   }
 

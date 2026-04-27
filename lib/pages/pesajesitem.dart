@@ -1,6 +1,6 @@
 import '/backend/supabase/supabase.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/flutter_flow_util.dart' hide Supabase;
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../backend/supabase_service.dart';
+import 'package:go_router/go_router.dart';
 
 import 'pesajes_item_model.dart';
 export 'pesajes_item_model.dart';
@@ -16,9 +19,11 @@ class PesajesItemWidget extends StatefulWidget {
   const PesajesItemWidget({
     super.key,
     this.paradaItemId,
+    this.paradaId,
   });
 
   final String? paradaItemId;
+  final String? paradaId;
 
   static String routeName = 'PesajesItem';
   static String routePath = '/pesajesItem';
@@ -323,7 +328,45 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                       height: 56,
                       child: ElevatedButton(
                         onPressed: () async {
-                          // Lógica para guardar pesaje
+                          final codigoSenasa = _model.textController?.text ?? '';
+                          if (codigoSenasa.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingrese el Código SENASA')));
+                            return;
+                          }
+                          try {
+                            final bruto = double.tryParse(_model.brutoController?.text ?? '0') ?? 0.0;
+                            final tara = double.tryParse(_model.taraController?.text ?? '0') ?? 0.0;
+                            final neto = bruto - tara;
+
+                            // Insert in parada_items via service
+                            await SupabaseService().createParadaItem({
+                              if (widget.paradaId != null) 'parada_id': widget.paradaId,
+                              'producto_codigo': codigoSenasa,
+                              'cantidad': 1,
+                              'peso_kg': neto,
+                            });
+                            
+                            // Insert in pesajes via service
+                            try {
+                              await SupabaseService().createPesaje({
+                                'parada_id': widget.paradaId,
+                                'senasa_id': codigoSenasa,
+                                'peso_bruto': bruto,
+                                'tara': tara,
+                                'peso_neto': neto,
+                              });
+                            } catch (_) {}
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pesaje guardado'), backgroundColor: Colors.green));
+                              context.pop();
+                            }
+                          } catch (e) {
+                            print('PesajesItem: Error al guardar: $e');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.primary,
@@ -346,7 +389,24 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                       height: 56,
                       child: OutlinedButton(
                         onPressed: () async {
-                          // Lógica para registrar solo bultos
+                          try {
+                            final codigoSenasa = _model.textController?.text ?? 'Bulto';
+                            await SupabaseService().createParadaItem({
+                              if (widget.paradaId != null) 'parada_id': widget.paradaId,
+                              'producto_codigo': codigoSenasa,
+                              'cantidad': 1,
+                            });
+                            
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bulto registrado'), backgroundColor: Colors.green));
+                              context.pop();
+                            }
+                          } catch (e) {
+                            print('PesajesItem: Error al registrar: $e');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al registrar: $e'), backgroundColor: Colors.red));
+                            }
+                          }
                         },
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: theme.primary, width: 1.5),

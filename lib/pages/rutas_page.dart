@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../backend/supabase_service.dart';
 
 class RutasPageWidget extends StatefulWidget {
   const RutasPageWidget({super.key});
@@ -49,22 +50,16 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       final userRole = prefs.getString('user_puesto');
       final userId = prefs.getString('user_id');
 
-      var query = Supabase.instance.client
-          .from('viajes')
-          .select('*, paradas(*)');
+      print('RutasPage: Iniciando fetch para role: $userRole, userId: $userId');
 
-      if (userRole == 'Chofer' && userId != null) {
-        query = query.eq('chofer_id', userId);
-      }
-
-      final data = await query;
+      final data = await SupabaseService().getViajes(userId: userId, role: userRole);
 
       if (mounted) setState(() { 
-        _rutas = List<Map<String, dynamic>>.from(data); 
-        _rutas.sort((a, b) => (b['fecha'] ?? '').toString().compareTo((a['fecha'] ?? '').toString()));
+        _rutas = data;
         _loading = false; 
       });
     } catch (e) {
+      print('RutasPage: Error en _fetchRutas: $e');
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }

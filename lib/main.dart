@@ -3,8 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 
-import 'pages/choferhome.dart';
-import 'pages/comprashome.dart';
+import 'pages/gerentehome.dart';
+import 'pages/necesidades_page.dart';
+import 'pages/planificar_viaje.dart';
+import 'pages/remito_page.dart';
+import 'pages/viaje_detalle.dart';
+import 'pages/pesajesitem.dart';
+import 'pages/login.dart';
+import 'pages/welcomepage.dart';
+import 'pages/logged.dart';
+import 'pages/paradadetalle.dart';
 import 'pages/homepage.dart';
 import 'pages/rutas_page.dart';
 import 'pages/viajes_page.dart';
@@ -14,12 +22,18 @@ import 'index.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar Supabase solo en plataformas no-web
-  if (!kIsWeb) {
+  try {
+    print('Main: Inicializando Supabase...');
+    // Inicializar Supabase en todas las plataformas
     await Supabase.initialize(
       url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-      anonKey: 'sb_publishable_H6MPPGj7rIO4Oih0o7f6cg_x7bsgKFo',
+      anonKey:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
     );
+    print('Main: Supabase inicializado correctamente.');
+  } catch (e) {
+    print('Main: Error crítico al inicializar Supabase: $e');
+    // Continuamos para que la app no quede en blanco, pero las llamadas fallarán con error controlado
   }
 
   runApp(const MyApp());
@@ -58,6 +72,16 @@ final _router = GoRouter(
       path: '/depositoHome',
       name: 'DepositoHome',
       builder: (context, state) => const DepositoHomeWidget(),
+    ),
+    GoRoute(
+      path: '/gerenteHome',
+      name: 'GerenteHome',
+      builder: (context, state) => const GerenteHomeWidget(),
+    ),
+    GoRoute(
+      path: '/necesidades',
+      name: 'Necesidades',
+      builder: (context, state) => const NecesidadesPageWidget(),
     ),
     GoRoute(
       path: '/home',
@@ -99,8 +123,10 @@ final _router = GoRouter(
       path: '/pesajesItem',
       name: 'PesajesItem',
       builder: (context, state) {
-        final paradaItemId = state.uri.queryParameters['paradaItemId'] ?? '';
-        return PesajesItemWidget(paradaItemId: paradaItemId);
+        final paradaItemId = state.uri.queryParameters['paradaItemId'];
+        final paradaId = state.uri.queryParameters['paradaId'];
+        return PesajesItemWidget(
+            paradaItemId: paradaItemId, paradaId: paradaId);
       },
     ),
     GoRoute(

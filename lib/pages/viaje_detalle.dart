@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../backend/supabase_service.dart';
 
 class ViajeDetalleWidget extends StatefulWidget {
   final String? viajeId;
@@ -41,31 +43,31 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   Future<void> _fetchData() async {
     setState(() { _loading = true; _error = null; });
     try {
-      // Fetch user role for permission checks
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user != null) {
-        try {
-          final profile = await Supabase.instance.client
-              .from('profiles').select('puesto')
-              .eq('user_id', user.id).maybeSingle();
-          _userRole = profile?['puesto']?.toString();
-        } catch (_) {}
-      }
+      final prefs = await SharedPreferences.getInstance();
+      _userRole = prefs.getString('user_puesto');
+      
+      print('ViajeDetalle: Iniciando fetch para viajeId: ${widget.viajeId}');
 
       if (widget.viajeId != null && widget.viajeId!.isNotEmpty) {
-        final v = await Supabase.instance.client
-            .from('viajes').select('*')
-            .eq('id', widget.viajeId!).maybeSingle();
-        _viaje = v;
+        final data = await SupabaseService().getViajeDetalle(widget.viajeId!);
+        
+        if (data == null) {
+          if (mounted) setState(() { _error = 'Viaje no encontrado'; _loading = false; });
+          return;
+        }
 
-        final p = await Supabase.instance.client
-            .from('paradas').select('*, parada_items(*)')
-            .eq('viaje_id', widget.viajeId!)
-            .order('orden', ascending: true);
-        _paradas = List<Map<String, dynamic>>.from(p);
+        if (mounted) {
+          setState(() {
+            _viaje = data;
+            _paradas = List<Map<String, dynamic>>.from(data['paradas'] ?? []);
+            _loading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() { _error = 'ID de viaje no válido'; _loading = false; });
       }
-      if (mounted) setState(() => _loading = false);
     } catch (e) {
+      print('ViajeDetalle: Error general: $e');
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -109,9 +111,9 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     return total;
   }
 
-  // Check if user role can start/finish trips (only Chofer can)
+  // Only Deposito/Gerente can start/finish trips according to new rules
   bool _canOperate() {
-    return _userRole == 'Chofer';
+    return _userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin';
   }
 
   @override
@@ -137,9 +139,9 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     }
 
     final estado = _viaje?['estado'] ?? 'Planificado';
-    final vehiculo = _viaje?['vehiculo'] ?? 'Sin vehículo asignado';
-    final distanciaKm = _viaje?['distancia_km'] ?? 0;
-    final capacidadMax = double.tryParse(_viaje?['capacidad_kg']?.toString() ?? '') ?? 12000.0;
+    final vehiculo = _viaje?['vehiculo_codigo'] ?? 'Sin vehículo asignado';
+    final viajeCode = _viaje?['viaje_codigo'] ?? '';
+    final capacidadMax = 10000.0; // kg — default truck capacity
     final cargaActual = _calcCargaKg().clamp(0, capacidadMax).toDouble();
     final pct = capacidadMax > 0 ? (cargaActual / capacidadMax * 100).round() : 0;
     final progress = capacidadMax > 0 ? (cargaActual / capacidadMax).clamp(0.0, 1.0) : 0.0;
@@ -163,12 +165,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 const Text('VEHÍCULO ASIGNADO', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 10, color: kOnSurfaceVariant, letterSpacing: 0.8)),
                 const SizedBox(height: 4),
                 Text(vehiculo.toString(), style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 20, color: kPrimary)),
-                if (distanciaKm != 0) ...[
+                if (viajeCode.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      const Text('DISTANCIA TOTAL', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 9, color: kOnSurfaceVariant, letterSpacing: 0.8)),
-                      Text('$distanciaKm KM', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
+                      const Text('CÓDIGO DE VIAJE', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 9, color: kOnSurfaceVariant, letterSpacing: 0.8)),
+                      Text(viajeCode, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
                     ]),
                   ]),
                 ],
@@ -215,7 +217,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                       const SizedBox(height: 6),
                       Text(
                         nextParada != null
-                            ? (nextParada['nombre_cliente'] ?? nextParada['apicultor'] ?? 'Próxima parada')
+                            ? (nextParada['persona_nombre'] ?? nextParada['nombre_cliente'] ?? nextParada['apicultor'] ?? 'Próxima parada')
                             : 'Sin paradas',
                         style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white),
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -250,17 +252,17 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
             const SizedBox(height: 12),
 
-            // ── Start/End Route button — ONLY for Chofer role ──
+            // ── Start/End Route button — ONLY for Deposito/Admin roles ──
             if (estado != 'Terminado' && _canOperate())
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _cambiarEstado(estado == 'Planificado' ? 'En Curso' : 'Terminado'),
-                    icon: Icon(estado == 'Planificado' ? Icons.play_arrow_rounded : Icons.check_circle_rounded, color: kPrimary, size: 22),
+                    onPressed: () => _cambiarEstado((estado == 'Planificado' || estado == 'Cargado') ? 'En Curso' : 'Terminado'),
+                    icon: Icon((estado == 'Planificado' || estado == 'Cargado') ? Icons.play_arrow_rounded : Icons.check_circle_rounded, color: kPrimary, size: 22),
                     label: Text(
-                      estado == 'Planificado' ? 'INICIAR RUTA' : 'FINALIZAR RUTA',
+                      (estado == 'Planificado' || estado == 'Cargado') ? 'DESPACHAR / INICIAR' : 'RECIBIR / FINALIZAR',
                       style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 14, color: kPrimary, letterSpacing: 1),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -373,9 +375,9 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   Widget _buildStopCard(Map<String, dynamic> stop, int idx, int total) {
-    final nombre = stop['nombre_cliente'] ?? stop['apicultor'] ?? 'Parada $idx';
+    final nombre = stop['persona_nombre'] ?? stop['nombre_cliente'] ?? stop['apicultor'] ?? 'Parada $idx';
     final localidad = stop['localidad']?.toString() ?? '';
-    final tipo = stop['tipo']?.toString() ?? 'Recolección';
+    final tipo = stop['tipo']?.toString() ?? 'Recoleccion';
     final items = stop['parada_items'] as List? ?? [];
     final hasPesaje = stop['bruto_kg'] != null;
     final isRecoleccion = tipo.toLowerCase().contains('recolec');

@@ -323,6 +323,32 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     height: 56,
                     child: ElevatedButton.icon(
                       onPressed: () {
+                        context.push('/pesajesItem?paradaId=${widget.paradaId}');
+                      },
+                      icon: const Icon(Icons.scale_rounded, color: Colors.white, size: 20),
+                      label: const Text(
+                        'NUEVO PESAJE (TAMBOR)',
+                        style: TextStyle(
+                          fontFamily: 'Work Sans',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: Colors.white,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7D5700),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
@@ -336,21 +362,20 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                      icon: const Icon(Icons.add_rounded, color: kPrimary, size: 20),
                       label: const Text(
-                        'AGREGAR ITEM',
+                        'AGREGAR ITEM MANUAL',
                         style: TextStyle(
                           fontFamily: 'Work Sans',
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
-                          color: Colors.white,
+                          color: kPrimary,
                           letterSpacing: 0.8,
                         ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimary,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: kPrimary, width: 2),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 0,
                       ),
                     ),
                   ),

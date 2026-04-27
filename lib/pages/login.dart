@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../backend/supabase_service.dart';
 import 'dart:ui';
 import 'dart:math';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,45 +25,34 @@ class _LoginWidgetState extends State<LoginWidget> {
   Map<String, dynamic>? _loggedUserData;
 
   Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, ingresa email y contraseña')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      final email = _emailController.text.trim().toLowerCase();
-      final password = _passwordController.text.trim();
-
-      final response = await Supabase.instance.client
-          .from('profiles')
-          .select()
-          .eq('email', email)
-          .eq('contrasena', password)
-          .limit(1);
-
-      if (response.isNotEmpty) {
-        // Store user data for downstream pages
-        _loggedUserData = response.first;
-
-        // Save session locally since we are bypassing Supabase Auth
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_id', _loggedUserData!['id']?.toString() ?? '');
-        await prefs.setString('user_email', email);
-        await prefs.setString('user_nombre', _loggedUserData!['nombre']?.toString() ?? '');
-        await prefs.setString('user_apellido', _loggedUserData!['apellido']?.toString() ?? '');
-        await prefs.setString('user_puesto', _loggedUserData!['puesto']?.toString() ?? '');
-
-        if (mounted) {
-          // ALL roles go to /home — role-specific content handled internally
-          context.go('/home');
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Credenciales incorrectas')),
-          );
-        }
+      print('Login: Intentando ingresar con $email');
+      await SupabaseService().login(email, password);
+      
+      if (mounted) {
+        context.go('/home');
       }
     } catch (error) {
+      print('Login: Error en el proceso: $error');
       if (mounted) {
+        String msg = error.toString();
+        if (msg.contains('Exception:')) msg = msg.split('Exception:').last.trim();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error de conexión: $error')),
+          SnackBar(
+            content: Text('Error de acceso: $msg'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
