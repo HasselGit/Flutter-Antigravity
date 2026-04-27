@@ -94,29 +94,33 @@ class SupabaseService {
   /// Obtiene el detalle de un viaje.
   Future<Map<String, dynamic>?> getViajeDetalle(String viajeId) async {
     try {
-      final viaje = await _client
+      print('SupabaseService: Fetching detalle para viaje: $viajeId');
+      final response = await _client
           .from('viajes')
-          .select('*, paradas(*)')
+          .select('*, paradas(*, parada_items(*))')
           .eq('id', viajeId)
           .maybeSingle()
           .timeout(const Duration(seconds: 10));
       
-      if (viaje == null) return null;
+      if (response != null) return response;
 
-      try {
-        final paradasData = await _client
-            .from('paradas')
-            .select('*, parada_items(*)')
-            .eq('viaje_id', viajeId)
-            .timeout(const Duration(seconds: 5));
-        viaje['paradas'] = paradasData;
-      } catch (itemError) {
-        print('SupabaseService: Error items: $itemError');
-      }
-      return viaje;
+      // Fallback si la consulta compleja falla por RLS
+      final basicViaje = await _client
+          .from('viajes')
+          .select('*, paradas(*)')
+          .eq('id', viajeId)
+          .maybeSingle();
+          
+      return basicViaje;
     } catch (e) {
       print('SupabaseService: Error en getViajeDetalle: $e');
-      rethrow;
+      // Intento final ultra-básico
+      try {
+        final ultraBasic = await _client.from('viajes').select().eq('id', viajeId).maybeSingle();
+        return ultraBasic;
+      } catch (_) {
+        return null;
+      }
     }
   }
 

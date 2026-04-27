@@ -1,21 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-
-import 'pages/gerentehome.dart';
-import 'pages/necesidades_page.dart';
-import 'pages/planificar_viaje.dart';
-import 'pages/remito_page.dart';
-import 'pages/viaje_detalle.dart';
-import 'pages/pesajesitem.dart';
-import 'pages/login.dart';
-import 'pages/welcomepage.dart';
-import 'pages/logged.dart';
-import 'pages/paradadetalle.dart';
-import 'pages/homepage.dart';
-import 'pages/rutas_page.dart';
-import 'pages/viajes_page.dart';
 
 import 'index.dart';
 
@@ -24,32 +9,37 @@ void main() async {
 
   try {
     print('Main: Inicializando Supabase...');
-    // Inicializar Supabase en todas las plataformas
     await Supabase.initialize(
       url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
       anonKey:
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
     );
-    print('Main: Supabase inicializado correctamente.');
+    print('Main: Supabase OK');
   } catch (e) {
-    print('Main: Error crítico al inicializar Supabase: $e');
-    // Continuamos para que la app no quede en blanco, pero las llamadas fallarán con error controlado
+    print('Main: Error en inicialización: $e');
   }
 
   runApp(const MyApp());
 }
 
-final _router = GoRouter(
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp.router(
+      title: 'GeoLogística',
+      debugShowCheckedModeBanner: false,
+      routerConfig: _router,
+    );
+  }
+}
+
+final GoRouter _router = GoRouter(
   initialLocation: '/',
-  debugLogDiagnostics: true,
   routes: [
     GoRoute(
       path: '/',
-      name: 'Root',
-      builder: (context, state) => const WelcomePageWidget(),
-    ),
-    GoRoute(
-      path: '/WelcomePage',
       name: 'WelcomePage',
       builder: (context, state) => const WelcomePageWidget(),
     ),
@@ -59,44 +49,44 @@ final _router = GoRouter(
       builder: (context, state) => const LoginWidget(),
     ),
     GoRoute(
+      path: '/logged',
+      name: 'Logged',
+      builder: (context, state) => const LoggedWidget(),
+    ),
+    GoRoute(
+      path: '/home',
+      name: 'HomePage',
+      builder: (context, state) => const HomePageWidget(),
+    ),
+    GoRoute(
       path: '/choferHome',
-      name: 'ChoferHome',
+      name: 'choferHome',
       builder: (context, state) => const ChoferHomeWidget(),
     ),
     GoRoute(
+      path: '/gerenteHome',
+      name: 'gerenteHome',
+      builder: (context, state) => const GerenteHomeWidget(),
+    ),
+    GoRoute(
       path: '/comprasHome',
-      name: 'ComprasHome',
+      name: 'comprasHome',
       builder: (context, state) => const ComprasHomeWidget(),
     ),
     GoRoute(
       path: '/depositoHome',
-      name: 'DepositoHome',
+      name: 'depositoHome',
       builder: (context, state) => const DepositoHomeWidget(),
     ),
     GoRoute(
-      path: '/gerenteHome',
-      name: 'GerenteHome',
-      builder: (context, state) => const GerenteHomeWidget(),
-    ),
-    GoRoute(
       path: '/necesidades',
-      name: 'Necesidades',
+      name: 'NecesidadesPage',
       builder: (context, state) => const NecesidadesPageWidget(),
     ),
     GoRoute(
-      path: '/home',
-      name: 'Home',
-      builder: (context, state) => const HomePageWidget(),
-    ),
-    GoRoute(
-      path: '/rutas',
-      name: 'Rutas',
-      builder: (context, state) => const RutasPageWidget(),
-    ),
-    GoRoute(
-      path: '/viajes',
-      name: 'Viajes',
-      builder: (context, state) => const ViajesPageWidget(),
+      path: '/planificarViaje',
+      name: 'PlanificarViaje',
+      builder: (context, state) => const PlanificarViajeWidget(),
     ),
     GoRoute(
       path: '/viajedetalle',
@@ -107,26 +97,19 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/logged',
-      name: 'Logged',
-      builder: (context, state) => const LoggedWidget(),
-    ),
-    GoRoute(
       path: '/paradaDetalle',
-      name: 'ParadaDetalle',
+      name: 'paradaDetalle',
       builder: (context, state) {
         final paradaId = state.uri.queryParameters['paradaId'] ?? '';
         return ParadaDetalleWidget(paradaId: paradaId);
       },
     ),
     GoRoute(
-      path: '/pesajesItem',
+      path: '/pesajesitem',
       name: 'PesajesItem',
       builder: (context, state) {
-        final paradaItemId = state.uri.queryParameters['paradaItemId'];
-        final paradaId = state.uri.queryParameters['paradaId'];
-        return PesajesItemWidget(
-            paradaItemId: paradaItemId, paradaId: paradaId);
+        final paradaId = state.uri.queryParameters['paradaId'] ?? '';
+        return PesajesItemWidget(paradaId: paradaId);
       },
     ),
     GoRoute(
@@ -138,26 +121,24 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/planificarViaje',
-      name: 'PlanificarViaje',
-      builder: (context, state) => const PlanificarViajeWidget(),
+      path: '/rutas',
+      name: 'rutasPage',
+      builder: (context, state) => const RutasPageWidget(),
+    ),
+    GoRoute(
+      path: '/viajes',
+      name: 'viajesPage',
+      builder: (context, state) => const ViajesPageWidget(),
+    ),
+    GoRoute(
+      path: '/recolecciones',
+      name: 'recoleccionesPage',
+      builder: (context, state) => const RecoleccionesPageWidget(),
+    ),
+    GoRoute(
+      path: '/distribuciones',
+      name: 'distribucionesPage',
+      builder: (context, state) => const DistribucionesPageWidget(),
     ),
   ],
 );
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Geo Logistica',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF08201A)),
-        useMaterial3: true,
-      ),
-      routerConfig: _router,
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}

@@ -98,13 +98,21 @@ class _GerenteHomeWidgetState extends State<GerenteHomeWidget> {
                 
                 const Text('Acciones Rápidas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _actionButton('PLANIFICAR', Icons.map_rounded, () => context.push('/planificarViaje'))),
-                    const SizedBox(width: 12),
-                    Expanded(child: _actionButton('NECESIDADES', Icons.list_alt_rounded, () => context.push('/necesidades'))),
-                  ],
-                ),
+                  Row(
+                    children: [
+                      Expanded(child: _actionButton('PLANIFICAR', Icons.map_rounded, () => context.push('/planificarViaje'))),
+                      const SizedBox(width: 16),
+                      Expanded(child: _actionButton('NECESIDADES', Icons.list_alt_rounded, () => context.push('/necesidades'))),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: _actionButton('RECOLECCIONES', Icons.scale_rounded, () => context.push('/recolecciones'))),
+                      const SizedBox(width: 16),
+                      Expanded(child: _actionButton('DISTRIBUCIONES', Icons.inventory_2_rounded, () => context.push('/distribuciones'))),
+                    ],
+                  ),
               ],
             ),
           ),

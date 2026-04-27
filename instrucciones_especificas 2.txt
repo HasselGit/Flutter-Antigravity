@@ -1,0 +1,12 @@
+1.	La Tarjeta del Viaje en planificado, en curso y terminado deben decir: numero de viaje,chofer asignado, cantidad total de paradas, numero de rutas o ruta(hay que tener un ID de Rutas en lenguaje humano que corresponden con un único viaje, un viaje puede tener más de una ruta), total de Operaciones separadas en recolecciones y distribuciones.
+2.	Detalle de Viaje tiene que mostrar: El detalle de cada parada, Apicultor, localidad, fecha, distribución con sus productos y cantidades correspondiente y/o recolección con sus correspondiente productos y cantidades.
+3.	Si el viaje esta en proceso la tarjeta de viaje y el detalle tienen que mostrar el avance. 
+4.	El chofer según va cumpliendo los requisitos de cada parada y generando los remitos va cerrando la parada y eso actualiza la información de la parada y del viaje.
+5.	En Control de Viajes  “en curso” todos los viajes tienen que figurar en “En Curso”, lo mismo para los estados de “planificado” y “terminado”
+6.	La lógica de detalles a motrar entre Gerion de Rutas vs Ver Control es igual que el de Viajes vs Detalle de Viaje
+7.	Las Rutas al igual que los viajes tiene estado de planificados, en curso y terminadas.
+8.	Las distribuciones y recolecciones tienen que tener un código humano
+9.	Para plafinificar un viaje se tiene que seleccionar de las distribuciones y/o recolecciones cargas incorporarlas al camion, controlar carga y capacidad.
+10.	El boton de planificar ruta no conduce a cargar un nuevo viaje, solamente establece nodos a a partir de las localidades de los apicultores cargados en el viaje, Agregar un nuevo viaje tiene que estar en la pagina como un boton flotante, seleccionar los apicultores con sus respectivas necesidades y luego establecer la ruta segun las localidad.
+11.	El chofer incia el viaje, siguiendo la ruta llega a una parada, ahí tiene que poder ver la tarjta correspondiente con los detalles necesarios, pone la parada en proceso, hace todo el proceso que ya conoces y automáticamente genera el remito, luego a la siguiente. 
+12. Gestion de Necesidades tiene que mostrar todas las necesidas agrupadas por localidad y mostrando detalle de tipo de operación, producto y cantidad.

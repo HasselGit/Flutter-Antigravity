@@ -1,10 +1,11 @@
-import '/flutter_flow/flutter_flow_theme.dart';
+import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import 'package:intl/intl.dart';
 
 class ViajeDetalleWidget extends StatefulWidget {
   final String? viajeId;
@@ -46,8 +47,6 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
       final prefs = await SharedPreferences.getInstance();
       _userRole = prefs.getString('user_puesto');
       
-      print('ViajeDetalle: Iniciando fetch para viajeId: ${widget.viajeId}');
-
       if (widget.viajeId != null && widget.viajeId!.isNotEmpty) {
         final data = await SupabaseService().getViajeDetalle(widget.viajeId!);
         
@@ -60,6 +59,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
           setState(() {
             _viaje = data;
             _paradas = List<Map<String, dynamic>>.from(data['paradas'] ?? []);
+            _paradas.sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
             _loading = false;
           });
         }
@@ -67,7 +67,6 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         if (mounted) setState(() { _error = 'ID de viaje no válido'; _loading = false; });
       }
     } catch (e) {
-      print('ViajeDetalle: Error general: $e');
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -86,20 +85,38 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   Future<void> _openMaps(String localidad) async {
-    final query = Uri.encodeComponent(localidad);
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(localidad)}';
+    if (await canLaunchUrlString(url)) await launchUrlString(url, mode: LaunchMode.externalApplication);
   }
 
-  // Compute total kg from parada data — NO double counting
+  Future<void> _openFullItinerary() async {
+    if (_paradas.isEmpty) return;
+    final destinations = _paradas
+        .map((p) => (p['localidad']?.toString() ?? p['direccion']?.toString()) ?? '')
+        .where((l) => l.isNotEmpty)
+        .toList();
+    
+    if (destinations.isEmpty) return;
+    
+    final String origin = destinations.first;
+    final String destination = destinations.last;
+    final String waypoints = destinations.length > 2 
+        ? destinations.sublist(1, destinations.length - 1).join('|')
+        : '';
+    
+    final url = 'https://www.google.com/maps/dir/?api=1&origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destination)}&waypoints=${Uri.encodeComponent(waypoints)}&travelmode=driving';
+    
+    if (await canLaunchUrlString(url)) {
+      await launchUrlString(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
   double _calcCargaKg() {
     double total = 0;
     for (final p in _paradas) {
-      // If the parada has a real pesaje (bruto_kg), use ONLY that
       if (p['bruto_kg'] != null) {
         total += (p['bruto_kg'] as num).toDouble();
       } else {
-        // No pesaje yet — estimate from item quantities as fallback
         final items = p['parada_items'] as List? ?? [];
         for (final item in items) {
           final kg = double.tryParse(item['peso_kg']?.toString() ?? '') ?? 0;
@@ -111,469 +128,160 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     return total;
   }
 
-  // Only Deposito/Gerente can start/finish trips according to new rules
   bool _canOperate() {
-    return _userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin';
+    return _userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Scaffold(
-        backgroundColor: kSurface,
-        appBar: _buildAppBar(null),
-        body: const Center(child: CircularProgressIndicator(color: kSecContainer)),
-      );
-    }
-    if (_error != null) {
-      return Scaffold(
-        backgroundColor: kSurface,
-        appBar: _buildAppBar(null),
-        body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.red),
-          const SizedBox(height: 16),
-          const Text('Error al cargar datos', style: TextStyle(fontFamily: 'Manrope', fontSize: 16, color: kPrimary)),
-          TextButton(onPressed: _fetchData, child: const Text('Reintentar')),
-        ])),
-      );
-    }
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: kSecContainer)));
+    if (_error != null) return Scaffold(body: Center(child: Text('Error: $_error')));
 
     final estado = _viaje?['estado'] ?? 'Planificado';
-    final vehiculo = _viaje?['vehiculo_codigo'] ?? 'Sin vehículo asignado';
+    final vehiculo = _viaje?['vehiculo_codigo'] ?? 'Sin vehículo';
     final viajeCode = _viaje?['viaje_codigo'] ?? '';
-    final capacidadMax = 10000.0; // kg — default truck capacity
-    final cargaActual = _calcCargaKg().clamp(0, capacidadMax).toDouble();
-    final pct = capacidadMax > 0 ? (cargaActual / capacidadMax * 100).round() : 0;
-    final progress = capacidadMax > 0 ? (cargaActual / capacidadMax).clamp(0.0, 1.0) : 0.0;
-
-    final nextParada = _paradas.isNotEmpty ? _paradas.first : null;
+    final fechaRaw = _viaje?['fecha'] ?? _viaje?['created_at'];
+    final fecha = DateTime.tryParse(fechaRaw.toString());
+    final fechaStr = fecha != null ? DateFormat('dd/MM/yyyy HH:mm').format(fecha) : 'S/D';
+    
+    final capacidadMax = 10000.0;
+    final cargaActual = _calcCargaKg();
+    final progress = (cargaActual / capacidadMax).clamp(0.0, 1.0);
 
     return Scaffold(
       backgroundColor: kSurface,
-      appBar: _buildAppBar(estado),
-      body: RefreshIndicator(
-        color: kSecContainer,
-        onRefresh: _fetchData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(children: [
-            // ── Vehicle + Capacity card ──
+      appBar: AppBar(
+        backgroundColor: kSurface,
+        elevation: 0,
+        title: Text('Viaje: $viajeCode', style: const TextStyle(color: kPrimary, fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: kPrimary), onPressed: () => context.pop()),
+        actions: [
+          _statusChip(estado),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Resumen de Viaje
             Container(
-              color: Colors.white,
               padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('VEHÍCULO ASIGNADO', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 10, color: kOnSurfaceVariant, letterSpacing: 0.8)),
-                const SizedBox(height: 4),
-                Text(vehiculo.toString(), style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 20, color: kPrimary)),
-                if (viajeCode.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      const Text('CÓDIGO DE VIAJE', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 9, color: kOnSurfaceVariant, letterSpacing: 0.8)),
-                      Text(viajeCode, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
-                    ]),
-                  ]),
-                ],
-                const SizedBox(height: 16),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  const Text('Capacidad de Carga', style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w500, color: kOnSurface)),
-                  Text('$pct% OCUPADO', style: const TextStyle(fontFamily: 'Manrope', fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF7D5700))),
-                ]),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 10,
-                    backgroundColor: const Color(0xFFEFEDED),
-                    valueColor: const AlwaysStoppedAnimation<Color>(kSecContainer),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text('${cargaActual.round()} KG', style: const TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w700, color: kPrimary)),
-                  Text('MAX ${capacidadMax.round()} KG', style: const TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w700, color: kOnSurfaceVariant)),
-                ]),
-              ]),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Next Waypoint + Action ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [
-                // Next Waypoint card (dark green — Stitch primary-container)
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: kPrimaryContainer,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('NEXT WAYPOINT', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kSecContainer, letterSpacing: 1)),
-                      const SizedBox(height: 6),
-                      Text(
-                        nextParada != null
-                            ? (nextParada['persona_nombre'] ?? nextParada['nombre_cliente'] ?? nextParada['apicultor'] ?? 'Próxima parada')
-                            : 'Sin paradas',
-                        style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white),
-                        maxLines: 2, overflow: TextOverflow.ellipsis,
-                      ),
-                      if (nextParada?['localidad'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(nextParada!['localidad'].toString(), style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.7))),
-                      ],
-                      const SizedBox(height: 14),
-                      // Google Maps button
-                      if (nextParada?['localidad'] != null)
-                        GestureDetector(
-                          onTap: () => _openMaps(nextParada!['localidad'].toString()),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: kSecContainer,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.navigation_rounded, size: 14, color: kPrimary),
-                              SizedBox(width: 6),
-                              Text('NAVEGAR', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kPrimary)),
-                            ]),
-                          ),
-                        ),
-                    ]),
-                  ),
-                ),
-              ]),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Start/End Route button — ONLY for Deposito/Admin roles ──
-            if (estado != 'Terminado' && _canOperate())
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _cambiarEstado((estado == 'Planificado' || estado == 'Cargado') ? 'En Curso' : 'Terminado'),
-                    icon: Icon((estado == 'Planificado' || estado == 'Cargado') ? Icons.play_arrow_rounded : Icons.check_circle_rounded, color: kPrimary, size: 22),
-                    label: Text(
-                      (estado == 'Planificado' || estado == 'Cargado') ? 'DESPACHAR / INICIAR' : 'RECIBIR / FINALIZAR',
-                      style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 14, color: kPrimary, letterSpacing: 1),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kSecContainer,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-              )
-            else if (estado != 'Terminado')
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: kSurfaceLow,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: kOutlineVariant),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.visibility_rounded, size: 16, color: kOnSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Text(
-                        'MODO ${_userRole?.toUpperCase() ?? "LECTURA"} — SOLO VISUALIZACIÓN',
-                        style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 11, color: kOnSurfaceVariant, letterSpacing: 0.5),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('FECHA PLANIFICADA', style: TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.bold)),
+                          Text(fechaStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('VEHÍCULO', style: TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.bold)),
+                          Text(vehiculo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text('CARGA ACTUAL', style: TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(value: progress, backgroundColor: kSurfaceLow, color: kSecContainer, minHeight: 8),
+                  const SizedBox(height: 4),
+                  Text('${cargaActual.round()} kg / ${capacidadMax.round()} kg', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  
+                  // Botón Mapa Completo
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _openFullItinerary,
+                      icon: const Icon(Icons.map_rounded),
+                      label: const Text('VER RECORRIDO Y NODOS EN MAPA'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimaryContainer,
+                        foregroundColor: kSecContainer,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+            
+            // Botones de Acción
+            if (estado != 'Terminado' && _canOperate())
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () => _cambiarEstado(estado == 'Planificado' ? 'En Curso' : 'Terminado'),
+                    style: ElevatedButton.styleFrom(backgroundColor: kSecContainer, foregroundColor: kPrimary),
+                    child: Text(estado == 'Planificado' ? 'INICIAR VIAJE' : 'FINALIZAR VIAJE', style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ),
 
             const SizedBox(height: 20),
 
-            // ── Route Sheet Header ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                const Text('Hoja de Ruta y Pesajes', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
-                Row(children: [
-                  const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF7D5700)),
-                  const SizedBox(width: 4),
-                  const Text('Filtrar', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF7D5700))),
-                ]),
-              ]),
+            // Lista de Paradas
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Align(alignment: Alignment.centerLeft, child: Text('HOJA DE RUTA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
             ),
-
-            // ── Paradas ──
-            if (_paradas.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(children: [
-                  Icon(Icons.map_rounded, size: 48, color: kOnSurfaceVariant.withOpacity(0.3)),
-                  const SizedBox(height: 12),
-                  const Text('Sin paradas registradas', style: TextStyle(fontFamily: 'Inter', fontSize: 14, color: kOnSurfaceVariant)),
-                ]),
-              )
-            else
-              ..._paradas.asMap().entries.map((e) => _buildStopCard(e.value, e.key + 1, _paradas.length)),
-
-            const SizedBox(height: 100),
-          ]),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: kSecContainer,
-        foregroundColor: kPrimary,
-        child: const Icon(Icons.add_box_rounded, size: 28),
-      ),
-      bottomNavigationBar: _buildBottomNav(),
-    );
-  }
-
-  AppBar _buildAppBar(String? estado) {
-    Color chipColor = const Color(0xFF1565C0);
-    Color chipBg = const Color(0xFFD6E4FF);
-    if (estado == 'En Curso') { chipColor = const Color(0xFF7D5700); chipBg = const Color(0xFFFDEFCC); }
-    else if (estado == 'Terminado') { chipColor = const Color(0xFF1A6B43); chipBg = const Color(0xFFD4F0E1); }
-
-    return AppBar(
-      backgroundColor: kSurface,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: kPrimary),
-        onPressed: () => context.pop(),
-      ),
-      title: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Control de Ruta', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: kPrimary)),
-        if (estado != null) ...[
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
-            child: Text(estado.toUpperCase(), style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: chipColor)),
-          ),
-        ],
-      ]),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: kPrimary.withOpacity(0.08)),
-      ),
-    );
-  }
-
-  Widget _buildStopCard(Map<String, dynamic> stop, int idx, int total) {
-    final nombre = stop['persona_nombre'] ?? stop['nombre_cliente'] ?? stop['apicultor'] ?? 'Parada $idx';
-    final localidad = stop['localidad']?.toString() ?? '';
-    final tipo = stop['tipo']?.toString() ?? 'Recoleccion';
-    final items = stop['parada_items'] as List? ?? [];
-    final hasPesaje = stop['bruto_kg'] != null;
-    final isRecoleccion = tipo.toLowerCase().contains('recolec');
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kPrimary.withOpacity(0.06)),
-        boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 3))],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(color: kPrimary.withOpacity(0.06), shape: BoxShape.circle),
-              child: const Icon(Icons.location_on_rounded, color: kPrimaryContainer, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(nombre.toString(), style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 15, color: kPrimary)),
-              if (localidad.isNotEmpty)
-                Text('$localidad • Apiario #0$idx', style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant)),
-            ])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: kSurfaceLow, borderRadius: BorderRadius.circular(12)),
-                child: Text('PARADA $idx/$total', style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 9, color: kOnSurfaceVariant)),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isRecoleccion ? const Color(0xFFD4F0E1) : const Color(0xFFD6E4FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(tipo.toUpperCase(), style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 8, color: isRecoleccion ? const Color(0xFF1A6B43) : const Color(0xFF1565C0))),
-              ),
-            ]),
-          ]),
-        ),
-
-        // Pesaje section
-        if (hasPesaje) ...[
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kPrimary.withOpacity(0.06))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('REGISTRO DE PESO', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kOnSurfaceVariant, letterSpacing: 0.8)),
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Peso Bruto', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant)),
-                  Text('${stop['bruto_kg']} KG', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
-                ])),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Peso Neto', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant)),
-                  Text('${stop['neto_kg']} KG', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF7D5700))),
-                ])),
-              ]),
-            ]),
-          ),
-          const SizedBox(height: 12),
-        ],
-
-        // Items — distinguish Recolección (KG) vs Distribución (u)
-        if (items.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(
-              isRecoleccion ? 'DETALLE DE CARGA (PESAJE)' : 'DETALLE DE ENTREGA',
-              style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kOnSurfaceVariant, letterSpacing: 0.8),
-            ),
-          ),
-          ...items.map((item) => Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: kSurfaceLow, borderRadius: BorderRadius.circular(10), border: Border.all(color: kPrimary.withOpacity(0.05))),
-              child: Row(children: [
-                Icon(
-                  isRecoleccion ? Icons.scale_rounded : Icons.inventory_2_rounded,
-                  size: 16, color: kPrimaryContainer,
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text(
-                  (item['producto'] ?? item['nombre'] ?? item['producto_codigo'] ?? 'Item').toString(),
-                  style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: kOnSurface),
-                )),
-                Text(
-                  isRecoleccion
-                      ? '${item['peso_kg'] ?? item['cantidad'] ?? 0} KG'
-                      : '${item['cantidad'] ?? item['cantidad_planificada'] ?? 0} U',
-                  style: TextStyle(
-                    fontFamily: 'Work Sans',
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: isRecoleccion ? const Color(0xFF7D5700) : kPrimaryContainer,
-                  ),
-                ),
-              ]),
-            ),
-          )),
-          const SizedBox(height: 8),
-        ],
-
-        // Map + Remito row
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            if (localidad.isNotEmpty)
-              Expanded(child: GestureDetector(
-                onTap: () => _openMaps(localidad),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+            const SizedBox(height: 12),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _paradas.length,
+              itemBuilder: (context, index) {
+                final p = _paradas[index];
+                final isCompletada = p['estado'] == 'Completada';
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   decoration: BoxDecoration(
-                    color: kPrimaryContainer,
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isCompletada ? Colors.green.withOpacity(0.3) : Colors.black12),
                   ),
-                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.map_rounded, size: 14, color: kSecContainer),
-                    SizedBox(width: 6),
-                    Text('VER EN MAPA', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kSecContainer)),
-                  ]),
-                ),
-              )),
-            if (localidad.isNotEmpty) const SizedBox(width: 10),
-            Expanded(child: GestureDetector(
-              onTap: () {
-                // Navigate to ParadaDetalle
-                if (stop['id'] != null) {
-                  context.push('/paradaDetalle?paradaId=${stop['id']}');
-                }
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isCompletada ? Colors.green : kPrimaryContainer,
+                      child: Text('${index + 1}', style: const TextStyle(color: Colors.white)),
+                    ),
+                    title: Text(p['persona_nombre'] ?? 'Parada', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${p['localidad'] ?? ''}\n${p['tipo_operacion'] ?? ''}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/paradaDetalle?paradaId=${p['id']}'),
+                  ),
+                );
               },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: kSurface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: kOutlineVariant),
-                ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.visibility_rounded, size: 14, color: kPrimary),
-                  SizedBox(width: 6),
-                  Text('VER DETALLE', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kPrimary)),
-                ]),
-              ),
-            )),
-          ]),
+            ),
+            const SizedBox(height: 40),
+          ],
         ),
-      ]),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: kPrimary.withOpacity(0.07))),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, -2))],
       ),
-      child: SafeArea(child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-          _navItem(Icons.home_rounded, 'HOME', false, () => context.go('/home')),
-          _navItem(Icons.alt_route_rounded, 'RUTAS', true, () {}),
-          _navItem(Icons.group_rounded, 'APICULTORES', false, () {}),
-          _navItem(Icons.more_horiz_rounded, 'MÁS', false, () {}),
-        ]),
-      )),
     );
   }
 
-  Widget _navItem(IconData icon, String label, bool active, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: active ? kPrimaryContainer.withOpacity(0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 22, color: active ? kPrimaryContainer : kOnSurface.withOpacity(0.35)),
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontFamily: 'Work Sans', fontWeight: active ? FontWeight.w800 : FontWeight.w500, fontSize: 9, color: active ? kPrimaryContainer : kOnSurface.withOpacity(0.35))),
-      ]),
+  Widget _statusChip(String estado) {
+    Color color = Colors.blue;
+    if (estado == 'En Curso') color = Colors.orange;
+    if (estado == 'Terminado') color = Colors.green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+      child: Text(estado.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
 }
-
-const kOutlineVariant = Color(0xFFC2C8C4);

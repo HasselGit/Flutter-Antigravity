@@ -1,4 +1,4 @@
-import '/flutter_flow/flutter_flow_theme.dart';
+import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
@@ -259,7 +259,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: kSecondaryContainer,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin')
+                        if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
+                          _moduleCard(
+                            icon: Icons.alt_route_rounded,
+                            title: 'Gestión de Viajes',
+                            subtitle: 'Lista completa\nde rutas y viajes',
+                            bgColor: kPrimaryContainer,
+                            accentColor: kSecondaryContainer,
+                            onTap: () => context.push('/viajes'),
+                          ),
                           _moduleCard(
                             icon: Icons.dashboard_customize_rounded,
                             title: 'Dashboard',
@@ -268,6 +276,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: kSecondaryContainer,
                             onTap: () => context.push('/gerenteHome'),
                           ),
+                        ],
                         if (_userRole != 'Chofer') ...[
                           _moduleCard(
                             icon: Icons.assignment_ind_rounded,
@@ -288,19 +297,27 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                         ],
                         if (_userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia')
                           _moduleCard(
-                            icon: Icons.inventory_2_rounded,
-                            title: 'Depósito',
-                            subtitle: 'Carga de camiones\ny remitos',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
-                            onTap: () => context.push('/depositoHome'),
-                          ),
+                          icon: Icons.scale_rounded,
+                          title: 'Recolecciones',
+                          subtitle: 'Miel planificada\ny recolectada',
+                          bgColor: const Color(0xFF1A6B43), // Verde
+                          accentColor: Colors.white,
+                          onTap: () => context.push('/recolecciones'),
+                        ),
+                        _moduleCard(
+                          icon: Icons.inventory_2_rounded,
+                          title: 'Distribuciones',
+                          subtitle: 'Insumos y\nentregas',
+                          bgColor: const Color(0xFF08201A), // Verde Oscuro
+                          accentColor: const Color(0xFFFDBE49),
+                          onTap: () => context.push('/distribuciones'),
+                        ),
                         _moduleCard(
                           icon: Icons.alt_route_rounded,
                           title: 'Control de Ruta',
                           subtitle: 'Trayectos activos\nen tiempo real',
-                          bgColor: kPrimary,
-                          accentColor: kSecondaryContainer,
+                          bgColor: const Color(0xFFFBF9F8),
+                          accentColor: kPrimary,
                           onTap: () => context.push('/rutas'),
                         ),
                       ],

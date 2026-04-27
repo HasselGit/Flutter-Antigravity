@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class PlanificarViajeWidget extends StatefulWidget {
   const PlanificarViajeWidget({super.key});
@@ -15,10 +16,11 @@ class PlanificarViajeWidget extends StatefulWidget {
 }
 
 class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
-  final _formKey = GlobalKey<FormState>();
   final _descripcionController = TextEditingController();
+  final _searchController = TextEditingController();
   
   List<Map<String, dynamic>> _necesidades = [];
+  List<Map<String, dynamic>> _filteredNecesidades = [];
   List<Map<String, dynamic>> _selectedNecesidades = [];
   List<Map<String, dynamic>> _vehiculos = [];
   List<Map<String, dynamic>> _choferes = [];
@@ -33,6 +35,14 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   void initState() {
     super.initState();
     _fetchData();
+    _searchController.addListener(_filterNecesidades);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _descripcionController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchData() async {
@@ -46,6 +56,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
       if (mounted) {
         setState(() {
           _necesidades = necData;
+          _filteredNecesidades = necData;
           _vehiculos = vehData;
           _choferes = choData;
           _loading = false;
@@ -57,24 +68,37 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     }
   }
 
+  void _filterNecesidades() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredNecesidades = _necesidades.where((n) {
+        final apicultor = (n['apicultores']?['nombre'] ?? '').toString().toLowerCase();
+        final localidad = (n['apicultores']?['localidad'] ?? '').toString().toLowerCase();
+        final tipo = (n['tipo'] ?? '').toString().toLowerCase();
+        return apicultor.contains(query) || localidad.contains(query) || tipo.contains(query);
+      }).toList();
+    });
+  }
+
   double get _totalKg => _selectedNecesidades.fold(0.0, (sum, item) => sum + (item['cantidad'] ?? 0).toDouble());
   int get _totalTambores {
     int total = 0;
     for (final n in _selectedNecesidades) {
-      if (n['producto'] == 'Miel') {
+      if (n['producto'] == 'Miel' || n['tipo'] == 'Recolección') {
         final num cant = n['cantidad'] ?? 0;
         total += (cant / 300).ceil();
       }
     }
     return total;
   }
-  // Nota: Estimación de tambores si no se especifica (1 tambor ~= 300kg)
 
   bool get _excedeCapacidad {
     if (_selectedVehiculo == null) return false;
     final capKg = (_selectedVehiculo!['capacidad_kg'] ?? 0).toDouble();
     final capTambores = (_selectedVehiculo!['capacidad_tambores'] ?? 0);
-    return _totalKg > capKg || _totalTambores > capTambores;
+    if (capKg > 0 && _totalKg > capKg) return true;
+    if (capTambores > 0 && _totalTambores > capTambores) return true;
+    return false;
   }
 
   Future<void> _crearViaje() async {
@@ -133,8 +157,23 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             // Sección Necesidades
             const Text('1. Seleccionar Necesidades', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
             const SizedBox(height: 12),
+            
+            // Search Bar
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Buscar por apicultor, localidad o tipo...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             Container(
-              height: 250,
+              height: 280,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -142,10 +181,10 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               ),
               child: ListView.separated(
                 padding: const EdgeInsets.all(8),
-                itemCount: _necesidades.length,
+                itemCount: _filteredNecesidades.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, index) {
-                  final n = _necesidades[index];
+                  final n = _filteredNecesidades[index];
                   final isSelected = _selectedNecesidades.any((element) => element['id'] == n['id']);
                   return CheckboxListTile(
                     value: isSelected,
@@ -195,6 +234,38 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                         style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold)),
                     ],
                   ),
+                  if (_selectedNecesidades.isNotEmpty) ...[
+                    const Divider(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final destinations = _selectedNecesidades
+                              .map((n) => n['apicultores']?['localidad'])
+                              .where((l) => l != null)
+                              .toList();
+                          if (destinations.isEmpty) return;
+                          
+                          String origin = destinations.first;
+                          String waypoints = destinations.length > 1 
+                              ? destinations.sublist(1).join('|')
+                              : '';
+                          
+                          final url = 'https://www.google.com/maps/dir/?api=1&origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destinations.last)}&waypoints=${Uri.encodeComponent(waypoints)}&travelmode=driving';
+                          
+                          if (await canLaunchUrlString(url)) {
+                            await launchUrlString(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        icon: const Icon(Icons.map_rounded),
+                        label: const Text('VER NODOS EN MAPA'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF08201A),
+                          side: const BorderSide(color: Color(0xFF08201A)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -207,24 +278,34 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             
             _buildDropdown<String>(
               label: 'Vehículo',
-              value: _selectedVehiculo?['id'],
+              hint: 'Seleccione un vehículo...',
+              value: _selectedVehiculo?['id']?.toString(),
               items: _vehiculos.map((v) => DropdownMenuItem(
                 value: v['id'].toString(),
                 child: Text('${v['vehiculo_codigo']} (Max: ${v['capacidad_kg']}Kg / ${v['capacidad_tambores']}T)'),
               )).toList(),
-              onChanged: (v) => setState(() => _selectedVehiculo = _vehiculos.firstWhere((element) => element['id'] == v)),
+              onChanged: (v) {
+                setState(() {
+                  _selectedVehiculo = _vehiculos.firstWhere((element) => element['id'].toString() == v);
+                });
+              },
             ),
             
             const SizedBox(height: 16),
             
             _buildDropdown<String>(
               label: 'Chofer',
-              value: _selectedChofer?['id'],
+              hint: 'Seleccione un chofer...',
+              value: _selectedChofer?['id']?.toString(),
               items: _choferes.map((c) => DropdownMenuItem(
                 value: c['id'].toString(),
                 child: Text('${c['nombre']} ${c['apellido']}'),
               )).toList(),
-              onChanged: (v) => setState(() => _selectedChofer = _choferes.firstWhere((element) => element['id'] == v)),
+              onChanged: (v) {
+                setState(() {
+                  _selectedChofer = _choferes.firstWhere((element) => element['id'].toString() == v);
+                });
+              },
             ),
 
             const SizedBox(height: 40),
@@ -251,7 +332,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     );
   }
 
-  Widget _buildDropdown<T>({required String label, T? value, required List<DropdownMenuItem<T>> items, required void Function(T?) onChanged}) {
+  Widget _buildDropdown<T>({required String label, String? hint, T? value, required List<DropdownMenuItem<T>> items, required void Function(T?) onChanged}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -267,6 +348,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
           child: DropdownButtonHideUnderline(
             child: DropdownButton<T>(
               isExpanded: true,
+              hint: hint != null ? Text(hint, style: const TextStyle(fontSize: 14, color: Colors.black45)) : null,
               value: value,
               items: items,
               onChanged: onChanged,
