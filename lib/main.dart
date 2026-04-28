@@ -140,5 +140,30 @@ final GoRouter _router = GoRouter(
       name: 'distribucionesPage',
       builder: (context, state) => const DistribucionesPageWidget(),
     ),
+    GoRoute(
+      path: '/vehiculos',
+      name: 'VehiculosPage',
+      builder: (context, state) => const VehiculosPageWidget(),
+    ),
+    GoRoute(
+      path: '/productos',
+      name: 'ProductosPage',
+      builder: (context, state) => const ProductosPageWidget(),
+    ),
+    GoRoute(
+      path: '/apicultores',
+      name: 'ApicultoresPage',
+      builder: (context, state) => const ApicultoresPageWidget(),
+    ),
+    GoRoute(
+      path: '/gastos',
+      name: 'GastosPage',
+      builder: (context, state) => const GastosPageWidget(),
+    ),
+    GoRoute(
+      path: '/remitosLista',
+      name: 'RemitosListaPage',
+      builder: (context, state) => const RemitosListaPageWidget(),
+    ),
   ],
 );

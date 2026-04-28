@@ -129,7 +129,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   bool _canOperate() {
-    return _userRole == 'Deposito' || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO';
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final choferId = _viaje?['chofer_id']?.toString();
+    final role = _userRole?.toUpperCase() ?? '';
+    
+    // Autorizados: CEO, GERENTE, COMPRAS y el Chofer asignado.
+    if (role == 'CEO' || role == 'GERENTE' || role == 'GERENCIA' || role == 'COMPRAS' || role == 'ADMIN') {
+      return true;
+    }
+    return (role == 'CHOFER' && currentUserId == choferId);
   }
 
   @override
@@ -228,6 +236,29 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                     onPressed: () => _cambiarEstado(estado == 'Planificado' ? 'En Curso' : 'Terminado'),
                     style: ElevatedButton.styleFrom(backgroundColor: kSecContainer, foregroundColor: kPrimary),
                     child: Text(estado == 'Planificado' ? 'INICIAR VIAJE' : 'FINALIZAR VIAJE', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              )
+            else if (estado != 'Terminado')
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kPrimary.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_outline_rounded, size: 18, color: Colors.black38),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Solo el chofer asignado puede cambiar el estado del viaje.',
+                          style: TextStyle(fontSize: 12, color: Colors.black45, fontFamily: 'Inter'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

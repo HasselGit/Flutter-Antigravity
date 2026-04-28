@@ -81,107 +81,61 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kSurface,
+      drawer: _buildDrawer(),
+      appBar: AppBar(
+        backgroundColor: kSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: kPrimary),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: Row(
+          children: [
+            ClipOval(
+              child: Image.asset(
+                'assets/images/logo_Geologistica_Verde.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'GeoLogística',
+                  style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 16, color: kPrimary),
+                ),
+                Text(
+                  'APIARY LOGISTICS',
+                  style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 8, color: kPrimary.withOpacity(0.4), letterSpacing: 1),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: kPrimaryContainer, border: Border.all(color: kSecondaryContainer, width: 1.5)),
+              child: Text(_initials, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Column(
         children: [
           // ──────────────────────────────────────────────────────────
           // LIGHT AppBar — Stitch style: cream bg, dark green text
           // ──────────────────────────────────────────────────────────
-          Container(
-            color: kSurface,
-            child: SafeArea(
-              bottom: false,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: kSurface,
-                  border: Border(
-                    bottom: BorderSide(color: kPrimary.withOpacity(0.08), width: 1),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-                  child: Row(
-                    children: [
-                      // Logo
-                      ClipOval(
-                        child: Image.asset(
-                          'assets/images/logo_Geologistica_Verde.png',
-                          width: 38,
-                          height: 38,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'GeoLogística',
-                              style: TextStyle(
-                                fontFamily: 'Manrope',
-                                fontWeight: FontWeight.w800,
-                                fontSize: 17,
-                                color: kPrimary,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                            Text(
-                              'APIARY LOGISTICS',
-                              style: TextStyle(
-                                fontFamily: 'Work Sans',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 9,
-                                color: kPrimary.withOpacity(0.45),
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Avatar
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: kPrimaryContainer,
-                          border: Border.all(color: kSecondaryContainer, width: 1.5),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _initials,
-                            style: const TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Logout
-                      GestureDetector(
-                        onTap: () async {
-                          await Supabase.instance.client.auth.signOut();
-                          if (context.mounted) context.go('/');
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: kSurfaceLow,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: kOutlineVariant),
-                          ),
-                          child: Icon(Icons.logout_rounded, color: kPrimary.withOpacity(0.6), size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+
 
           // Body
           Expanded(
@@ -288,7 +242,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                           ),
                           _moduleCard(
                             icon: Icons.list_alt_rounded,
-                            title: 'Necesidades',
+                            title: 'Solicitudes',
                             subtitle: 'Gestión de carga\ny recolecciones',
                             bgColor: kPrimary,
                             accentColor: kSecondaryContainer,
@@ -312,14 +266,14 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                           accentColor: const Color(0xFFFDBE49),
                           onTap: () => context.push('/distribuciones'),
                         ),
-                        _moduleCard(
-                          icon: Icons.alt_route_rounded,
-                          title: 'Control de Ruta',
-                          subtitle: 'Trayectos activos\nen tiempo real',
-                          bgColor: const Color(0xFFFBF9F8),
-                          accentColor: kPrimary,
-                          onTap: () => context.push('/rutas'),
-                        ),
+                          _moduleCard(
+                            icon: Icons.alt_route_rounded,
+                            title: 'Control de Ruta',
+                            subtitle: 'Trayectos activos\nen tiempo real',
+                            bgColor: const Color(0xFFFBF9F8),
+                            accentColor: kPrimary,
+                            onTap: () => context.push('/rutas'),
+                          ),
                       ],
                     ),
 
@@ -494,23 +448,84 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     );
   }
 
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: kSurface,
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(color: kPrimary),
+            child: Row(
+              children: [
+                ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', width: 50, height: 50)),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(_userRole ?? 'Operador', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _drawerItem(Icons.dashboard_rounded, 'Dashboard', () => context.push('/gerenteHome')),
+                _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
+                _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
+                _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
+                _drawerItem(Icons.scale_rounded, 'Pesajes', () => context.push('/recolecciones')),
+                _drawerItem(Icons.warehouse_rounded, 'Cargas Depósito', () => context.push('/depositoHome')),
+                const Divider(),
+                _drawerItem(Icons.group_rounded, 'Apicultores', () => context.push('/apicultores')),
+                _drawerItem(Icons.receipt_long_rounded, 'Remitos Digitales', () => context.push('/remitosLista')),
+              ],
+            ),
+          ),
+          const Divider(),
+          _drawerItem(Icons.logout_rounded, 'Cerrar Sesión', () async {
+            await Supabase.instance.client.auth.signOut();
+            if (context.mounted) context.go('/');
+          }, color: Colors.redAccent),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String title, VoidCallback onTap, {Color? color}) {
+    return ListTile(
+      leading: Icon(icon, color: color ?? kPrimary),
+      title: Text(title, style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w600, color: color ?? kOnSurface)),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+    );
+  }
+
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: kPrimary.withOpacity(0.07))),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, -2))],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _navItem(Icons.dashboard_rounded, 'INICIO', true, () {}),
-              _navItem(Icons.local_shipping_rounded, 'VIAJES', false, () => context.push('/viajes')),
-              _navItem(Icons.alt_route_rounded, 'RUTAS', false, () => context.push('/rutas')),
-              _navItem(Icons.person_rounded, 'PERFIL', false, () {}),
+              _navItem(Icons.home_filled, 'HOME', true, () {}),
+              _navItem(Icons.assignment_rounded, 'OPERAR', false, () => context.push('/rutas')),
+              _navItem(Icons.analytics_rounded, 'METRICAS', false, () => context.push('/gerenteHome')),
+              _navItem(Icons.person_rounded, 'MI PERFIL', false, () {}),
             ],
           ),
         ),
@@ -521,31 +536,13 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   Widget _navItem(IconData icon, String label, bool active, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: active ? kPrimaryContainer.withOpacity(0.12) : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              size: 22,
-              color: active ? kPrimaryContainer : kOnSurface.withOpacity(0.35),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Work Sans',
-              fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-              fontSize: 9,
-              color: active ? kPrimaryContainer : kOnSurface.withOpacity(0.35),
-            ),
-          ),
+          Icon(icon, size: 20, color: active ? kPrimary : kOnSurface.withOpacity(0.3)),
+          if (active) ...[
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kPrimary)),
+          ],
         ],
       ),
     );

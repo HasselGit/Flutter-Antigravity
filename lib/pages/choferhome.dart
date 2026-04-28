@@ -20,7 +20,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   bool _loading = true;
   String? _error;
   String? _choferNombre;
-  int _selectedTab = 0; // 0=Todos, 1=En Curso, 2=Planificado
+  int _selectedTab = 0; // 0=Planificados, 1=En Proceso, 2=Terminados
 
   @override
   void initState() {
@@ -61,8 +61,9 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   }
 
   List<Map<String, dynamic>> get _filtered {
+    if (_selectedTab == 0) return _viajes.where((v) => v['estado'] == 'Planificado').toList();
     if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == 'En Proceso' || v['estado'] == 'En Curso' || v['estado'] == 'Cargado').toList();
-    if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == 'Planificado').toList();
+    if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == 'Terminado' || v['estado'] == 'Finalizado').toList();
     return _viajes;
   }
 
@@ -205,11 +206,11 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                     child: Row(
                       children: [
-                        _tabPill(theme, 0, 'TODOS'),
+                        _tabPill(theme, 0, 'PLANIFICADOS'),
                         const SizedBox(width: 8),
-                        _tabPill(theme, 1, 'EN CURSO'),
+                        _tabPill(theme, 1, 'EN PROCESO'),
                         const SizedBox(width: 8),
-                        _tabPill(theme, 2, 'PLANIFICADOS'),
+                        _tabPill(theme, 2, 'TERMINADOS'),
                       ],
                     ),
                   ),
@@ -462,7 +463,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   }
 
   Widget _buildEmpty(FlutterFlowTheme theme) {
-    final labels = ['viajes', 'viajes en curso', 'viajes planificados'];
+    final labels = ['viajes planificados', 'viajes en proceso', 'viajes terminados'];
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

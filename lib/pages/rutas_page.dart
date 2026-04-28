@@ -136,17 +136,34 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
     // Compute enriched data from paradas
     final paradas = (v['paradas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final nParadas = paradas.length;
+    
+    // Attempt to deduce Origin -> Destination
+    String trayecto = 'Ruta sin definir';
+    if (nParadas >= 2) {
+      final origen = paradas.first['localidad']?.toString().split(',').first ?? 'Origen';
+      final destino = paradas.last['localidad']?.toString().split(',').first ?? 'Destino';
+      trayecto = '$origen ➔ $destino';
+    } else if (nParadas == 1) {
+      trayecto = 'Punto: ${paradas.first['localidad']}';
+    }
+
+    // Extract KM from description if present (e.g. "Total ruta: 380km")
+    String kmStr = 'S/D';
+    final desc = v['descripcion']?.toString() ?? '';
+    final kmMatch = RegExp(r'(\d+)\s*km', caseSensitive: false).firstMatch(desc);
+    if (kmMatch != null) {
+      kmStr = '${kmMatch.group(1)} km';
+    }
+
     int nRecoleccion = 0;
     double totalKg = 0;
-    int paradasConPesaje = 0;
-
+    // ... rest of logic remains similar but updated for consistency
     for (final p in paradas) {
-      final tipo = (p['tipo']?.toString() ?? '').toLowerCase();
+      final tipo = (p['tipo_operacion']?.toString() ?? '').toLowerCase();
       if (tipo.contains('recolec')) nRecoleccion++;
-
+      // ... kg logic
       if (p['bruto_kg'] != null) {
         totalKg += (p['bruto_kg'] as num).toDouble();
-        paradasConPesaje++;
       } else {
         final items = p['parada_items'] as List? ?? [];
         for (final item in items) {
@@ -157,19 +174,14 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       }
     }
 
-    // REAL progress based on paradas with pesaje or completion
     final progress = nParadas > 0 ? ((paradas.where((p) => p['estado'] == 'Completada').length) / nParadas).clamp(0.0, 1.0) : 0.0;
     final pctStr = '${(progress * 100).round()}%';
     
-    // Dummy Data for Premium Fidelity if DB is missing values
-    if (totalKg == 0 && nParadas > 0) {
-      totalKg = (nParadas * 1200).toDouble(); // Fake 1200kg per stop as example
-    }
-    final totalTambores = (totalKg / 300).round(); // Assuming 300kg per tambor
+    final totalTambores = (totalKg / 300).round();
 
     Color statusColor;
     Color statusBg;
-    if (estado == 'En Curso') {
+    if (estado == 'En Curso' || estado == 'En Proceso' || estado == 'Cargado') {
       statusColor = const Color(0xFF7D5700);
       statusBg = const Color(0xFFFDEFCC);
     } else if (estado == 'Terminado') {
@@ -195,7 +207,6 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -204,39 +215,32 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          displayId,
-                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w900, fontSize: 15, color: kPrimary, letterSpacing: 0.3),
+                          trayecto.toUpperCase(),
+                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w900, fontSize: 14, color: kPrimary, letterSpacing: 0.5),
                         ),
-                        if (vehiculo.toString().isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(Icons.local_shipping_outlined, size: 12, color: kOnSurfaceVariant.withOpacity(0.5)),
-                              const SizedBox(width: 4),
-                              Text(vehiculo.toString(), style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant.withOpacity(0.6))),
-                            ],
-                          ),
-                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          displayId,
+                          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 10, color: kPrimary.withOpacity(0.4)),
+                        ),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(20)),
-                    child: Text(estado.toUpperCase(), style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: statusColor)),
+                    child: Text(estado.toUpperCase(), style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 9, color: statusColor)),
                   ),
                 ],
               ),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Divider(height: 1, color: kPrimary.withOpacity(0.07)),
-              ),
-
-              // Paradas + Type + KG row
+              const SizedBox(height: 16),
+              
               Row(
                 children: [
                   _infoChip(Icons.location_on_rounded, '$nParadas PARADAS'),
+                  const SizedBox(width: 8),
+                  _infoChip(Icons.straighten_rounded, kmStr),
                   const SizedBox(width: 8),
                   _infoChip(
                     nRecoleccion > 0 ? Icons.scale_rounded : Icons.inventory_2_rounded,
@@ -244,15 +248,15 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                   ),
                 ],
               ),
+
               const SizedBox(height: 16),
               
-              // Progress Bar
               if (nParadas > 0) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Avance de Ruta', style: TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: kOnSurfaceVariant.withOpacity(0.6))),
-                    Text('$pctStr', style: TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w800, color: kPrimary)),
+                    Text('Progreso de Ruta', style: TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: kOnSurfaceVariant.withOpacity(0.6))),
+                    Text(pctStr, style: const TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w800, color: kPrimary)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -261,75 +265,37 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 6,
-                    backgroundColor: const Color(0xFF08201A).withOpacity(0.05),
+                    backgroundColor: kPrimary.withOpacity(0.05),
                     valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
 
-              // Product Totals Example
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFBF9F8),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF08201A).withOpacity(0.05)),
+                  color: kSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kPrimary.withOpacity(0.05)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildMetricCol('TOTAL KG', '${totalKg.round()} kg', Icons.monitor_weight_outlined),
-                    Container(width: 1, height: 30, color: const Color(0xFF08201A).withOpacity(0.1)),
+                    _buildMetricCol('TOTAL ESTIMADO', '${totalKg.round()} kg', Icons.monitor_weight_outlined),
+                    Container(width: 1, height: 24, color: kPrimary.withOpacity(0.1)),
                     _buildMetricCol('TAMBORES', '$totalTambores un.', Icons.inventory_2_outlined),
                   ],
                 ),
               ),
 
-              // Summary of Stops
-              if (nParadas > 0) ...[
-                const SizedBox(height: 16),
-                Column(
-                  children: paradas.take(2).map((p) {
-                    final isRecoleccion = (p['tipo'] ?? '').toString().toLowerCase().contains('recolec');
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isRecoleccion ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                            size: 14,
-                            color: isRecoleccion ? const Color(0xFF1A6B43) : const Color(0xFF1565C0),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${p['ubicacion'] ?? 'Parada'} - ${p['localidad'] ?? ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: const Color(0xFF08201A).withOpacity(0.8), fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-                if (nParadas > 2)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('+ ${nParadas - 2} paradas más', style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: const Color(0xFF08201A).withOpacity(0.5))),
-                  ),
-              ],
-              
               const SizedBox(height: 16),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text('VER CONTROL', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, color: kSecContainer.withRed(125), letterSpacing: 0.5)),
+                  const Text('VER CONTROL DE RUTA', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, color: kPrimary, letterSpacing: 0.5)),
                   const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: kSecContainer.withRed(125)),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: kPrimary.withOpacity(0.6)),
                 ],
               ),
             ],

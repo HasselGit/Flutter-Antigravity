@@ -155,7 +155,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Sección Necesidades
-            const Text('1. Seleccionar Necesidades', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+            const Text('1. Seleccionar Solicitudes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
             const SizedBox(height: 12),
             
             // Search Bar

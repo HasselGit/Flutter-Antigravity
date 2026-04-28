@@ -16,3 +16,8 @@ export 'pages/homepage.dart';
 export 'pages/rutas_page.dart';
 export 'pages/viajes_page.dart';
 export 'pages/necesidades_page.dart';
+export 'pages/vehiculos_page.dart';
+export 'pages/productos_page.dart';
+export 'pages/apicultores_page.dart';
+export 'pages/gastos_page.dart';
+export 'pages/remitos_lista_page.dart';

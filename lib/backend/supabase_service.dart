@@ -70,7 +70,8 @@ class SupabaseService {
     try {
       print('SupabaseService: Obteniendo viajes (UserId: $userId, Role: $role)');
       try {
-        var query = _client.from('viajes').select('*, paradas(*, parada_items(*))');
+        var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*, parada_items(*))');
+        // Si es chofer, solo ve lo suyo. Si es CEO, Gerente o Compras, ve TODO.
         if (role == 'Chofer' && userId != null) {
           query = query.eq('chofer_id', userId);
         }
@@ -78,7 +79,7 @@ class SupabaseService {
         return List<Map<String, dynamic>>.from(data);
       } catch (e) {
         print('SupabaseService: Falló fetch con items (RLS), reintentando básico: $e');
-        var query = _client.from('viajes').select('*, paradas(*)');
+        var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*)');
         if (role == 'Chofer' && userId != null) {
           query = query.eq('chofer_id', userId);
         }
@@ -97,7 +98,7 @@ class SupabaseService {
       print('SupabaseService: Fetching detalle para viaje: $viajeId');
       final response = await _client
           .from('viajes')
-          .select('*, paradas(*, parada_items(*))')
+          .select('*, profiles:chofer_id(nombre, apellido), paradas(*, parada_items(*))')
           .eq('id', viajeId)
           .maybeSingle()
           .timeout(const Duration(seconds: 10));
@@ -165,12 +166,15 @@ class SupabaseService {
     }
   }
 
-  /// Logística: Necesidades, Vehículos y Choferes.
-  Future<List<Map<String, dynamic>>> getNecesidadesPendientes() async => _fetchList('necesidades', select: '*, apicultores(nombre, localidad)', filter: {'estado': 'Pendiente'});
-  Future<List<Map<String, dynamic>>> getAllNecesidades() async => _fetchList('necesidades', select: '*, apicultores(nombre, localidad)', order: 'created_at');
-  Future<List<Map<String, dynamic>>> getVehiculos() async => _fetchList('vehiculos');
+  /// Logística: Solicitudes (antes Necesidades), Vehículos y Choferes.
+  Future<List<Map<String, dynamic>>> getNecesidadesPendientes() async => _fetchList('solicitudes', select: '*, apicultores(nombre, localidad)', filter: {'estado': 'Pendiente'});
+  Future<List<Map<String, dynamic>>> getAllNecesidades() async => _fetchList('solicitudes', select: '*, apicultores(nombre, localidad)', order: 'created_at');
+  Future<List<Map<String, dynamic>>> getVehiculos() async => _fetchList('vehiculos', order: 'vehiculo_codigo');
   Future<List<Map<String, dynamic>>> getChoferes() async => _fetchList('profiles', filter: {'puesto': 'Chofer'});
-  Future<List<Map<String, dynamic>>> getApicultores() async => _fetchList('apicultores', select: 'id, nombre, localidad');
+  Future<List<Map<String, dynamic>>> getApicultores() async => _fetchList('apicultores', select: '*', order: 'nombre');
+  Future<List<Map<String, dynamic>>> getProductos() async => _fetchList('productos', order: 'nombre');
+  Future<List<Map<String, dynamic>>> getGastos() async => _fetchList('gastos', select: '*, profiles:chofer_id(nombre, apellido), viajes(viaje_codigo)', order: 'fecha');
+  Future<List<Map<String, dynamic>>> getRemitos() async => _fetchList('remitos', select: '*, apicultores(nombre), solicitudes(solicitud_codigo)', order: 'created_at');
 
   Future<List<Map<String, dynamic>>> _fetchList(String table, {String select = '*', Map<String, String>? filter, String? order}) async {
     try {
@@ -191,7 +195,7 @@ class SupabaseService {
     }
   }
 
-  /// Escritura: Crear Viaje Completo y Necesidades.
+  /// Escritura: Crear Viaje Completo y Solicitudes.
   Future<void> createViajeCompleto({required Map<String, dynamic> viajeData, required List<Map<String, dynamic>> necesidades}) async {
     try {
       final viajeResp = await _client.from('viajes').insert(viajeData).select().single();
@@ -204,7 +208,7 @@ class SupabaseService {
           'tipo_operacion': nec['tipo'],
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
-          'direccion': nec['apicultores']?['localidad'] ?? 'S/D',
+          'direccion': nec['localidad'] ?? 'S/D', // Usamos localidad de la solicitud
         }).select().single();
         try {
           await _client.from('parada_items').insert({
@@ -214,7 +218,7 @@ class SupabaseService {
             'unidad': 'KG',
           });
         } catch (_) {}
-        await _client.from('necesidades').update({'estado': 'En Ruta'}).eq('id', nec['id']);
+        await _client.from('solicitudes').update({'estado': 'Planificada'}).eq('id', nec['id']);
       }
     } catch (e) {
       rethrow;
@@ -222,7 +226,7 @@ class SupabaseService {
   }
 
   Future<void> createNecesidad(Map<String, dynamic> data) async {
-    try { await _client.from('necesidades').insert(data); } catch (e) { rethrow; }
+    try { await _client.from('solicitudes').insert(data); } catch (e) { rethrow; }
   }
 
   /// Registra un pesaje de tambor.
@@ -235,7 +239,27 @@ class SupabaseService {
     }
   }
 
-  /// Registra un item en una parada (ej: bulto sin pesar).
+  /// Registra un gasto asociado a un viaje y chofer.
+  Future<void> createGasto(Map<String, dynamic> data) async {
+    try {
+      await _client.from('gastos').insert(data);
+    } catch (e) {
+      print('SupabaseService: Error en createGasto: $e');
+      rethrow;
+    }
+  }
+
+  /// Registra un nuevo producto (solo Gerencia/Compras/CEO).
+  Future<void> createProducto(Map<String, dynamic> data) async {
+    try {
+      await _client.from('productos').insert(data);
+    } catch (e) {
+      print('SupabaseService: Error en createProducto: $e');
+      rethrow;
+    }
+  }
+
+  /// Registra un item en una parada.
   Future<void> createParadaItem(Map<String, dynamic> data) async {
     try {
       await _client.from('parada_items').insert(data);
