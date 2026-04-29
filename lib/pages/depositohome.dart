@@ -124,6 +124,26 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text('Chofer: ${chofer['nombre']} ${chofer['apellido']}'),
+                                const SizedBox(height: 12),
+                                // Detalle de Carga
+                                const Text('CARGA PLANIFICADA:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
+                                const SizedBox(height: 4),
+                                Column(
+                                  children: (v['paradas'] as List? ?? []).map<Widget>((p) {
+                                    final items = p['parada_items'] as List? ?? [];
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.circle, size: 6, color: Color(0xFF08201A)),
+                                          const SizedBox(width: 8),
+                                          Expanded(child: Text('${p['tipo_operacion']} en ${p['localidad']}', style: const TextStyle(fontSize: 12))),
+                                          Text(items.isNotEmpty ? '${items.first['cantidad']} ${items.first['unidad']}' : '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
                                 const SizedBox(height: 16),
                                 SizedBox(
                                   width: double.infinity,
@@ -147,6 +167,115 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
               ),
             ],
           ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddCargaDialog,
+        backgroundColor: const Color(0xFF08201A),
+        icon: const Icon(Icons.add_box_rounded, color: Color(0xFFFDBE49)),
+        label: const Text('AGREGAR CARGA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  void _showAddCargaDialog() {
+    Map<String, dynamic>? selectedViaje;
+    Map<String, dynamic>? selectedProducto;
+    final qtyController = TextEditingController();
+    List<Map<String, dynamic>> products = [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          if (products.isEmpty) {
+            Supabase.instance.client.from('productos').select().then((data) {
+              if (ctx.mounted) setModalState(() => products = data);
+            });
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Asignar Carga a Viaje', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+                  const SizedBox(height: 20),
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedViaje,
+                    decoration: const InputDecoration(labelText: 'Seleccionar Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
+                    items: _viajesPlanificados.map((v) => DropdownMenuItem(
+                      value: v,
+                      child: Text(v['viaje_codigo'] ?? 'S/C'),
+                    )).toList(),
+                    onChanged: (v) => setModalState(() => selectedViaje = v),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedProducto,
+                    decoration: const InputDecoration(labelText: 'Producto', prefixIcon: Icon(Icons.inventory_2_rounded)),
+                    items: products.map((p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(p['descripcion'] ?? 'S/N'),
+                    )).toList(),
+                    onChanged: (v) => setModalState(() => selectedProducto = v),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: qtyController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Cantidad', prefixIcon: Icon(Icons.numbers_rounded)),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        if (selectedViaje == null || selectedProducto == null || qtyController.text.isEmpty) return;
+                        try {
+                          // Create a 'Distribución' stop/item for the trip
+                          // This logic depends on your schema, but usually we add a parada or link item
+                          // For now, let's assume we insert into 'paradas' or similar
+                          final res = await Supabase.instance.client.from('paradas').insert({
+                            'viaje_id': selectedViaje!['id'],
+                            'tipo': 'Distribución',
+                            'estado': 'Planificada',
+                            'orden': 1,
+                            'localidad': 'General Pico', // Default to plant for distributions from plant
+                            'nombre_sitio': 'Depósito Central',
+                          }).select().single();
+
+                          await Supabase.instance.client.from('parada_items').insert({
+                            'parada_id': res['id'],
+                            'producto': selectedProducto!['descripcion'],
+                            'cantidad_planificada': double.tryParse(qtyController.text) ?? 0,
+                            'unidad': selectedProducto!['unidad'] ?? 'u',
+                          });
+
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                            _fetchData();
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga asignada correctamente'), backgroundColor: Colors.green));
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e')));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF08201A), foregroundColor: Colors.white),
+                      child: const Text('ASIGNAR CARGA'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

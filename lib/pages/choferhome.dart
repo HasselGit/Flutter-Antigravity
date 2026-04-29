@@ -204,14 +204,17 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                   // Tab pills
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                    child: Row(
-                      children: [
-                        _tabPill(theme, 0, 'PLANIFICADOS'),
-                        const SizedBox(width: 8),
-                        _tabPill(theme, 1, 'EN PROCESO'),
-                        const SizedBox(width: 8),
-                        _tabPill(theme, 2, 'TERMINADOS'),
-                      ],
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _tabPill(theme, 0, 'PLANIFICADOS'),
+                          const SizedBox(width: 8),
+                          _tabPill(theme, 1, 'EN PROCESO'),
+                          const SizedBox(width: 8),
+                          _tabPill(theme, 2, 'TERMINADOS'),
+                        ],
+                      ),
                     ),
                   ),
                 ],

@@ -118,7 +118,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
               backgroundColor: kSecContainer,
               icon: const Icon(Icons.add_location_alt_rounded, color: kPrimary),
               label: const Text(
-                'PLANIFICAR RUTA',
+                'NUEVA RUTA',
                 style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: kPrimary),
               ),
             )
@@ -232,6 +232,13 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                     child: Text(estado.toUpperCase(), style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 9, color: statusColor)),
                   ),
                 ],
+              ),
+
+              Text(
+                desc.isNotEmpty ? desc : 'Sin descripción adicional',
+                style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant.withOpacity(0.7), fontStyle: FontStyle.italic),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
 
               const SizedBox(height: 16),

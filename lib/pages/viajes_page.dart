@@ -118,6 +118,15 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
               controller: _tabController,
               children: _statusKeys.map((s) => _buildTripList(s, theme)).toList(),
             ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/planificarViaje'),
+        backgroundColor: kPrimary,
+        icon: Icon(Icons.add_rounded, color: kSecContainer),
+        label: const Text(
+          'NUEVO VIAJE',
+          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: Colors.white),
+        ),
+      ),
     );
   }
 

@@ -10,7 +10,17 @@ import 'package:intl/intl.dart';
 
 class RemitoPageWidget extends StatefulWidget {
   final String paradaId;
-  const RemitoPageWidget({super.key, required this.paradaId});
+  final String? receptorTipo;
+  final String? receptorNombre;
+  final String? receptorDni;
+
+  const RemitoPageWidget({
+    super.key, 
+    required this.paradaId,
+    this.receptorTipo,
+    this.receptorNombre,
+    this.receptorDni,
+  });
 
   static String routeName = 'RemitoPage';
   static String routePath = '/remito';
@@ -42,7 +52,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     setState(() { _loading = true; _error = null; });
     try {
       final parada = await Supabase.instance.client
-          .from('paradas')
+          .from('v_paradas_con_apicultor_ff')
           .select('*, parada_items(*)')
           .eq('id', widget.paradaId)
           .maybeSingle();
@@ -92,6 +102,10 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     final tipoOperacion = _paradaData?['tipo_operacion'] ?? 'Operación';
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
+    final apicultorNombre = _paradaData?['apicultor_nombre'] ?? 'Sin nombre';
+    final receptorNombre = widget.receptorTipo == 'Tercero' ? widget.receptorNombre : apicultorNombre;
+    final receptorDni = widget.receptorTipo == 'Tercero' ? widget.receptorDni : '';
+
     double totalBruto = tryParseDouble(_paradaData?['bruto_kg']);
     double totalNeto = tryParseDouble(_paradaData?['neto_kg']);
 
@@ -116,7 +130,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
               pw.Divider(color: PdfColors.grey400),
               pw.SizedBox(height: 15),
 
-              // Info Chofer
+              // Info Chofer y Receptor
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
@@ -131,10 +145,24 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
                       pw.Text('Operación: $tipoOperacion', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Destino: ${_paradaData?['direccion'] ?? 'Ubicación'}'),
+                      pw.Text('Localidad: ${_paradaData?['localidad'] ?? 'S/D'}'),
                     ],
                   ),
                 ],
+              ),
+              pw.SizedBox(height: 15),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('RESPONSABLE DE RECEPCIÓN:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                    pw.Text('Nombre: $receptorNombre', style: pw.TextStyle(fontSize: 12)),
+                    if (receptorDni != null && receptorDni.isNotEmpty)
+                      pw.Text('DNI: $receptorDni', style: pw.TextStyle(fontSize: 12)),
+                  ],
+                ),
               ),
               pw.SizedBox(height: 20),
               pw.Text('Detalle de Ítems', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),

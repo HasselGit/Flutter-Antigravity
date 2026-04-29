@@ -79,16 +79,26 @@ class SupabaseService {
         return List<Map<String, dynamic>>.from(data);
       } catch (e) {
         print('SupabaseService: Falló fetch con items (RLS), reintentando básico: $e');
-        var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*)');
-        if (role == 'Chofer' && userId != null) {
-          query = query.eq('chofer_id', userId);
+        try {
+          var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*)');
+          if (role == 'Chofer' && userId != null) {
+            query = query.eq('chofer_id', userId);
+          }
+          final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
+          return List<Map<String, dynamic>>.from(data);
+        } catch (e2) {
+          print('SupabaseService: Reintento básico falló, intentando ultra-básico: $e2');
+          var query = _client.from('viajes').select();
+          if (role == 'Chofer' && userId != null) {
+            query = query.eq('chofer_id', userId);
+          }
+          final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
+          return List<Map<String, dynamic>>.from(data as List);
         }
-        final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
-        return List<Map<String, dynamic>>.from(data);
       }
     } catch (e) {
       print('SupabaseService: Error crítico en getViajes: $e');
-      rethrow;
+      return []; // Devolvemos lista vacía en lugar de romper
     }
   }
 
@@ -204,16 +214,16 @@ class SupabaseService {
       for (final nec in necesidades) {
         final paradaResp = await _client.from('paradas').insert({
           'viaje_id': viajeId,
-          'apicultor_id': nec['apicultor_id'],
+          'persona_nombre': nec['apicultores']?['nombre'], // Probamos con persona_nombre
           'tipo_operacion': nec['tipo'],
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
-          'direccion': nec['localidad'] ?? 'S/D', // Usamos localidad de la solicitud
+          'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
         }).select().single();
         try {
           await _client.from('parada_items').insert({
             'parada_id': paradaResp['id'],
-            'producto': nec['producto'],
+            'producto_codigo': nec['producto'],
             'cantidad': nec['cantidad'],
             'unidad': 'KG',
           });

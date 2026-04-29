@@ -1,8 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-
-import 'index.dart';
+import 'pages/recolecciones_page.dart';
+import 'pages/pesajes_page.dart';
+import 'pages/distribuciones_page.dart';
+import 'pages/vehiculo_detalle_page.dart';
+import 'pages/productos_page.dart';
+import 'pages/vehiculos_page.dart';
+import 'pages/necesidades_page.dart';
+import 'pages/rutas_page.dart';
+import 'pages/viajes_page.dart';
+import 'pages/viaje_detalle.dart';
+import 'pages/paradadetalle.dart';
+import 'pages/pesajesitem.dart';
+import 'pages/remito_page.dart';
+import 'pages/homepage.dart';
+import 'pages/choferhome.dart';
+import 'pages/gerentehome.dart';
+import 'pages/welcomepage.dart';
+import 'pages/login.dart';
+import 'pages/logged.dart';
+import 'pages/comprashome.dart';
+import 'pages/depositohome.dart';
+import 'pages/planificar_viaje.dart';
+import 'pages/apicultores_page.dart';
+import 'pages/gastos_page.dart';
+import 'pages/remitos_lista_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,7 +128,12 @@ final GoRouter _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/pesajesitem',
+      path: '/pesajes',
+      name: 'Pesajes',
+      builder: (context, state) => const PesajesPageWidget(),
+    ),
+    GoRoute(
+      path: '/pesajesItem',
       name: 'PesajesItem',
       builder: (context, state) {
         final paradaId = state.uri.queryParameters['paradaId'] ?? '';
@@ -116,8 +144,13 @@ final GoRouter _router = GoRouter(
       path: '/remito',
       name: 'RemitoPage',
       builder: (context, state) {
-        final paradaId = state.uri.queryParameters['paradaId'] ?? '';
-        return RemitoPageWidget(paradaId: paradaId);
+        final params = state.uri.queryParameters;
+        return RemitoPageWidget(
+          paradaId: params['paradaId'] ?? '',
+          receptorTipo: params['receptorTipo'],
+          receptorNombre: params['receptorNombre'],
+          receptorDni: params['receptorDni'],
+        );
       },
     ),
     GoRoute(
@@ -144,6 +177,14 @@ final GoRouter _router = GoRouter(
       path: '/vehiculos',
       name: 'VehiculosPage',
       builder: (context, state) => const VehiculosPageWidget(),
+    ),
+    GoRoute(
+      path: '/vehiculoDetalle',
+      name: 'VehiculoDetalle',
+      builder: (context, state) {
+        final vehiculoId = state.uri.queryParameters['id'];
+        return VehiculoDetalleWidget(vehiculoId: vehiculoId);
+      },
     ),
     GoRoute(
       path: '/productos',

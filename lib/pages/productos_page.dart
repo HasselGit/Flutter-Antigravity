@@ -1,7 +1,7 @@
-import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
-import '../backend/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import '../backend/supabase_service.dart';
 
 class ProductosPageWidget extends StatefulWidget {
   const ProductosPageWidget({super.key});
@@ -12,15 +12,11 @@ class ProductosPageWidget extends StatefulWidget {
 
 class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   List<Map<String, dynamic>> _productos = [];
-  List<Map<String, dynamic>> _filtered = [];
   bool _loading = true;
-  final TextEditingController _searchController = TextEditingController();
 
-  // Stitch colors
   static const kPrimary = Color(0xFF08201A);
   static const kSecContainer = Color(0xFFFDBE49);
   static const kSurface = Color(0xFFFBF9F8);
-  static const kOnSurfaceVariant = Color(0xFF424846);
 
   @override
   void initState() {
@@ -29,24 +25,17 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   }
 
   Future<void> _fetchData() async {
-    final data = await SupabaseService().getProductos();
-    if (mounted) {
-      setState(() {
-        _productos = data;
-        _filtered = data;
-        _loading = false;
-      });
+    try {
+      final data = await Supabase.instance.client.from('productos').select().order('descripcion');
+      if (mounted) {
+        setState(() {
+          _productos = data;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  void _onSearch(String val) {
-    setState(() {
-      _filtered = _productos.where((p) {
-        final name = (p['nombre'] ?? '').toString().toLowerCase();
-        final code = (p['categoria'] ?? '').toString().toLowerCase(); // Usamos categoria como sigla si no hay columna
-        return name.contains(val.toLowerCase()) || code.contains(val.toLowerCase());
-      }).toList();
-    });
   }
 
   @override
@@ -56,47 +45,18 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
       appBar: AppBar(
         backgroundColor: kSurface,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Catálogo de Productos',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
-        ),
+        title: const Text('Inventario de Productos', style: TextStyle(color: kPrimary, fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: kPrimary), onPressed: () => context.pop()),
       ),
-      body: Column(
-        children: [
-          Padding(
+      body: _loading 
+        ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+        : ListView.builder(
             padding: const EdgeInsets.all(20),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearch,
-              decoration: InputDecoration(
-                hintText: 'Buscar por nombre o siglas...',
-                prefixIcon: const Icon(Icons.search, color: kPrimary),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
-            ),
+            itemCount: _productos.length,
+            itemBuilder: (context, index) => _buildProductCard(_productos[index]),
           ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(color: kSecContainer))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: _filtered.length,
-                    itemBuilder: (context, index) {
-                      final p = _filtered[index];
-                      return _buildProductCard(p);
-                    },
-                  ),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: _addProduct,
         backgroundColor: kPrimary,
         child: const Icon(Icons.add, color: kSecContainer),
       ),
@@ -104,24 +64,19 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   }
 
   Widget _buildProductCard(Map<String, dynamic> p) {
-    final nombre = p['nombre'] ?? 'Sin nombre';
-    final sigla = p['categoria'] ?? 'S/D';
-    final stock = p['stock_actual']?.toString() ?? '0';
-    final unidad = p['unidad'] ?? 'un.';
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
       ),
       child: Row(
         children: [
           Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(color: kPrimary.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: kPrimary.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.inventory_2_rounded, color: kPrimary),
           ),
           const SizedBox(width: 16),
@@ -129,19 +84,85 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(nombre, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 16, color: kPrimary)),
-                Text('Sigla: $sigla', style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
+                Text(p['descripcion'] ?? 'Sin descripción', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('Código: ${p['codigo'] ?? 'S/C'}', style: const TextStyle(fontSize: 12, color: Colors.black45)),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('$stock $unidad', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 16, color: kPrimary)),
-              const Text('STOCK', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: kOnSurfaceVariant)),
-            ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: kSecContainer.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+            child: Text(p['unidad'] ?? 'UN', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: kPrimary)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _addProduct() {
+    final descController = TextEditingController();
+    final codeController = TextEditingController();
+    String? selectedUnidad = 'KG';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Nuevo Producto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kPrimary)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: descController,
+                decoration: const InputDecoration(labelText: 'Descripción', prefixIcon: Icon(Icons.inventory_2_outlined)),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeController,
+                decoration: const InputDecoration(labelText: 'Código de Producto', prefixIcon: Icon(Icons.qr_code_rounded)),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedUnidad,
+                decoration: const InputDecoration(labelText: 'Unidad de Medida'),
+                items: ['KG', 'UN', 'L', 'Tambor']
+                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                    .toList(),
+                onChanged: (v) => setModalState(() => selectedUnidad = v),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (descController.text.isEmpty) return;
+                    try {
+                      await Supabase.instance.client.from('productos').insert({
+                        'descripcion': descController.text,
+                        'codigo': codeController.text,
+                        'unidad': selectedUnidad,
+                      });
+                      Navigator.pop(ctx);
+                      _fetchData();
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: kPrimary, foregroundColor: Colors.white),
+                  child: const Text('GUARDAR PRODUCTO'),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
       ),
     );
   }

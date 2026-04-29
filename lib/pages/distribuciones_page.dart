@@ -18,19 +18,20 @@ class DistribucionesPageWidget extends StatefulWidget {
 class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  List<Map<String, dynamic>> _viajes = [];
+  List<Map<String, dynamic>> _planificadas = []; // Solicitudes pendientes
+  List<Map<String, dynamic>> _asignadas = [];   // En viajes planificados
+  List<Map<String, dynamic>> _enCurso = [];     // En viajes en curso
+  List<Map<String, dynamic>> _terminadas = [];  // En viajes terminados
   bool _loading = true;
   String? _error;
-  String? _userRole;
 
-  final List<String> _tabs = ['PLANIFICADAS', 'EN CURSO', 'TERMINADAS'];
-  final List<String> _statusKeys = ['Planificado', 'En Curso', 'Terminado'];
+  final List<String> _tabs = ['PLANIFICADAS', 'ASIGNADAS', 'EN CURSO', 'TERMINADAS'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _fetchDistribuciones();
+    _tabController = TabController(length: 4, vsync: this);
+    _fetchData();
   }
 
   @override
@@ -39,36 +40,52 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
     super.dispose();
   }
 
-  Future<void> _fetchDistribuciones() async {
+  Future<void> _fetchData() async {
     setState(() { _loading = true; _error = null; });
     try {
+      final service = SupabaseService();
+      
+      // 1. Fetch Planificadas (Solicitudes Pendientes de tipo Distribución)
+      final solicitudes = await service.getAllNecesidades();
+      _planificadas = solicitudes.where((s) => 
+        s['estado'] == 'Pendiente' && 
+        (s['tipo']?.toString() ?? '').toLowerCase().contains('distribuc')
+      ).toList();
+
+      // 2. Fetch Trips to extract paradas
       final prefs = await SharedPreferences.getInstance();
       final userRole = prefs.getString('user_puesto');
-      if (mounted) setState(() => _userRole = userRole);
       final userId = prefs.getString('user_id');
+      final viajes = await service.getViajes(userId: userId, role: userRole);
 
-      final data = await SupabaseService().getViajes(userId: userId, role: userRole);
-      
-      final filtered = data.where((v) {
-        final paradas = (v['paradas'] as List?) ?? [];
-        return paradas.any((p) => (p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase().contains('distribuc'));
-      }).toList();
+      _asignadas = [];
+      _enCurso = [];
+      _terminadas = [];
 
-      if (mounted) setState(() { 
-        _viajes = filtered;
-        _loading = false; 
-      });
+      for (final v in viajes) {
+        final estadoViaje = (v['estado'] ?? 'Planificado').toString();
+        final paradas = (v['paradas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        
+        for (final p in paradas) {
+          final isDistribucion = (p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase().contains('distribuc');
+          if (!isDistribucion) continue;
+
+          final paradaConViaje = {...p, 'viaje_codigo': v['viaje_codigo'], 'viaje_id': v['id']};
+          
+          if (estadoViaje == 'Planificado') {
+            _asignadas.add(paradaConViaje);
+          } else if (estadoViaje == 'En Curso' || estadoViaje == 'En Proceso' || estadoViaje == 'Cargado') {
+            _enCurso.add(paradaConViaje);
+          } else if (estadoViaje == 'Terminado') {
+            _terminadas.add(paradaConViaje);
+          }
+        }
+      }
+
+      if (mounted) setState(() { _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
-  }
-
-  List<Map<String, dynamic>> _filtered(String status) {
-    return _viajes.where((v) {
-      final vEstado = (v['estado'] ?? '').toString();
-      if (status == 'En Curso' && vEstado == 'En Proceso') return true;
-      return vEstado == status;
-    }).toList();
   }
 
   @override
@@ -87,24 +104,20 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
           onPressed: () => context.go('/home'),
         ),
         title: const Text(
-          'Distribución de Insumos',
-          style: TextStyle(
-            fontFamily: 'Manrope',
-            fontWeight: FontWeight.w800,
-            fontSize: 17,
-            color: kPrimary,
-          ),
+          'Distribuciones',
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: kPrimary),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: kPrimary),
-            onPressed: _fetchDistribuciones,
+            onPressed: _fetchData,
           ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(49),
           child: TabBar(
             controller: _tabController,
+            isScrollable: true,
             indicatorColor: kSecContainer,
             indicatorWeight: 3,
             labelColor: kPrimary,
@@ -118,14 +131,18 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
           ? const Center(child: CircularProgressIndicator(color: kSecContainer))
           : TabBarView(
               controller: _tabController,
-              children: _statusKeys.map((s) => _buildTripList(s)).toList(),
+              children: [
+                _buildList(_planificadas, 'planificada', isSolicitud: true),
+                _buildList(_asignadas, 'asignada'),
+                _buildList(_enCurso, 'en curso'),
+                _buildList(_terminadas, 'terminada'),
+              ],
             ),
     );
   }
 
-  Widget _buildTripList(String status) {
-    final trips = _filtered(status);
-    if (trips.isEmpty) {
+  Widget _buildList(List<Map<String, dynamic>> items, String status, {bool isSolicitud = false}) {
+    if (items.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -140,28 +157,33 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
 
     return ListView.builder(
       padding: const EdgeInsets.all(20),
-      itemCount: trips.length,
-      itemBuilder: (context, index) => _buildTripCard(trips[index]),
+      itemCount: items.length,
+      itemBuilder: (context, index) => _buildCard(items[index], isSolicitud),
     );
   }
 
-  Widget _buildTripCard(Map<String, dynamic> v) {
+  Widget _buildCard(Map<String, dynamic> item, bool isSolicitud) {
     final theme = FlutterFlowTheme.of(context);
-    final estado = v['estado'] ?? 'Planificado';
-    final id = v['id']?.toString() ?? '';
-    final displayId = v['viaje_codigo'] ?? id.substring(0, 8).toUpperCase();
-    
-    final paradas = (v['paradas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    int itemsCount = 0;
-    for (final p in paradas) {
-      if ((p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase().contains('distribuc')) {
-        final items = (p['parada_items'] as List?) ?? [];
-        itemsCount += items.length;
-      }
-    }
+    final id = item['id']?.toString() ?? '';
+    final code = isSolicitud ? (item['solicitud_codigo'] ?? 'SOL-') : (item['viaje_codigo'] ?? 'VIAJE-');
+    final title = isSolicitud 
+        ? (item['apicultores']?['nombre'] ?? 'Sin nombre')
+        : (item['persona_nombre'] ?? 'Sin nombre');
+    final subtitle = isSolicitud
+        ? (item['apicultores']?['localidad'] ?? 'Sin localidad')
+        : (item['localidad'] ?? 'Sin localidad');
+    final detail = isSolicitud
+        ? '${item['cantidad']} UN - ${item['producto'] ?? 'Insumos'}'
+        : 'Entrega en Viaje ${item['viaje_codigo']}';
 
     return GestureDetector(
-      onTap: () => context.push('/viajedetalle?viajeId=$id'),
+      onTap: () {
+        if (isSolicitud) {
+          context.push('/necesidades');
+        } else {
+          context.push('/viajedetalle?viajeId=${item['viaje_id']}');
+        }
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(20),
@@ -176,24 +198,23 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(displayId, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF08201A))),
-                Text(estado.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF1565C0))),
-              ],
-            ),
-            const Divider(height: 24),
-            Row(
-              children: [
-                const Icon(Icons.inventory_2_outlined, size: 16, color: Color(0xFF424846)),
-                const SizedBox(width: 8),
-                Text('Items a Entregar: $itemsCount', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(code, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF08201A), fontSize: 12)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFF1A6B43).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(isSolicitud ? 'PENDIENTE' : 'VIAJE', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF1A6B43))),
+                ),
               ],
             ),
             const SizedBox(height: 12),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF08201A))),
+            Text(subtitle, style: const TextStyle(fontSize: 13, color: Color(0xFF424846))),
+            const Divider(height: 24),
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text('VER DETALLE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.secondary)),
-                const Icon(Icons.chevron_right, size: 14),
+                const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF424846)),
+                const SizedBox(width: 8),
+                Text(detail, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
           ],

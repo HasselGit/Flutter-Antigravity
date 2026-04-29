@@ -1,0 +1,11 @@
+Workflow de creación y edición de Viaje y Rutas
+1.	 Gerencia, CEO o Compras introducen las solicitudes según el tipo de operacion distribución y/o recoleccion . Especificando producto, cantidad, apicultor y trae la localidad automáticamente, fecha de solicitud.
+2.	Las solicitudes están en estado pendiente. Mostrando todos los detalles correspondientes
+3.	Gerencia, CEO o Compras agregan o crean un nuevo viaje y tienen seleccionar un vehículo y que poder seleccionar de la lista de solicitudes pendientes, cuales quiera que sean. 
+4.	Las solicitudes seleccionadas actualizan automáticamente los totales de productos a cargar, el peso de la carga. Y los apicultores y sus localidades.
+5.	Con las localidades relacionadas a esas solicitudes cargadas tiene que mostrarse el mapa con los nodos de las localidades y calcularse los km en la ruta propuesta y mostrar la carga total de cada producto. Si se excede la capacidad del vehículo en un algún punto avisa y no permitir continuar, hacer cambios en las solicitudes seleccionadas.
+6.	Si esta de acuerdo se Valida la ruta y se guarda el viaje como planificado. Estableciendo que una parada corresponde a un apicultor y a una localidad con detalle de producto, tipo de operación a realizar  
+7.	Se puede asignar el chofer en ese momento o se puede asignar después.
+8.	Un viaje no se puede comenzar sin estar asignado a un chofer porque únicamente el chofer puede cambiar el estado del viaje
+9.	  Siempre que se crea una nueva ruta a partir de las solicitudes con la actualización, calculo de capacidad del vehículo y todos los detalles correspondientes tiene que si o si asignarse a un viaje planificado. Si no no se puede guardar. O sea no hay rutas sin viajes. Y un viaje puede tener varias rutas.
+10.	Las rutas y/o viajes planificados solo pueden ser modificados por  Gerencia, CEO o Compras. Si llega a haber una cambio en la ruta Gerencia, CEO o Compras actualizan la ruta y el viaje se debe actualizar a la nueva ruta y le aparece al chofer un aviso de cambio de ruta autorizado por el rol usuario que corresponda. 

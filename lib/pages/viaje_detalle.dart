@@ -89,22 +89,59 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     if (await canLaunchUrlString(url)) await launchUrlString(url, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _editViaje() async {
+    // Navigate to planificarViaje with current trip data (Mock navigation for now)
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Función de edición en desarrollo')));
+  }
+
+  Future<void> _deleteViaje() async {
+    final estado = _viaje?['estado'];
+    if (!_isAdmin()) return;
+    
+    // Check permissions: Admins can delete if Planificado. 
+    // "Solo el administrador puede eliminar viajes terminados o en proceso."
+    // (Assuming user role check already passed _isAdmin)
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar Viaje?'),
+        content: Text('Esta acción no se puede deshacer. Estado actual: $estado'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ELIMINAR', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await Supabase.instance.client.from('viajes').delete().eq('id', widget.viajeId!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viaje eliminado')));
+          context.pop();
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   Future<void> _openFullItinerary() async {
     if (_paradas.isEmpty) return;
-    final destinations = _paradas
-        .map((p) => (p['localidad']?.toString() ?? p['direccion']?.toString()) ?? '')
+    final localities = _paradas
+        .map((p) => p['localidad']?.toString() ?? '')
         .where((l) => l.isNotEmpty)
         .toList();
     
-    if (destinations.isEmpty) return;
+    if (localities.isEmpty) return;
     
-    final String origin = destinations.first;
-    final String destination = destinations.last;
-    final String waypoints = destinations.length > 2 
-        ? destinations.sublist(1, destinations.length - 1).join('|')
+    final String destination = localities.last;
+    final String waypoints = localities.length > 1 
+        ? localities.sublist(0, localities.length - 1).join('|')
         : '';
     
-    final url = 'https://www.google.com/maps/dir/?api=1&origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destination)}&waypoints=${Uri.encodeComponent(waypoints)}&travelmode=driving';
+    final url = 'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(destination)}&waypoints=${Uri.encodeComponent(waypoints)}&travelmode=driving';
     
     if (await canLaunchUrlString(url)) {
       await launchUrlString(url, mode: LaunchMode.externalApplication);
@@ -128,16 +165,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     return total;
   }
 
-  bool _canOperate() {
+  bool _isDriver() {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final choferId = _viaje?['chofer_id']?.toString();
+    return (currentUserId == choferId);
+  }
+
+  bool _isAdmin() {
     final role = _userRole?.toUpperCase() ?? '';
-    
-    // Autorizados: CEO, GERENTE, COMPRAS y el Chofer asignado.
-    if (role == 'CEO' || role == 'GERENTE' || role == 'GERENCIA' || role == 'COMPRAS' || role == 'ADMIN') {
-      return true;
-    }
-    return (role == 'CHOFER' && currentUserId == choferId);
+    return (role == 'CEO' || role == 'GERENTE' || role == 'GERENCIA' || role == 'ADMIN' || role == 'COMPRAS');
   }
 
   @override
@@ -225,8 +261,45 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
             const SizedBox(height: 20),
             
-            // Botones de Acción
-            if (estado != 'Terminado' && _canOperate())
+            // Botones de Acción Admin (Editar / Eliminar)
+            if (_isAdmin())
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _editViaje(),
+                        icon: const Icon(Icons.edit_rounded, size: 18),
+                        label: const Text('EDITAR VIAJE'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kPrimary,
+                          side: const BorderSide(color: kPrimary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _deleteViaje(),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        label: const Text('ELIMINAR'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 12),
+
+            // Botones de Acción Chofer (Iniciar / Finalizar)
+            if (estado != 'Terminado' && _isDriver())
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: SizedBox(
@@ -234,12 +307,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: () => _cambiarEstado(estado == 'Planificado' ? 'En Curso' : 'Terminado'),
-                    style: ElevatedButton.styleFrom(backgroundColor: kSecContainer, foregroundColor: kPrimary),
+                    style: ElevatedButton.styleFrom(backgroundColor: kSecContainer, foregroundColor: kPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     child: Text(estado == 'Planificado' ? 'INICIAR VIAJE' : 'FINALIZAR VIAJE', style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               )
-            else if (estado != 'Terminado')
+            else if (estado != 'Terminado' && !_isAdmin())
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
@@ -252,7 +325,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                     children: [
                       const Icon(Icons.lock_outline_rounded, size: 18, color: Colors.black38),
                       const SizedBox(width: 10),
-                      Expanded(
+                      const Expanded(
                         child: Text(
                           'Solo el chofer asignado puede cambiar el estado del viaje.',
                           style: TextStyle(fontSize: 12, color: Colors.black45, fontFamily: 'Inter'),

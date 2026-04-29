@@ -1,7 +1,8 @@
 import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
-import '../backend/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import '../backend/supabase_service.dart';
 import 'package:intl/intl.dart';
 
 class GastosPageWidget extends StatefulWidget {
@@ -128,15 +129,190 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
   }
 
   void _showAddGastoDialog() {
-    // Placeholder for form dialog
-    showDialog(
+    final amountController = TextEditingController();
+    final descController = TextEditingController();
+    final comprobanteController = TextEditingController();
+    String? selectedTipo = 'Combustible';
+    String? selectedMetodo = 'Efectivo';
+    DateTime selectedFecha = DateTime.now();
+    Map<String, dynamic>? selectedViaje;
+
+    // Local list of trips for the dropdown
+    List<Map<String, dynamic>> availableTrips = [];
+
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nuevo Gasto'),
-        content: const Text('Formulario de ingreso de gastos con foto de ticket.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CERRAR')),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          // Initialize trips if empty
+          if (availableTrips.isEmpty) {
+            Supabase.instance.client.from('viajes').select('id, viaje_codigo').order('created_at', ascending: false).limit(20).then((data) {
+              if (ctx.mounted) setModalState(() => availableTrips = data);
+            });
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Registrar Nuevo Gasto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kPrimary)),
+                  const SizedBox(height: 20),
+                  
+                  // Fila de Fecha y Comprobante
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: selectedFecha,
+                              firstDate: DateTime(2024),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) setModalState(() => selectedFecha = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(labelText: 'Fecha', prefixIcon: Icon(Icons.calendar_today_rounded)),
+                            child: Text(DateFormat('dd/MM/yyyy').format(selectedFecha)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: comprobanteController,
+                          decoration: const InputDecoration(labelText: 'N° Comprobante', prefixIcon: Icon(Icons.receipt_rounded)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<String>(
+                    value: selectedTipo,
+                    decoration: const InputDecoration(labelText: 'Tipo de Gasto', prefixIcon: Icon(Icons.category_rounded)),
+                    items: ['Combustible', 'Comida', 'Peaje', 'Reparación', 'Otros']
+                        .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                        .toList(),
+                    onChanged: (v) => setModalState(() => selectedTipo = v),
+                  ),
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedViaje,
+                    decoration: const InputDecoration(labelText: 'Vincular a Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
+                    hint: const Text('Seleccione un viaje...'),
+                    items: availableTrips.map((v) => DropdownMenuItem(
+                      value: v,
+                      child: Text(v['viaje_codigo'] ?? 'S/C'),
+                    )).toList(),
+                    onChanged: (v) => setModalState(() => selectedViaje = v),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Importe (\$)', prefixIcon: Icon(Icons.attach_money_rounded)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedMetodo,
+                          decoration: const InputDecoration(labelText: 'Forma de Pago'),
+                          items: ['Efectivo', 'Tarjeta', 'Transferencia', 'Cuenta Corriente']
+                              .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                              .toList(),
+                          onChanged: (v) => setModalState(() => selectedMetodo = v),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: descController,
+                    decoration: const InputDecoration(labelText: 'Observaciones', prefixIcon: Icon(Icons.notes_rounded)),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Sección de Foto
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: kSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: kPrimary.withOpacity(0.1)),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.camera_alt_rounded, size: 32, color: kPrimary),
+                        const SizedBox(height: 8),
+                        const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimary)),
+                        const SizedBox(height: 4),
+                        Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: kOnSurfaceVariant.withOpacity(0.6))),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+                  
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        if (amountController.text.isEmpty) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
+                          return;
+                        }
+                        try {
+                          final user = Supabase.instance.client.auth.currentUser;
+                          await Supabase.instance.client.from('gastos').insert({
+                            'tipo_gasto': selectedTipo,
+                            'importe': double.tryParse(amountController.text) ?? 0,
+                            'descripcion': descController.text,
+                            'nro_comprobante': comprobanteController.text,
+                            'forma_pago': selectedMetodo,
+                            'viaje_id': selectedViaje?['id'],
+                            'fecha': selectedFecha.toIso8601String(),
+                            'chofer_id': user?.id,
+                          });
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                            _fetchData();
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gasto registrado con éxito'), backgroundColor: Colors.green));
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text('GUARDAR REGISTRO', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

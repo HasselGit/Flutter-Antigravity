@@ -101,6 +101,33 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     return false;
   }
 
+  Future<void> _openPreviewMap() async {
+    if (_selectedNecesidades.isEmpty) return;
+    // Base location: General Pico, La Pampa
+    const String baseLocation = 'General Pico, La Pampa, Argentina';
+    
+    // Extract all intermediate localities from selected needs
+    final intermediateLocalities = _selectedNecesidades
+        .map((n) => n['apicultores']?['localidad']?.toString() ?? '')
+        .where((l) => l.isNotEmpty)
+        .toSet()
+        .toList();
+    
+    // Using Google Maps Dir API
+    // Origin: Base, Destination: Base, Waypoints: Intermediates
+    final String origin = Uri.encodeComponent(baseLocation);
+    final String destination = Uri.encodeComponent(baseLocation);
+    final String waypoints = intermediateLocalities.isNotEmpty 
+        ? Uri.encodeComponent(intermediateLocalities.join('|'))
+        : '';
+    
+    final url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving';
+    
+    if (await canLaunchUrlString(url)) {
+      await launchUrlString(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _crearViaje() async {
     if (_selectedVehiculo == null || _selectedChofer == null || _selectedNecesidades.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Complete todos los campos y seleccione necesidades')));
@@ -220,52 +247,47 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Kg:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text('${_totalKg.toStringAsFixed(1)} Kg / ${_selectedVehiculo?['capacidad_kg'] ?? '—'} Kg', 
-                        style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('TOTAL ESTIMADO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
+                          Text('${_totalKg.toStringAsFixed(0)} KG', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF08201A))),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('TAMBORES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
+                          Text('$_totalTambores un.', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
+                        ],
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tambores:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text('$_totalTambores / ${_selectedVehiculo?['capacidad_tambores'] ?? '—'}', 
-                        style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold)),
+                      const Text('Capacidad Vehículo:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text('${_selectedVehiculo?['capacidad_kg'] ?? '—'} Kg', 
+                        style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
                     ],
                   ),
-                  if (_selectedNecesidades.isNotEmpty) ...[
-                    const Divider(height: 24),
+                  const Divider(height: 24),
+                  if (_selectedNecesidades.isNotEmpty)
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final destinations = _selectedNecesidades
-                              .map((n) => n['apicultores']?['localidad'])
-                              .where((l) => l != null)
-                              .toList();
-                          if (destinations.isEmpty) return;
-                          
-                          String origin = destinations.first;
-                          String waypoints = destinations.length > 1 
-                              ? destinations.sublist(1).join('|')
-                              : '';
-                          
-                          final url = 'https://www.google.com/maps/dir/?api=1&origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destinations.last)}&waypoints=${Uri.encodeComponent(waypoints)}&travelmode=driving';
-                          
-                          if (await canLaunchUrlString(url)) {
-                            await launchUrlString(url, mode: LaunchMode.externalApplication);
-                          }
-                        },
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _openPreviewMap,
                         icon: const Icon(Icons.map_rounded),
-                        label: const Text('VER NODOS EN MAPA'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF08201A),
-                          side: const BorderSide(color: Color(0xFF08201A)),
+                        label: const Text('VER RECORRIDO Y NODOS EN MAPA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF08201A),
+                          foregroundColor: const Color(0xFFFDBE49),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
                     ),
-                  ],
                 ],
               ),
             ),
