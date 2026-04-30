@@ -159,7 +159,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
     double totalKg = 0;
     // ... rest of logic remains similar but updated for consistency
     for (final p in paradas) {
-      final tipo = (p['tipo_operacion']?.toString() ?? '').toLowerCase();
+      final tipo = (p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase();
       if (tipo.contains('recolec')) nRecoleccion++;
       // ... kg logic
       if (p['bruto_kg'] != null) {
@@ -193,7 +193,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
     }
 
     return GestureDetector(
-      onTap: () => context.push('/viajedetalle?viajeId=$id'),
+      onTap: () => context.push('/rutadetalle?viajeId=$id'),
       child: Container(
         margin: const EdgeInsets.only(bottom: 20),
         decoration: BoxDecoration(

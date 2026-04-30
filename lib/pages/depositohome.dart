@@ -24,7 +24,7 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
     try {
       final data = await Supabase.instance.client
           .from('viajes')
-          .select('*, profiles(nombre, apellido)')
+          .select('*, profiles(nombre, apellido), paradas(*, parada_items(*))')
           .eq('estado', 'Planificado')
           .order('fecha', ascending: true);
 
@@ -137,7 +137,7 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                                         children: [
                                           const Icon(Icons.circle, size: 6, color: Color(0xFF08201A)),
                                           const SizedBox(width: 8),
-                                          Expanded(child: Text('${p['tipo_operacion']} en ${p['localidad']}', style: const TextStyle(fontSize: 12))),
+                                          Expanded(child: Text('${p['tipo'] ?? p['tipo_operacion'] ?? 'Operación'} en ${p['localidad']}', style: const TextStyle(fontSize: 12))),
                                           Text(items.isNotEmpty ? '${items.first['cantidad']} ${items.first['unidad']}' : '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                                         ],
                                       ),

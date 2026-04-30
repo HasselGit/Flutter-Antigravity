@@ -164,7 +164,13 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
     final fechaRaw = v['fecha'] ?? v['created_at'];
     final fecha = DateTime.tryParse(fechaRaw.toString());
     final fechaStr = fecha != null ? DateFormat('dd/MM/yyyy HH:mm').format(fecha) : 'S/D';
-    final chofer = v['profiles'] ?? {};
+    final dynamic rawChofer = v['chofer'];
+    Map<String, dynamic> chofer = {};
+    if (rawChofer is List && rawChofer.isNotEmpty) {
+      chofer = rawChofer.first;
+    } else if (rawChofer is Map) {
+      chofer = Map<String, dynamic>.from(rawChofer);
+    }
     final choferNombre = '${chofer['nombre'] ?? 'Sin'} ${chofer['apellido'] ?? 'Asignar'}';
 
     Color chipColor;

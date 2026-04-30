@@ -66,72 +66,68 @@ class SupabaseService {
   }
 
   /// Obtiene los viajes de forma resiliente.
+  /// Obtiene los viajes de forma ultra-resiliente.
   Future<List<Map<String, dynamic>>> getViajes({String? userId, String? role}) async {
     try {
-      print('SupabaseService: Obteniendo viajes (UserId: $userId, Role: $role)');
-      try {
-        var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*, parada_items(*))');
-        // Si es chofer, solo ve lo suyo. Si es CEO, Gerente o Compras, ve TODO.
-        if (role == 'Chofer' && userId != null) {
-          query = query.eq('chofer_id', userId);
-        }
-        final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
-        return List<Map<String, dynamic>>.from(data);
-      } catch (e) {
-        print('SupabaseService: Falló fetch con items (RLS), reintentando básico: $e');
-        try {
-          var query = _client.from('viajes').select('*, profiles:chofer_id(nombre, apellido), paradas(*)');
-          if (role == 'Chofer' && userId != null) {
-            query = query.eq('chofer_id', userId);
-          }
-          final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
-          return List<Map<String, dynamic>>.from(data);
-        } catch (e2) {
-          print('SupabaseService: Reintento básico falló, intentando ultra-básico: $e2');
-          var query = _client.from('viajes').select();
-          if (role == 'Chofer' && userId != null) {
-            query = query.eq('chofer_id', userId);
-          }
-          final data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
-          return List<Map<String, dynamic>>.from(data as List);
+      print('SupabaseService: Obteniendo viajes maestros (UserId: $userId, Role: $role)');
+      
+      // 1. Obtener viajes básicos
+      var query = _client.from('viajes').select();
+      if (role == 'Chofer' && userId != null) {
+        query = query.eq('chofer_id', userId);
+      }
+      final List<dynamic> data = await query.order('fecha', ascending: false).timeout(const Duration(seconds: 10));
+      final viajes = List<Map<String, dynamic>>.from(data);
+
+      // 2. Cargar Choferes de forma independiente para evitar fallos de JOIN
+      for (var v in viajes) {
+        if (v['chofer_id'] != null) {
+          try {
+            final chofer = await _client.from('profiles').select('nombre, apellido').eq('id', v['chofer_id']).maybeSingle();
+            v['chofer'] = chofer;
+          } catch (_) { v['chofer'] = null; }
         }
       }
+      return viajes;
     } catch (e) {
       print('SupabaseService: Error crítico en getViajes: $e');
-      return []; // Devolvemos lista vacía en lugar de romper
+      return [];
     }
   }
 
-  /// Obtiene el detalle de un viaje.
-  Future<Map<String, dynamic>?> getViajeDetalle(String viajeId) async {
+  /// Obtiene el detalle de un viaje con TODA su información relacionada.
+  Future<Map<String, dynamic>?> getViajeDetalle(dynamic viajeId) async {
     try {
-      print('SupabaseService: Fetching detalle para viaje: $viajeId');
-      final response = await _client
-          .from('viajes')
-          .select('*, profiles:chofer_id(nombre, apellido), paradas(*, parada_items(*))')
-          .eq('id', viajeId)
-          .maybeSingle()
-          .timeout(const Duration(seconds: 10));
+      print('SupabaseService: Buscando viaje maestro con ID: $viajeId');
       
-      if (response != null) return response;
+      // 1. Cargar el viaje base
+      final viaje = await _client.from('viajes').select().eq('id', viajeId).maybeSingle();
+      if (viaje == null) return null;
 
-      // Fallback si la consulta compleja falla por RLS
-      final basicViaje = await _client
-          .from('viajes')
-          .select('*, paradas(*)')
-          .eq('id', viajeId)
-          .maybeSingle();
-          
-      return basicViaje;
-    } catch (e) {
-      print('SupabaseService: Error en getViajeDetalle: $e');
-      // Intento final ultra-básico
-      try {
-        final ultraBasic = await _client.from('viajes').select().eq('id', viajeId).maybeSingle();
-        return ultraBasic;
-      } catch (_) {
-        return null;
+      // 2. Cargar Chofer (Plan B de búsqueda manual)
+      if (viaje['chofer_id'] != null) {
+        try {
+          final chofer = await _client.from('profiles').select('nombre, apellido').eq('id', viaje['chofer_id']).maybeSingle();
+          viaje['chofer'] = chofer;
+        } catch (_) {}
       }
+
+      // 3. Cargar Paradas y sus Items (Productos)
+      try {
+        final paradas = await _client.from('paradas').select('*, parada_items(*)').eq('viaje_id', viajeId).order('orden_secuencia');
+        viaje['paradas'] = paradas;
+      } catch (_) { viaje['paradas'] = []; }
+
+      // 4. Cargar Gastos
+      try {
+        final gastos = await _client.from('gastos').select().eq('viaje_id', viajeId).order('fecha');
+        viaje['gastos'] = gastos;
+      } catch (_) { viaje['gastos'] = []; }
+
+      return viaje;
+    } catch (e) {
+      print('SupabaseService: Error crítico en getViajeDetalle: $e');
+      return null;
     }
   }
 
@@ -148,7 +144,7 @@ class SupabaseService {
         final e = v['estado'] ?? '';
         if (e == 'Planificado') planificados++;
         else if (e == 'En Curso' || e == 'En Proceso' || e == 'Cargado') enCurso++;
-        else if (e == 'Terminado') terminados++;
+        else if (e == 'Terminado' || e == 'Finalizado') terminados++;
       }
       return {'planificados': planificados, 'en_curso': enCurso, 'terminados': terminados};
     } catch (e) {
@@ -214,8 +210,8 @@ class SupabaseService {
       for (final nec in necesidades) {
         final paradaResp = await _client.from('paradas').insert({
           'viaje_id': viajeId,
-          'persona_nombre': nec['apicultores']?['nombre'], // Probamos con persona_nombre
-          'tipo_operacion': nec['tipo'],
+          'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
+          'tipo_operacion': nec['tipo'] ?? 'Operación', 
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
           'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
@@ -231,6 +227,7 @@ class SupabaseService {
         await _client.from('solicitudes').update({'estado': 'Planificada'}).eq('id', nec['id']);
       }
     } catch (e) {
+      print('SupabaseService: Error en createViajeCompleto: $e');
       rethrow;
     }
   }
@@ -275,6 +272,44 @@ class SupabaseService {
       await _client.from('parada_items').insert(data);
     } catch (e) {
       print('SupabaseService: Error en createParadaItem: $e');
+      rethrow;
+    }
+  }
+
+  /// Actualiza un Viaje y sus paradas (Punto 10 del Workflow).
+  Future<void> updateViajeCompleto({required String viajeId, required Map<String, dynamic> viajeData, required List<Map<String, dynamic>> necesidades}) async {
+    try {
+      // 1. Actualizar datos básicos del viaje
+      await _client.from('viajes').update(viajeData).eq('id', viajeId);
+      
+      // 2. Eliminar paradas actuales para re-crear la ruta actualizada
+      await _client.from('paradas').delete().eq('viaje_id', viajeId);
+      
+      // 3. Crear nuevas paradas
+      int seq = 1;
+      for (final nec in necesidades) {
+        final paradaResp = await _client.from('paradas').insert({
+          'viaje_id': viajeId,
+          'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
+          'tipo_operacion': nec['tipo'] ?? 'Operación',
+          'estado': 'Pendiente',
+          'orden_secuencia': seq++,
+          'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
+        }).select().single();
+        
+        try {
+          await _client.from('parada_items').insert({
+            'parada_id': paradaResp['id'],
+            'producto_codigo': nec['producto'],
+            'cantidad': nec['cantidad'],
+            'unidad': 'KG',
+          });
+        } catch (_) {}
+        
+        await _client.from('solicitudes').update({'estado': 'Planificada'}).eq('id', nec['id']);
+      }
+    } catch (e) {
+      print('SupabaseService: Error en updateViajeCompleto: $e');
       rethrow;
     }
   }

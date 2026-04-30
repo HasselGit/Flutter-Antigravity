@@ -99,7 +99,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     // Datos del viaje
     final chofer = _viajeData?['chofer_asignado'] ?? 'No asignado';
     final vehiculo = _viajeData?['vehiculo_asignado'] ?? 'No asignado';
-    final tipoOperacion = _paradaData?['tipo_operacion'] ?? 'Operación';
+    final tipoOperacion = _paradaData?['tipo'] ?? _paradaData?['tipo_operacion'] ?? 'Operación';
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     final apicultorNombre = _paradaData?['apicultor_nombre'] ?? 'Sin nombre';

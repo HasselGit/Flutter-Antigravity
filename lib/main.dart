@@ -11,6 +11,7 @@ import 'pages/necesidades_page.dart';
 import 'pages/rutas_page.dart';
 import 'pages/viajes_page.dart';
 import 'pages/viaje_detalle.dart';
+import 'pages/ruta_detalle.dart';
 import 'pages/paradadetalle.dart';
 import 'pages/pesajesitem.dart';
 import 'pages/remito_page.dart';
@@ -109,7 +110,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/planificarViaje',
       name: 'PlanificarViaje',
-      builder: (context, state) => const PlanificarViajeWidget(),
+      builder: (context, state) {
+        final editId = state.uri.queryParameters['editId'];
+        return PlanificarViajeWidget(editId: editId);
+      },
     ),
     GoRoute(
       path: '/viajedetalle',
@@ -117,6 +121,14 @@ final GoRouter _router = GoRouter(
       builder: (context, state) {
         final viajeId = state.uri.queryParameters['viajeId'] ?? '';
         return ViajeDetalleWidget(viajeId: viajeId);
+      },
+    ),
+    GoRoute(
+      path: '/rutadetalle',
+      name: 'RutaDetalle',
+      builder: (context, state) {
+        final viajeId = state.uri.queryParameters['viajeId'] ?? '';
+        return RutaDetalleWidget(viajeId: viajeId);
       },
     ),
     GoRoute(
@@ -134,10 +146,11 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/pesajesItem',
-      name: 'PesajesItem',
+      name: 'pesajesItem',
       builder: (context, state) {
         final paradaId = state.uri.queryParameters['paradaId'] ?? '';
-        return PesajesItemWidget(paradaId: paradaId);
+        final paradaItemId = state.uri.queryParameters['paradaItemId'];
+        return PesajesItemWidget(paradaId: paradaId, paradaItemId: paradaItemId);
       },
     ),
     GoRoute(

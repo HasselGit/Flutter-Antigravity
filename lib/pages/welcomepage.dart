@@ -143,7 +143,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                           child: ElevatedButton(
                             onPressed: () => context.pushNamed('Login'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.tertiary,
+                              backgroundColor: theme.primary,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),

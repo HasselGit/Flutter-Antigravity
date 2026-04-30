@@ -201,6 +201,22 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
 
                   const SizedBox(height: 16),
 
+                  // Quick Actions
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Expanded(child: _quickAction(Icons.inventory_2_rounded, 'PRODUCTOS', () => context.push('/productos'))),
+                        const SizedBox(width: 12),
+                        Expanded(child: _quickAction(Icons.account_balance_wallet_rounded, 'GASTOS', () => context.push('/gastos'))),
+                        const SizedBox(width: 12),
+                        Expanded(child: _quickAction(Icons.local_shipping_rounded, 'VEHÍCULOS', () => context.push('/vehiculos'))),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
                   // Tab pills
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -270,6 +286,39 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
             color: active ? const Color(0xFF08201A) : const Color(0xFF08201A).withOpacity(0.5),
             letterSpacing: 0.5,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _quickAction(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF08201A).withOpacity(0.08)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: const Color(0xFF08201A), size: 20),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'Work Sans',
+                fontWeight: FontWeight.w800,
+                fontSize: 8,
+                color: Color(0xFF08201A),
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
       ),
     );

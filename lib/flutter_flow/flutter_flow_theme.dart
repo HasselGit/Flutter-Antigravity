@@ -40,16 +40,16 @@ abstract class FlutterFlowTheme {
 
 class LightModeTheme extends FlutterFlowTheme {
   LightModeTheme() {
-    primary = const Color(0xFF08201A);
-    secondary = const Color(0xFF7D5700);
-    tertiary = const Color(0xFF1E352F);
+    primary = const Color(0xFF1E352F); // Forest Green (Primary en imagen)
+    secondary = const Color(0xFFC68E17); // Honey Gold (Secondary en imagen)
+    tertiary = const Color(0xFFFAF9F6); // Cream (Tertiary en imagen)
     alternate = const Color(0xFFE4E2E2);
     primaryText = const Color(0xFF1B1C1C);
-    secondaryText = const Color(0xFF424846);
-    primaryBackground = const Color(0xFFFBF9F8);
+    secondaryText = const Color(0xFF4A4A4A); // Neutral en imagen
+    primaryBackground = const Color(0xFFFAF9F6); // Fondo Cream
     secondaryBackground = const Color(0xFFFFFFFF);
     accent1 = const Color(0xFF4B635C);
-    accent2 = const Color(0xFFFDBE49);
+    accent2 = const Color(0xFFC68E17); // Oro para acentos
     accent3 = const Color(0xFFEE8B60);
     accent4 = const Color(0xFFE4E2E2);
     success = const Color(0xFF249689);
