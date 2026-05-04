@@ -141,7 +141,25 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     return total;
   }
 
-  double get _totalKg => _selectedNecesidades.fold(0.0, (sum, item) => sum + (item['cantidad'] ?? 0).toDouble());
+  double get _totalKg {
+    double total = 0;
+    for (final n in _selectedNecesidades) {
+      final String prod = (n['producto'] ?? '').toString().toLowerCase();
+      final double cant = (n['cantidad'] ?? 0).toDouble();
+      
+      if (prod.contains('tcm')) {
+        // 80 tambores con miel -> 80 * 300kg = 24.000 kg
+        total += cant * 300;
+      } else if (prod.contains('vacio') || prod.contains('vacío') || prod.contains('tv')) {
+        // Tambores vacíos pesan ~20kg cada uno
+        total += cant * 20;
+      } else {
+        // Miel (en kg), Azúcar (kg), Cera (kg), etc.
+        total += cant;
+      }
+    }
+    return total;
+  }
   
   void _updateCalculos() {
     setState(() {
@@ -151,9 +169,21 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   int get _totalTambores {
     int total = 0;
     for (final n in _selectedNecesidades) {
-      if (n['producto'] == 'Miel' || n['tipo'] == 'Recolección') {
-        final num cant = n['cantidad'] ?? 0;
+      final String prod = (n['producto'] ?? '').toString().toLowerCase();
+      final num cant = n['cantidad'] ?? 0;
+      
+      // TCM son Tambores Con Miel (ya vienen en unidades de tambor)
+      if (prod.contains('tcm')) {
+        total += cant.toInt();
+      } 
+      // Miel cruda (viene en Kg)
+      else if (prod.contains('miel')) {
         total += (cant / 300).ceil();
+      }
+      // Tambores Vacíos, TV (vienen en unidades)
+      else if ((prod.contains('vacío') || prod.contains('vacio') || prod.contains('tv') || prod.contains('tambor')) 
+                && !prod.contains('cera')) {
+        total += cant.toInt();
       }
     }
     return total;
@@ -208,14 +238,12 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     setState(() => _saving = true);
     try {
       if (widget.editId != null) {
-        // Lógica de actualización (Punto 10)
         await SupabaseService().updateViajeCompleto(
           viajeId: widget.editId!,
           viajeData: {
             'chofer_id': _selectedChofer!['id'],
             'vehiculo_codigo': _selectedVehiculo!['vehiculo_codigo'],
             'fecha': _fechaPlanificada.toIso8601String(),
-
           },
           necesidades: _selectedNecesidades,
         );
@@ -224,10 +252,9 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
           viajeData: {
             'chofer_id': _selectedChofer!['id'],
             'vehiculo_codigo': _selectedVehiculo!['vehiculo_codigo'],
-            'viaje_codigo': 'VIAJE-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
+            'viaje_codigo': 'VIAJE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
             'estado': 'Planificado',
             'fecha': _fechaPlanificada.toIso8601String(),
-
           },
           necesidades: _selectedNecesidades,
         );
@@ -239,7 +266,16 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
       }
     } catch (e) {
       print('PlanificarViaje: Error al crear viaje: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Error al Planificar'),
+            content: Text('Detalle técnico: $e\n\nPor favor reporte este error.'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+          )
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -294,15 +330,31 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                 itemBuilder: (context, index) {
                   final n = _filteredNecesidades[index];
                   final isSelected = _selectedNecesidades.any((element) => element['id'] == n['id']);
+                  String productoRaw = n['producto']?.toString() ?? 'Producto';
+                  
+                  // Limpiar prefijos de tipo si existen en el nombre del producto
+                  final lowerProd = productoRaw.toLowerCase();
+                  
+                  // Limpiar prefijos de tipo sin perder el tipo de operación en el subtítulo
+                  String productoLimpio = productoRaw.replaceFirst(RegExp(r'^(recoleccion|recolección|distribucion|distribución|entrega|retiro)\s+', caseSensitive: false), '');
+
+                  // Lógica de unidades: Solo Tambores (que no sean cera), Insumos o Alimentos son "Un."
+                  final esUnidades = (lowerProd.contains('tambor') && !lowerProd.contains('cera')) || 
+                                     lowerProd.contains('insumo') ||
+                                     lowerProd.contains('alimento') ||
+                                     lowerProd.contains('tcm') ||
+                                     lowerProd.contains('tv');
+                  final unidad = esUnidades ? 'Un.' : 'Kg';
+                  
                   return CheckboxListTile(
                     value: isSelected,
                     title: Text(
-                      '${n['tipo'] ?? 'Operación'} ${n['producto'] ?? 'S/N'} - ${n['apicultores']?['nombre'] ?? 'Sin Nombre'}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      '$productoLimpio - ${n['apicultores']?['nombre'] ?? 'Sin Nombre'}',
+                      style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF08201A)),
                     ),
                     subtitle: Text(
-                      '${n['cantidad'] ?? 0} Kg • ${n['apicultores']?['localidad'] ?? 'S/D'}',
-                      style: const TextStyle(fontSize: 12),
+                      '${n['tipo'] ?? 'Operación'}: ${n['cantidad'] ?? 0} $unidad • ${n['apicultores']?['localidad'] ?? 'S/D'}',
+                      style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: Color(0xFF424846)),
                     ),
                     onChanged: (val) {
                       setState(() {
@@ -314,7 +366,10 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                         _updateCalculos(); // Calcular KM automáticamente
                       });
                     },
-                    activeColor: const Color(0xFF08201A),
+                    activeColor: const Color(0xFFFDBE49),
+                    checkColor: const Color(0xFF08201A),
+                    controlAffinity: ListTileControlAffinity.trailing,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   );
                 },
               ),
@@ -356,7 +411,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Capacidad Vehículo:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      Text('${_selectedVehiculo?['capacidad_kg'] ?? '—'} Kg', 
+                      Text(_selectedVehiculo != null ? '${_selectedVehiculo!['capacidad_kg'] ?? 0} Kg' : 'Sin Vehículo', 
                         style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
                     ],
                   ),

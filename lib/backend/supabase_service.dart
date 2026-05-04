@@ -208,22 +208,44 @@ class SupabaseService {
       final viajeId = viajeResp['id'];
       int seq = 1;
       for (final nec in necesidades) {
-        final paradaResp = await _client.from('paradas').insert({
+        final paradaData = {
           'viaje_id': viajeId,
           'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
           'tipo_operacion': nec['tipo'] ?? 'Operación', 
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
           'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
-        }).select().single();
+        };
+        
+        // Agregar apicultor_id solo si existe en el mapa de necesidad
+        if (nec['apicultor_id'] != null) {
+          paradaData['apicultor_id'] = nec['apicultor_id'];
+        }
+
+        final paradaResp = await _client.from('paradas').insert(paradaData).select().single();
+
         try {
+          final String producto = nec['producto']?.toString() ?? '';
+          final String lowerProd = producto.toLowerCase();
+          
+          // Sincronizado con la lógica de la UI: Solo tambores (no cera), insumos o alimentos son UN
+          final esUnidades = (lowerProd.contains('tambor') && !lowerProd.contains('cera')) || 
+                             lowerProd.contains('insumo') ||
+                             lowerProd.contains('alimento') ||
+                             lowerProd.contains('tcm') ||
+                             lowerProd.contains('tv');
+          
+          print('SupabaseService: Insertando parada_item para $producto (Unidad: ${esUnidades ? 'UN' : 'KG'})');
+          
           await _client.from('parada_items').insert({
             'parada_id': paradaResp['id'],
-            'producto_codigo': nec['producto'],
+            'producto_codigo': producto,
             'cantidad': nec['cantidad'],
-            'unidad': 'KG',
+            'unidad': esUnidades ? 'UN' : 'KG',
           });
-        } catch (_) {}
+        } catch (e) {
+          print('SupabaseService: Error insertando parada_item para ${nec['producto']}: $e');
+        }
         await _client.from('solicitudes').update({'estado': 'Planificada'}).eq('id', nec['id']);
       }
     } catch (e) {
@@ -282,29 +304,54 @@ class SupabaseService {
       // 1. Actualizar datos básicos del viaje
       await _client.from('viajes').update(viajeData).eq('id', viajeId);
       
-      // 2. Eliminar paradas actuales para re-crear la ruta actualizada
+      // 2. Eliminar items y paradas actuales para re-crear la ruta actualizada
+      final paradasActuales = await _client.from('paradas').select('id').eq('viaje_id', viajeId);
+      final ids = (paradasActuales as List).map((p) => p['id']).toList();
+      if (ids.isNotEmpty) {
+        await _client.from('parada_items').delete().filter('parada_id', 'in', ids);
+      }
       await _client.from('paradas').delete().eq('viaje_id', viajeId);
       
       // 3. Crear nuevas paradas
       int seq = 1;
       for (final nec in necesidades) {
-        final paradaResp = await _client.from('paradas').insert({
+        final paradaData = {
           'viaje_id': viajeId,
           'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
-          'tipo_operacion': nec['tipo'] ?? 'Operación',
+          'tipo_operacion': nec['tipo'] ?? 'Operación', 
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
           'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
-        }).select().single();
+        };
+        
+        if (nec['apicultor_id'] != null) {
+          paradaData['apicultor_id'] = nec['apicultor_id'];
+        }
+
+        final paradaResp = await _client.from('paradas').insert(paradaData).select().single();
         
         try {
+          final String producto = nec['producto']?.toString() ?? '';
+          final String lowerProd = producto.toLowerCase();
+          
+          // Sincronizado con la lógica de la UI
+          final esUnidades = (lowerProd.contains('tambor') && !lowerProd.contains('cera')) || 
+                             lowerProd.contains('insumo') ||
+                             lowerProd.contains('alimento') ||
+                             lowerProd.contains('tcm') ||
+                             lowerProd.contains('tv');
+
+          print('SupabaseService: Update - Insertando parada_item para $producto (Unidad: ${esUnidades ? 'UN' : 'KG'})');
+
           await _client.from('parada_items').insert({
             'parada_id': paradaResp['id'],
-            'producto_codigo': nec['producto'],
+            'producto_codigo': producto,
             'cantidad': nec['cantidad'],
-            'unidad': 'KG',
+            'unidad': esUnidades ? 'UN' : 'KG',
           });
-        } catch (_) {}
+        } catch (e) {
+          print('SupabaseService: Error insertando parada_item en update para ${nec['producto']}: $e');
+        }
         
         await _client.from('solicitudes').update({'estado': 'Planificada'}).eq('id', nec['id']);
       }
