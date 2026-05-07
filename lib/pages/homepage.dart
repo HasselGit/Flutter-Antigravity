@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class HomePageWidget extends StatefulWidget {
   const HomePageWidget({super.key});
@@ -22,15 +23,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   String? _userRole;
   String? _userEmail;
 
-  // Stitch exact colors
-  static const Color kPrimary = Color(0xFF08201A);
-  static const Color kPrimaryContainer = Color(0xFF1E352F);
-  static const Color kSecondaryContainer = Color(0xFFFDBE49);
-  static const Color kSurface = Color(0xFFFBF9F8);
-  static const Color kSurfaceLow = Color(0xFFF5F3F3);
-  static const Color kOnSurface = Color(0xFF1B1C1C);
-  static const Color kOnSurfaceVariant = Color(0xFF424846);
-  static const Color kOutlineVariant = Color(0xFFC2C8C4);
+  // Stitch exact colors are now in DesignTokens
 
   @override
   void initState() {
@@ -80,15 +73,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       drawer: _buildDrawer(),
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: const Icon(Icons.menu_rounded, color: kPrimary),
+            icon: const Icon(Icons.menu_rounded, color: DesignTokens.primary),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
@@ -106,13 +99,13 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'GeoLogística',
-                  style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 16, color: kPrimary),
+                  style: DesignTokens.headlineStyle().copyWith(fontSize: 16),
                 ),
                 Text(
                   'APIARY LOGISTICS',
-                  style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 8, color: kPrimary.withOpacity(0.4), letterSpacing: 1),
+                  style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: DesignTokens.primary.withOpacity(0.4), letterSpacing: 1),
                 ),
               ],
             ),
@@ -123,7 +116,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             onPressed: () {},
             icon: Container(
               padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(shape: BoxShape.circle, color: kPrimaryContainer, border: Border.all(color: kSecondaryContainer, width: 1.5)),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: DesignTokens.primary, border: Border.all(color: DesignTokens.secondary, width: 1.5)),
               child: Text(_initials, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ),
@@ -140,7 +133,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
           // Body
           Expanded(
             child: RefreshIndicator(
-              color: kSecondaryContainer,
+              color: DesignTokens.secondary,
               onRefresh: _fetchData,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -151,21 +144,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     // Greeting
                     Text(
                       'Bienvenido,',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                        color: kOnSurfaceVariant,
-                      ),
+                      style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant),
                     ),
                     Text(
                       _displayName,
-                      style: const TextStyle(
-                        fontFamily: 'Manrope',
-                        fontWeight: FontWeight.w800,
-                        fontSize: 26,
-                        color: kPrimary,
-                        letterSpacing: -0.5,
-                      ),
+                      style: DesignTokens.headlineStyle().copyWith(fontSize: 26, letterSpacing: -0.5),
                     ),
 
                     const SizedBox(height: 24),
@@ -184,15 +167,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     const SizedBox(height: 28),
 
                     // ── Modules ──
-                    const Text(
+                    Text(
                       'MÓDULOS DE OPERACIÓN',
-                      style: TextStyle(
-                        fontFamily: 'Work Sans',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        color: kOnSurfaceVariant,
-                        letterSpacing: 1.1,
-                      ),
+                      style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11),
                     ),
                     const SizedBox(height: 14),
 
@@ -209,8 +186,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             icon: Icons.local_shipping_rounded,
                             title: 'Mis Viajes',
                             subtitle: 'Rutas asignadas\ny operaciones',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
                         if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
@@ -218,16 +195,16 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             icon: Icons.alt_route_rounded,
                             title: 'Gestión de Viajes',
                             subtitle: 'Lista completa\nde rutas y viajes',
-                            bgColor: kPrimaryContainer,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/viajes'),
                           ),
                           _moduleCard(
                             icon: Icons.dashboard_customize_rounded,
                             title: 'Dashboard',
                             subtitle: 'Estadísticas y\nKPIs de gestión',
-                            bgColor: const Color(0xFF1E352F),
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gerenteHome'),
                           ),
                         ],
@@ -236,16 +213,16 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             icon: Icons.assignment_ind_rounded,
                             title: 'Planificador',
                             subtitle: 'Crear rutas y\nasignar choferes',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/planificarViaje'),
                           ),
                           _moduleCard(
                             icon: Icons.list_alt_rounded,
                             title: 'Solicitudes',
                             subtitle: 'Gestión de carga\ny recolecciones',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
@@ -253,40 +230,40 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
                             subtitle: 'Listado de pesajes\ny control de carga',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/pesajes'),
                           ),
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Distribuciones',
                             subtitle: 'Insumos y\nentregas',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/distribuciones'),
                           ),
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Productos',
                             subtitle: 'Gestión de stock\ne insumos',
-                            bgColor: kPrimaryContainer,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/productos'),
                           ),
                           _moduleCard(
                             icon: Icons.payments_rounded,
                             title: 'Gastos',
                             subtitle: 'Peajes, comida\ny combustible',
-                            bgColor: kPrimaryContainer,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gastos'),
                           ),
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
                             title: 'Control de Ruta',
                             subtitle: 'Trayectos activos\nen tiempo real',
-                            bgColor: kPrimary,
-                            accentColor: kSecondaryContainer,
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/rutas'),
                           ),
                         ],
@@ -295,15 +272,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     const SizedBox(height: 28),
 
                     // ── Quick actions ──
-                    const Text(
+                    Text(
                       'ACCIONES RÁPIDAS',
-                      style: TextStyle(
-                        fontFamily: 'Work Sans',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        color: kOnSurfaceVariant,
-                        letterSpacing: 1.1,
-                      ),
+                      style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11),
                     ),
                     const SizedBox(height: 12),
 
@@ -432,9 +403,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: kPrimary.withOpacity(0.06)),
+          border: Border.all(color: DesignTokens.primary.withOpacity(0.06)),
           boxShadow: [
-            BoxShadow(color: kPrimary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3)),
+            BoxShadow(color: DesignTokens.primary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3)),
           ],
         ),
         child: Row(
@@ -442,23 +413,23 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: kSurfaceLow,
+                color: DesignTokens.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kOutlineVariant),
+                border: Border.all(color: DesignTokens.outline),
               ),
-              child: Icon(icon, size: 20, color: kPrimary),
+              child: Icon(icon, size: 20, color: DesignTokens.primary),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 14, color: kOnSurface)),
-                  Text(subtitle, style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant)),
+                  Text(title, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 14, color: DesignTokens.onSurface)),
+                  Text(subtitle, style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: DesignTokens.onSurfaceVariant)),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: kPrimary.withOpacity(0.25)),
+            Icon(Icons.chevron_right_rounded, color: DesignTokens.primary.withOpacity(0.25)),
           ],
         ),
       ),
@@ -467,11 +438,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
 
   Widget _buildDrawer() {
     return Drawer(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       child: Column(
         children: [
           DrawerHeader(
-            decoration: const BoxDecoration(color: kPrimary),
+            decoration: const BoxDecoration(color: DesignTokens.primary),
             child: Row(
               children: [
                 ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', width: 50, height: 50)),
@@ -518,8 +489,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
 
   Widget _drawerItem(IconData icon, String title, VoidCallback onTap, {Color? color}) {
     return ListTile(
-      leading: Icon(icon, color: color ?? kPrimary),
-      title: Text(title, style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w600, color: color ?? kOnSurface)),
+      leading: Icon(icon, color: color ?? DesignTokens.primary),
+      title: Text(title, style: DesignTokens.labelStyle().copyWith(color: color ?? DesignTokens.onSurface)),
       onTap: () {
         Navigator.pop(context);
         onTap();
@@ -531,7 +502,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: kPrimary.withOpacity(0.07))),
+        border: Border(top: BorderSide(color: DesignTokens.primary.withOpacity(0.07))),
       ),
       child: SafeArea(
         child: Padding(
@@ -555,10 +526,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 20, color: active ? kPrimary : kOnSurface.withOpacity(0.3)),
+          Icon(icon, size: 20, color: active ? DesignTokens.primary : DesignTokens.onSurface.withOpacity(0.3)),
           if (active) ...[
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, color: kPrimary)),
+            Text(label, style: DesignTokens.labelStyle().copyWith(fontSize: 10, color: DesignTokens.primary, fontWeight: FontWeight.w800)),
           ],
         ],
       ),

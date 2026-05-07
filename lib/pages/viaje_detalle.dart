@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geo_logistica/backend/supabase_service.dart';
+import 'package:geo_logistica/backend/design_tokens.dart';
 import 'package:geo_logistica/flutter_flow/flutter_flow_theme.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher_string.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 class ViajeDetalleWidget extends StatefulWidget {
@@ -77,13 +78,8 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   height: 60,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.add_road),
-                    label: const Text('AGREGAR RUTA Y SOLICITUDES', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: theme.secondary,
-                      foregroundColor: theme.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 4,
-                    ),
+                    label: const Text('AGREGAR RUTA Y SOLICITUDES'),
+                    style: DesignTokens.primaryButtonStyle,
                     onPressed: () => context.push('/planificarViaje?editId=${widget.viajeId}'),
                   ),
                 ),
@@ -117,12 +113,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.location_on),
                   label: const Text('VER RECORRIDO COMPLETO'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.primary,
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: theme.secondary, width: 1.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+                  style: DesignTokens.secondaryButtonStyle,
                   onPressed: () => _openMap(paradas),
                 ),
               ),
@@ -187,12 +178,13 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     final remito = p['remito_id'] != null ? 'REMITO ASOCIADO: #${p['remito_id']}' : 'PENDIENTE DE REMITO';
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primary.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.primary.withOpacity(0.08)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,45 +192,55 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: theme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text('#${p['orden_secuencia']}', style: TextStyle(color: theme.primary, fontWeight: FontWeight.bold)),
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: theme.primary.withOpacity(0.05), shape: BoxShape.circle),
+                child: Center(child: Text('${p['orden_secuencia']}', style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900))),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p['ubicacion'] ?? 'Sin Nombre', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text(p['localidad'] ?? 'S/D', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                    Text(p['ubicacion'] ?? 'Sin Apicultor', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF08201A))),
+                    Text(p['localidad'] ?? 'Sin Localidad', style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
-              Text(p['tipo_operacion']?.toUpperCase() ?? 'OP', style: TextStyle(color: theme.secondary, fontWeight: FontWeight.bold, fontSize: 11)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: theme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                child: Text((p['tipo'] ?? 'Operación').toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
+              ),
             ],
           ),
-          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, thickness: 0.5),
+          ),
           if (items.isNotEmpty) ...[
             ...items.map((it) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.inventory_2_outlined, size: 14, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text('${it['producto_codigo'] ?? 'S/N'}: ', style: const TextStyle(fontSize: 13)),
-                  Text('${it['cantidad'] ?? 0} ${it['unidad'] ?? 'KG'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Icon(Icons.inventory_2_rounded, size: 16, color: Color(0xFFC68E17)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(it['producto_codigo'] ?? 'Producto', style: const TextStyle(fontSize: 14, color: Color(0xFF1E352F), fontWeight: FontWeight.w500))),
+                  Text('${it['cantidad'] ?? 0} ${it['unidad'] ?? 'KG'}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF08201A))),
                 ],
               ),
             )).toList(),
             const SizedBox(height: 8),
           ],
-          // REMITO ASOCIADO
-          Row(
-            children: [
-              Icon(Icons.description, size: 14, color: p['remito_id'] != null ? Colors.green : Colors.orange),
-              const SizedBox(width: 8),
-              Text(remito, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: p['remito_id'] != null ? Colors.green : Colors.orange)),
-            ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: p['remito_id'] != null ? Colors.green.withOpacity(0.05) : Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+            child: Row(
+              children: [
+                Icon(Icons.description_outlined, size: 16, color: p['remito_id'] != null ? Colors.green : Colors.orange),
+                const SizedBox(width: 8),
+                Text(remito, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: p['remito_id'] != null ? Colors.green : Colors.orange)),
+              ],
+            ),
           ),
         ],
       ),
@@ -263,6 +265,6 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     if (paradas.isEmpty) return;
     final localities = paradas.map((p) => p['localidad']).where((l) => l != null).join('|');
     final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico&destination=General+Pico&waypoints=$localities&travelmode=driving';
-    await launchUrlString(url, mode: LaunchMode.externalApplication);
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 }

@@ -7,16 +7,22 @@ void main() async {
   );
 
   try {
-    print('--- Esquema de Profiles (Primera Fila) ---');
-    final response = await client.from('profiles').select().limit(1);
+    print('--- Verificando Tabla Solicitudes ---');
+    final response = await client.from('solicitudes').select().limit(1);
     if (response.isNotEmpty) {
-      final p = response.first;
-      p.forEach((key, value) {
-        print('$key: $value');
-      });
+      print('Columnas solicitudes: ${response.first.keys.toList()}');
+      print('Data: ${response.first}');
     } else {
-      print('Tabla vacía');
+      print('La tabla solicitudes está vacía.');
     }
+    
+    print('\n--- Verificando Tabla Paradas ---');
+    final pResp = await client.from('paradas').select().limit(1);
+    if (pResp.isNotEmpty) {
+      print('Columnas paradas: ${pResp.first.keys.toList()}');
+      print('Data: ${pResp.first}');
+    }
+
   } catch (e) {
     print('Error: $e');
   }

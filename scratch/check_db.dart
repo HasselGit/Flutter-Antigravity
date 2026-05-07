@@ -8,22 +8,26 @@ void main() async {
   );
 
   try {
-    print('Checking profiles table...');
-    final data = await client.from('profiles').select().limit(1);
-    if (data is List && data.isNotEmpty) {
-      print('Profiles column keys: ${data[0].keys.toList()}');
-      print('First profile data: $data');
+    print('\nChecking apicultores table...');
+    final apiData = await client.from('apicultores').select().limit(1);
+    if (apiData is List && apiData.isNotEmpty) {
+      print('Apicultores column keys: ${apiData[0].keys.toList()}');
     } else {
-      print('Profiles table is empty or data format unexpected: $data');
+      print('Apicultores table is empty.');
     }
   } catch (e) {
-    print('Error checking profiles: $e');
+    print('Error checking apicultores: $e');
   }
 
   try {
-    print('\nChecking auth users (via public profiles email match)...');
-    // We can't access auth.users directly via anon key, 
-    // but we can check if there are users with standard auth by trying to sign in with a known bad password
-    // but better check if there's an 'id' that looks like a UUID in profiles.
-  } catch (_) {}
+    print('\nChecking productos table...');
+    final prodData = await client.from('productos').select().limit(1);
+    if (prodData is List && prodData.isNotEmpty) {
+      print('Productos column keys: ${prodData[0].keys.toList()}');
+    } else {
+      print('Productos table is empty.');
+    }
+  } catch (e) {
+    print('Error checking productos: $e');
+  }
 }

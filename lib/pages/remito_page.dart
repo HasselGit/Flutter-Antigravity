@@ -5,8 +5,9 @@ import 'package:signature/signature.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'dart:typed_data';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../backend/design_tokens.dart';
 
 class RemitoPageWidget extends StatefulWidget {
   final String paradaId;
@@ -52,21 +53,26 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     setState(() { _loading = true; _error = null; });
     try {
       final parada = await Supabase.instance.client
-          .from('v_paradas_con_apicultor_ff')
-          .select('*, parada_items(*)')
+          .from('paradas')
+          .select('id, viaje_id, orden_secuencia, tipo, ubicacion, localidad, estado, bruto_kg, neto_kg')
           .eq('id', widget.paradaId)
           .maybeSingle();
 
       if (parada == null) throw Exception('Parada no encontrada');
 
+      final itemsRaw = await Supabase.instance.client
+          .from('parada_items')
+          .select('id, producto_codigo, cantidad, unidad, peso_kg')
+          .eq('parada_id', widget.paradaId);
+      
       _paradaData = parada;
-      _items = List<Map<String, dynamic>>.from(parada['parada_items'] ?? []);
+      _items = List<Map<String, dynamic>>.from(itemsRaw);
 
       final viajeId = parada['viaje_id'];
       if (viajeId != null) {
         final viaje = await Supabase.instance.client
             .from('viajes')
-            .select('*')
+            .select('id, viaje_codigo, vehiculo_codigo, chofer_id')
             .eq('id', viajeId)
             .maybeSingle();
         _viajeData = viaje;
@@ -78,164 +84,124 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     }
   }
 
+  Future<void> _shareWhatsApp(String pdfUrl) async {
+    final String text = 'Hola, le envío el Remito Digital de la operación: $pdfUrl';
+    final String url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+    }
+  }
+
   Future<void> _generarYCompartirPDF() async {
     if (_signatureController.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, firme el remito antes de generarlo.')));
       return;
     }
 
-    final signatureBytes = await _signatureController.toPngBytes();
-    if (signatureBytes == null) return;
+    setState(() => _loading = true);
+    try {
+      final signatureBytes = await _signatureController.toPngBytes();
+      if (signatureBytes == null) throw Exception('Error al procesar firma');
 
-    final pdf = pw.Document();
+      final pdf = pw.Document();
 
-    // Convert string to double safely
-    double tryParseDouble(dynamic val) {
-      if (val == null) return 0.0;
-      if (val is num) return val.toDouble();
-      return double.tryParse(val.toString()) ?? 0.0;
-    }
+      double tryParseDouble(dynamic val) {
+        if (val == null) return 0.0;
+        if (val is num) return val.toDouble();
+        return double.tryParse(val.toString()) ?? 0.0;
+      }
 
-    // Datos del viaje
-    final chofer = _viajeData?['chofer_asignado'] ?? 'No asignado';
-    final vehiculo = _viajeData?['vehiculo_asignado'] ?? 'No asignado';
-    final tipoOperacion = _paradaData?['tipo'] ?? _paradaData?['tipo_operacion'] ?? 'Operación';
-    final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+      final tipoOperacion = _paradaData?['tipo'] ?? 'Operación';
+      final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
-    final apicultorNombre = _paradaData?['apicultor_nombre'] ?? 'Sin nombre';
-    final receptorNombre = widget.receptorTipo == 'Tercero' ? widget.receptorNombre : apicultorNombre;
-    final receptorDni = widget.receptorTipo == 'Tercero' ? widget.receptorDni : '';
+      final apicultorNombre = _paradaData?['ubicacion'] ?? 'Sin nombre';
+      final receptorNombre = widget.receptorTipo == 'Tercero' ? widget.receptorNombre : apicultorNombre;
+      final receptorDni = widget.receptorTipo == 'Tercero' ? widget.receptorDni : '';
 
-    double totalBruto = tryParseDouble(_paradaData?['bruto_kg']);
-    double totalNeto = tryParseDouble(_paradaData?['neto_kg']);
+      double totalBruto = tryParseDouble(_paradaData?['bruto_kg']);
+      double totalNeto = tryParseDouble(_paradaData?['neto_kg']);
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('REMITO DIGITAL', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('GeoLogística', style: pw.TextStyle(fontSize: 18, color: PdfColors.green800)),
-                ],
-              ),
-              pw.SizedBox(height: 10),
-              pw.Text('ID Parada: ${widget.paradaId.split('-').first.toUpperCase()}', style: pw.TextStyle(color: PdfColors.grey700)),
-              pw.Text('Fecha de Emisión: $fecha', style: pw.TextStyle(color: PdfColors.grey700)),
-              pw.Divider(color: PdfColors.grey400),
-              pw.SizedBox(height: 15),
-
-              // Info Chofer y Receptor
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('Chofer: $chofer', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Vehículo: $vehiculo'),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text('Operación: $tipoOperacion', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Localidad: ${_paradaData?['localidad'] ?? 'S/D'}'),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 15),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(10),
-                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('RESPONSABLE DE RECEPCIÓN:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                    pw.Text('Nombre: $receptorNombre', style: pw.TextStyle(fontSize: 12)),
-                    if (receptorDni != null && receptorDni.isNotEmpty)
-                      pw.Text('DNI: $receptorDni', style: pw.TextStyle(fontSize: 12)),
+                    pw.Text('REMITO DIGITAL', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('GeoLogística', style: pw.TextStyle(fontSize: 18, color: PdfColors.green900)),
                   ],
                 ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Text('Detalle de Ítems', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-
-              // Table
-              pw.TableHelper.fromTextArray(
-                headers: ['Producto', 'Cantidad (U)', 'Peso Unitario (KG)', 'Subtotal (KG)'],
-                data: _items.map((item) {
-                  final prod = item['producto'] ?? '-';
-                  final qty = tryParseDouble(item['cantidad']);
-                  final peso = tryParseDouble(item['peso_kg']);
-                  return [prod, qty.toStringAsFixed(0), peso.toStringAsFixed(2), (qty * peso).toStringAsFixed(2)];
-                }).toList(),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-                cellAlignment: pw.Alignment.center,
-              ),
-
-              pw.SizedBox(height: 20),
-              
-              if (tipoOperacion == 'Recolección')
-                pw.Container(
-                  alignment: pw.Alignment.centerRight,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text('Peso Bruto de Báscula: ${totalBruto.toStringAsFixed(2)} KG', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      if (totalNeto > 0)
-                        pw.Text('Peso Neto de Báscula: ${totalNeto.toStringAsFixed(2)} KG', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    ]
-                  )
+                pw.SizedBox(height: 10),
+                pw.Text('ID Parada: ${widget.paradaId.split('-').first.toUpperCase()}', style: pw.TextStyle(color: PdfColors.grey700)),
+                pw.Text('Fecha: $fecha', style: pw.TextStyle(color: PdfColors.grey700)),
+                pw.Divider(color: PdfColors.grey400),
+                pw.SizedBox(height: 15),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Vehículo: ${_viajeData?['vehiculo_codigo'] ?? 'S/D'}'),
+                        pw.Text('Operación: $tipoOperacion'),
+                      ],
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('Ubicación: ${_paradaData?['ubicacion'] ?? 'S/D'}'),
+                        pw.Text('Localidad: ${_paradaData?['localidad'] ?? 'S/D'}'),
+                      ],
+                    ),
+                  ],
                 ),
+                pw.SizedBox(height: 20),
+                pw.Text('Responsable: $receptorNombre', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                if (receptorDni != null && receptorDni.isNotEmpty) pw.Text('DNI/CUIT: $receptorDni'),
+                pw.SizedBox(height: 20),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Producto', 'Cant', 'Unidad', 'Peso'],
+                  data: _items.map((item) => [
+                    item['producto_codigo'] ?? '-',
+                    item['cantidad']?.toString() ?? '0',
+                    item['unidad'] ?? '-',
+                    item['peso_kg']?.toString() ?? '0.0'
+                  ]).toList(),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey900),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 20),
+                if (totalBruto > 0) pw.Text('Total Bruto: ${totalBruto.toStringAsFixed(2)} KG'),
+                if (totalNeto > 0) pw.Text('Total Neto: ${totalNeto.toStringAsFixed(2)} KG'),
+                pw.Spacer(),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Column(
+                      children: [
+                        pw.Image(pw.MemoryImage(signatureBytes), width: 150),
+                        pw.Container(width: 150, height: 1, color: PdfColors.black),
+                        pw.Text('Firma del Responsable'),
+                      ],
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+              ],
+            );
+          },
+        ),
+      );
 
-              pw.Spacer(),
-
-              // Firmas
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-                children: [
-                  pw.Column(
-                    children: [
-                      pw.Container(
-                        height: 80,
-                        width: 150,
-                        child: pw.Image(pw.MemoryImage(signatureBytes)),
-                      ),
-                      pw.Container(width: 150, child: pw.Divider()),
-                      pw.Text('Firma del Responsable', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    ],
-                  ),
-                  pw.Column(
-                    children: [
-                      pw.SizedBox(height: 80), // Espacio en blanco para firmar luego
-                      pw.Container(width: 150, child: pw.Divider()),
-                      pw.Text('Firma del Chofer', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 30),
-            ],
-          );
-        },
-      ),
-    );
-
-    // Guardar el PDF generado
-    final pdfBytes = await pdf.save();
-    
-    try {
-      // 1. Subir a Supabase Storage (bucket 'remitos')
+      final pdfBytes = await pdf.save();
       final fileName = 'remito_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      
       await Supabase.instance.client.storage.from('remitos').uploadBinary(
         fileName, 
         pdfBytes,
@@ -243,95 +209,114 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       );
       final pdfUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(fileName);
 
-      // 2. Crear registro en la tabla remitos
-      final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+      final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
       await Supabase.instance.client.from('remitos').insert({
         'parada_id': widget.paradaId,
         'pdf_url': pdfUrl,
-        'human_id': humanId,
+        'remito_codigo': humanId,
         'estado': 'Emitido',
       });
 
+      // Update parada status
+      await Supabase.instance.client.from('paradas').update({'estado': 'Terminado'}).eq('id', widget.paradaId);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Remito guardado en la nube'), backgroundColor: Colors.green));
+        setState(() => _loading = false);
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Remito Emitido', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: const Text('El remito digital ha sido generado y guardado correctamente.'),
+            actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('COMPARTIR'),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_$humanId.pdf');
+                },
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: const Text('WHATSAPP'),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _shareWhatsApp(pdfUrl);
+                },
+              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CERRAR')),
+            ],
+          ),
+        ).then((_) => context.pop());
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar en la nube: $e'), backgroundColor: Colors.orange));
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
-
-    // 3. Compartir (WhatsApp, etc)
-    await Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_${widget.paradaId.split('-').first}.pdf');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: DesignTokens.primary)));
     if (_error != null) return Scaffold(appBar: AppBar(title: const Text('Error')), body: Center(child: Text(_error!)));
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBF9F8),
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFBF9F8),
-        title: const Text('Generar Remito', style: TextStyle(color: Color(0xFF08201A), fontWeight: FontWeight.bold, fontFamily: 'Manrope')),
-        iconTheme: const IconThemeData(color: Color(0xFF08201A)),
+        backgroundColor: DesignTokens.surface,
+        title: Text('Finalizar Operación', style: DesignTokens.headlineStyle().copyWith(fontSize: 17)),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
+          onPressed: () => context.pop(),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Firma Digital',
-              style: TextStyle(fontFamily: 'Manrope', fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF08201A)),
-            ),
+            Text('Firma de Conformidad', style: DesignTokens.headlineStyle().copyWith(fontSize: 22)),
             const SizedBox(height: 8),
-            const Text(
-              'Por favor, que el responsable de la entrega o recepción firme en el recuadro.',
-              style: TextStyle(fontFamily: 'Inter', color: Colors.black54),
-            ),
+            Text('El responsable debe firmar para validar la operación y generar el remito.', style: TextStyle(color: DesignTokens.onSurfaceVariant)),
             const SizedBox(height: 24),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF08201A).withOpacity(0.1)),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 child: Signature(
                   controller: _signatureController,
-                  height: 250,
-                  backgroundColor: const Color(0xFFF5F3F3),
+                  height: 300,
+                  backgroundColor: const Color(0xFFF9F9F9),
                 ),
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: () => _signatureController.clear(),
-                  icon: const Icon(Icons.clear, color: Colors.red),
-                  label: const Text('Limpiar Firma', style: TextStyle(color: Colors.red)),
-                )
-              ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _signatureController.clear(),
+                icon: const Icon(Icons.refresh_rounded, size: 18, color: Colors.redAccent),
+                label: const Text('Limpiar Firma', style: TextStyle(color: Colors.redAccent)),
+              ),
             ),
             const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 60,
               child: ElevatedButton.icon(
                 onPressed: _generarYCompartirPDF,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E352F),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: const Icon(Icons.share_rounded),
-                label: const Text('Generar y Compartir (WhatsApp)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Manrope')),
+                style: DesignTokens.primaryButtonStyle,
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                label: const Text('FINALIZAR Y GENERAR REMITO'),
               ),
             ),
           ],

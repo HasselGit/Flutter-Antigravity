@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 import 'package:go_router/go_router.dart';
 
 class VehiculosPageWidget extends StatefulWidget {
@@ -14,13 +15,8 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
   List<Map<String, dynamic>> _vehiculos = [];
   bool _loading = true;
 
-  // Stitch colors
-  static const kPrimary = Color(0xFF08201A);
-  static const kPrimaryContainer = Color(0xFF1E352F);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
-  static const kOnSurface = Color(0xFF1B1C1C);
-  static const kOnSurfaceVariant = Color(0xFF424846);
+  // Design system constants
+
 
   @override
   void initState() {
@@ -41,21 +37,21 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
+          icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
           onPressed: () => context.pop(),
         ),
         title: const Text(
           'Gestión de Vehículos',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: DesignTokens.primary),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -63,7 +59,7 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
                 children: [
                   const Text(
                     'FLOTA ACTIVA',
-                    style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 11, color: kOnSurfaceVariant, letterSpacing: 1.1),
+                    style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 11, color: DesignTokens.onSurfaceVariant, letterSpacing: 1.1),
                   ),
                   const SizedBox(height: 16),
                   GridView.builder(
@@ -85,8 +81,8 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addVehiculo,
-        backgroundColor: kPrimary,
-        child: const Icon(Icons.add, color: kSecContainer),
+        backgroundColor: DesignTokens.secondary,
+        child: const Icon(Icons.add, color: DesignTokens.primary),
       ),
     );
   }
@@ -104,9 +100,9 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kPrimary.withOpacity(0.05)),
+          border: Border.all(color: DesignTokens.primary.withOpacity(0.05)),
           boxShadow: [
-            BoxShadow(color: kPrimary.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: DesignTokens.primary.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -118,7 +114,7 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
                 borderRadius: BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
               ),
               child: const Center(
-                child: Icon(Icons.local_shipping_rounded, size: 40, color: kPrimary),
+                child: Icon(Icons.local_shipping_rounded, size: 40, color: DesignTokens.primary),
               ),
             ),
             Expanded(
@@ -132,17 +128,17 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
                       children: [
                         Text(
                           codigo,
-                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary),
+                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: DesignTokens.primary),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(color: kPrimary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Text(patente, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kPrimary)),
+                          decoration: BoxDecoration(color: DesignTokens.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          child: Text(patente, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(modelo, style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
+                    Text(modelo, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
                     const Spacer(),
                     Row(
                       children: [
@@ -172,13 +168,13 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(color: kSurface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: const BoxDecoration(color: DesignTokens.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
         padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Nuevo Vehículo', style: TextStyle(fontFamily: 'Manrope', fontSize: 22, fontWeight: FontWeight.w800, color: kPrimary)),
+            const Text('Nuevo Vehículo', style: TextStyle(fontFamily: 'Manrope', fontSize: 22, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
             const SizedBox(height: 24),
             _input(codigoController, 'Código (ej: V-01)', Icons.qr_code_rounded),
             const SizedBox(height: 16),
@@ -205,8 +201,8 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
                     _fetchData();
                   }
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: kPrimary, foregroundColor: kSecContainer, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: const Text('GUARDAR VEHÍCULO', style: TextStyle(fontWeight: FontWeight.w900)),
+                style: DesignTokens.primaryButtonStyle,
+                child: const Text('GUARDAR VEHÍCULO'),
               ),
             ),
           ],
@@ -232,9 +228,9 @@ class _VehiculosPageWidgetState extends State<VehiculosPageWidget> {
   Widget _specItem(IconData icon, String label) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: kSecContainer),
+        Icon(icon, size: 14, color: DesignTokens.secondary),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kPrimary)),
+        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
       ],
     );
   }

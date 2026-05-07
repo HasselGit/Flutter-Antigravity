@@ -1,7 +1,6 @@
-import '/backend/supabase/supabase.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart' hide Supabase;
-import '/flutter_flow/flutter_flow_widgets.dart';
+import '../backend/supabase/supabase.dart';
+import '../backend/design_tokens.dart';
+import '../flutter_flow/flutter_flow_util.dart' hide Supabase;
 import 'dart:ui';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -54,8 +53,6 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = FlutterFlowTheme.of(context);
-
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -63,31 +60,24 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: theme.primaryBackground,
+        backgroundColor: DesignTokens.surfaceLow,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFFBF9F8),
+          backgroundColor: DesignTokens.surface,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: true,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF08201A)),
+            icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: const Text(
+          title: Text(
             'Registro de Tambor',
-            style: TextStyle(
-              fontFamily: 'Manrope',
-              fontWeight: FontWeight.w800,
-              fontSize: 17,
-              color: Color(0xFF08201A),
-            ),
+            style: DesignTokens.headlineStyle().copyWith(fontSize: 17),
           ),
-          actions: const [],
-          centerTitle: false,
           bottom: PreferredSize(
-            preferredSize: Size.fromHeight(1),
-            child: Container(height: 1, color: Color(0x1408201A)),
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: DesignTokens.primary.withOpacity(0.08)),
           ),
         ),
         body: SafeArea(
@@ -96,21 +86,16 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
             future: ParadaItemsTable().querySingleRow(
               queryFn: (q) => q.eqOrNull(
                 'id',
-                widget!.paradaItemId,
+                widget.paradaItemId,
               ),
             ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
-                return Center(
-                  child: CircularProgressIndicator(color: theme.secondary),
+                return const Center(
+                  child: CircularProgressIndicator(color: DesignTokens.secondary),
                 );
               }
               List<ParadaItemsRow> containerParadaItemsRowList = snapshot.data!;
-
-              final containerParadaItemsRow =
-                  containerParadaItemsRowList.isNotEmpty
-                      ? containerParadaItemsRowList.first
-                      : null;
 
               _model.brutoController ??= TextEditingController();
               _model.taraController ??= TextEditingController();
@@ -129,25 +114,20 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: theme.primary.withOpacity(0.05),
+                        color: DesignTokens.primary.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: theme.primary.withOpacity(0.1)),
+                        border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.local_shipping_rounded, color: theme.secondary, size: 20),
+                              const Icon(Icons.local_shipping_rounded, color: DesignTokens.secondary, size: 20),
                               const SizedBox(width: 12),
                               Text(
                                 'CAPACIDAD OPERATIVA',
-                                style: theme.labelSmall.override(
-                                  fontFamily: 'Work Sans',
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.primary,
-                                  fontSize: 10,
-                                ),
+                                style: DesignTokens.labelStyle().copyWith(fontSize: 10),
                               ),
                             ],
                           ),
@@ -164,7 +144,7 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                               widthFactor: 0.65,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: theme.secondary,
+                                  color: DesignTokens.secondary,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
@@ -173,11 +153,7 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                           const SizedBox(height: 8),
                           Text(
                             '6.500 kg / 10.000 kg (Libre: 3.500 kg)', 
-                            style: theme.bodySmall.override(
-                              fontFamily: 'Inter',
-                              color: theme.secondaryText,
-                              fontSize: 11,
-                            ),
+                            style: TextStyle(fontFamily: 'Inter', color: DesignTokens.onSurfaceVariant, fontSize: 11),
                           ),
                         ],
                       ),
@@ -185,12 +161,7 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                     const SizedBox(height: 32),
                     Text(
                       'Detalles del Pesaje',
-                      style: theme.displaySmall.override(
-                        fontFamily: 'Manrope',
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: theme.primary,
-                      ),
+                      style: DesignTokens.headlineStyle().copyWith(fontSize: 22),
                     ),
                     const SizedBox(height: 24),
                     // SENASA Code
@@ -198,26 +169,23 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                       controller: _model.textController,
                       decoration: InputDecoration(
                         labelText: 'CÓDIGO SENASA (11 DÍGITOS)',
-                        labelStyle: theme.labelSmall.override(
-                          fontFamily: 'Work Sans',
-                          fontWeight: FontWeight.bold,
-                        ),
+                        labelStyle: DesignTokens.labelStyle().copyWith(fontSize: 10),
                         hintText: 'Ej: 12345678901',
                         filled: true,
                         fillColor: Colors.white,
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(color: theme.primary.withOpacity(0.1)),
+                          borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.1)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(color: theme.secondary),
+                          borderSide: const BorderSide(color: DesignTokens.secondary),
                         ),
                         suffixIcon: IconButton(
-                          icon: Icon(Icons.qr_code_scanner_rounded, color: theme.secondary),
+                          icon: const Icon(Icons.qr_code_scanner_rounded, color: DesignTokens.secondary),
                           onPressed: () async {
                             _model.scannedValue = await FlutterBarcodeScanner.scanBarcode(
-                              '#7D5700', 'Cancelar', true, ScanMode.BARCODE);
+                              '#C68E17', 'Cancelar', true, ScanMode.BARCODE);
                             if (_model.scannedValue != '-1') {
                               _model.textController?.text = _model.scannedValue!;
                             }
@@ -236,19 +204,16 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             controller: _model.brutoController,
                             decoration: InputDecoration(
                               labelText: 'PESO BRUTO (KG)',
-                              labelStyle: theme.labelSmall.override(
-                                fontFamily: 'Work Sans',
-                                fontWeight: FontWeight.bold,
-                              ),
+                              labelStyle: DesignTokens.labelStyle().copyWith(fontSize: 10),
                               filled: true,
                               fillColor: Colors.white,
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(color: theme.primary.withOpacity(0.1)),
+                                borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.1)),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(color: theme.secondary),
+                                borderSide: const BorderSide(color: DesignTokens.secondary),
                               ),
                             ),
                             keyboardType: TextInputType.number,
@@ -261,19 +226,16 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             controller: _model.taraController,
                             decoration: InputDecoration(
                               labelText: 'TARA (KG)',
-                              labelStyle: theme.labelSmall.override(
-                                fontFamily: 'Work Sans',
-                                fontWeight: FontWeight.bold,
-                              ),
+                              labelStyle: DesignTokens.labelStyle().copyWith(fontSize: 10),
                               filled: true,
                               fillColor: Colors.white,
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(color: theme.primary.withOpacity(0.1)),
+                                borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.1)),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(color: theme.secondary),
+                                borderSide: const BorderSide(color: DesignTokens.secondary),
                               ),
                             ),
                             keyboardType: TextInputType.number,
@@ -288,9 +250,9 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: theme.secondary.withOpacity(0.1),
+                        color: DesignTokens.secondary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: theme.secondary.withOpacity(0.2)),
+                        border: Border.all(color: DesignTokens.secondary.withOpacity(0.2)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -300,24 +262,16 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             children: [
                               Text(
                                 'PESO NETO',
-                                style: theme.labelSmall.override(
-                                  fontFamily: 'Work Sans',
-                                  fontWeight: FontWeight.w900,
-                                  color: theme.secondary,
-                                ),
+                                style: DesignTokens.labelStyle(color: DesignTokens.secondary),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${neto.toStringAsFixed(2)} KG', 
-                                style: theme.displaySmall.override(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w800,
-                                  color: theme.primary,
-                                ),
+                                style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, color: DesignTokens.primary, fontSize: 28),
                               ),
                             ],
                           ),
-                          Icon(Icons.scale_rounded, color: theme.secondary, size: 32),
+                          const Icon(Icons.scale_rounded, color: DesignTokens.secondary, size: 32),
                         ],
                       ),
                     ),
@@ -338,7 +292,6 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             final tara = double.tryParse(_model.taraController?.text ?? '0') ?? 0.0;
                             final neto = bruto - tara;
 
-                            // Insert in parada_items via service
                             await SupabaseService().createParadaItem({
                               if (widget.paradaId != null) 'parada_id': widget.paradaId,
                               'producto_codigo': codigoSenasa,
@@ -346,7 +299,6 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                               'peso_kg': neto,
                             });
                             
-                            // Insert in pesajes via service
                             try {
                               await SupabaseService().createPesaje({
                                 'parada_id': widget.paradaId,
@@ -368,19 +320,8 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             }
                           }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
-                        ),
-                        child: Text(
-                          'CONFIRMAR PESAJE',
-                          style: theme.labelSmall.override(
-                            fontFamily: 'Work Sans',
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        style: DesignTokens.secondaryButtonStyle,
+                        child: const Text('CONFIRMAR PESAJE'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -409,16 +350,12 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                           }
                         },
                         style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: theme.primary, width: 1.5),
+                          side: const BorderSide(color: DesignTokens.primary, width: 1.5),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        child: Text(
+                        child: const Text(
                           'REGISTRAR SIN PESAR',
-                          style: theme.labelSmall.override(
-                            fontFamily: 'Work Sans',
-                            fontWeight: FontWeight.bold,
-                            color: theme.primary,
-                          ),
+                          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, color: DesignTokens.primary),
                         ),
                       ),
                     ),

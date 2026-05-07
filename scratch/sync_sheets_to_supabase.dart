@@ -32,28 +32,34 @@ void main() async {
   }
 
   // 2. Sincronizar Apicultores
-  print('\nSincronizando Apicultores (114 registros)...');
-  final apicultoresCsv = await _fetchCsv(gSheetId, '1388406787');
+  print('\nSincronizando Apicultores desde GSheet...');
+  // GID actualizado según la pestaña 'Apicultores'
+  final apicultoresCsv = await _fetchCsv(gSheetId, '2037142436');
   for (var i = 1; i < apicultoresCsv.length; i++) {
     final row = apicultoresCsv[i];
-    if (row.length < 3) continue;
+    if (row.length < 2) continue;
     
-    // Normalizar ID: Asegurar que tenga el formato 'A0XXXX' si es necesario
-    String rawId = row[0].toString().replaceAll('A', '').trim();
-    if (rawId.isEmpty) continue;
-    String idNormalizado = 'A${rawId.padLeft(5, '0')}';
+    String codigo = row[0].toString().trim(); // Cod Api
+    String nombre = row[1].toString().trim(); // Apicultor
+    
+    if (nombre.isEmpty) continue;
 
     try {
       await client.from('apicultores').upsert({
-        'id': idNormalizado,
-        'nombre': row[1],
-        'localidad': row[2],
+        'apicultor_codigo': codigo,
+        'nombre': nombre,
+        'localidad': row.length > 2 ? row[2] : '',
         'provincia': row.length > 3 ? row[3] : '',
+        'dni': row.length > 4 ? row[4] : '',
         'cuit': row.length > 5 ? row[5] : '',
+        'renapa': row.length > 6 ? row[6] : '',
         'telefono': row.length > 7 ? row[7] : '',
-      });
-      if (i % 20 == 0) print('  Procesados $i...');
-    } catch (e) { print('  Error en ${row[1]}: $e'); }
+      }, onConflict: 'apicultor_codigo'); // Usar el código como clave de conflicto
+      
+      if (i % 10 == 0) print('  Procesados $i apicultores...');
+    } catch (e) { 
+      print('  Error en apicultor $nombre: $e'); 
+    }
   }
 
   // 3. Sincronizar Solicitudes (Necesidades)

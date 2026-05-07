@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class VehiculoDetalleWidget extends StatefulWidget {
   final String? vehiculoId;
@@ -16,9 +17,8 @@ class _VehiculoDetalleWidgetState extends State<VehiculoDetalleWidget> {
   bool _loading = true;
   String? _error;
 
-  static const kPrimary = Color(0xFF08201A);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
+
+
 
   @override
   void initState() {
@@ -52,16 +52,16 @@ class _VehiculoDetalleWidgetState extends State<VehiculoDetalleWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         title: Text(_vehiculo?['vehiculo_codigo'] ?? 'Detalle Vehículo', 
-          style: const TextStyle(color: kPrimary, fontWeight: FontWeight.bold)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: kPrimary), onPressed: () => context.pop()),
+          style: const TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: DesignTokens.primary), onPressed: () => context.pop()),
       ),
       body: _loading 
-        ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+        ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
         : _error != null
           ? Center(child: Text('Error: $_error'))
           : SingleChildScrollView(
@@ -74,13 +74,13 @@ class _VehiculoDetalleWidgetState extends State<VehiculoDetalleWidget> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: kPrimary,
+                      color: DesignTokens.primary,
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+                      boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
                     ),
                     child: Column(
                       children: [
-                        const Icon(Icons.local_shipping_rounded, size: 64, color: kSecContainer),
+                        const Icon(Icons.local_shipping_rounded, size: 64, color: DesignTokens.secondary),
                         const SizedBox(height: 16),
                         Text(_vehiculo?['vehiculo_codigo'] ?? 'S/D', 
                           style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
@@ -135,17 +135,17 @@ class _VehiculoDetalleWidgetState extends State<VehiculoDetalleWidget> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kPrimary.withOpacity(0.05)),
+        border: Border.all(color: DesignTokens.primary.withOpacity(0.05)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: kPrimary.withOpacity(0.4), size: 20),
+          Icon(icon, color: DesignTokens.primary.withOpacity(0.4), size: 20),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.bold)),
-              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kPrimary)),
+              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
             ],
           ),
         ],

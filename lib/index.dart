@@ -21,3 +21,5 @@ export 'pages/productos_page.dart';
 export 'pages/apicultores_page.dart';
 export 'pages/gastos_page.dart';
 export 'pages/remitos_lista_page.dart';
+export 'pages/vehiculo_detalle_page.dart';
+export 'pages/ruta_detalle.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class NecesidadesPageWidget extends StatefulWidget {
   const NecesidadesPageWidget({super.key});
@@ -13,6 +14,7 @@ class NecesidadesPageWidget extends StatefulWidget {
 class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _necesidades = [];
   List<Map<String, dynamic>> _apicultores = [];
+  List<Map<String, dynamic>> _productos = [];
   List<Map<String, dynamic>> _filteredNecesidades = [];
   bool _loading = true;
   String? _error;
@@ -40,12 +42,14 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
       final service = SupabaseService();
       final neceData = await service.getAllNecesidades();
       final apiData = await service.getApicultores();
+      final prodData = await Supabase.instance.client.from('productos').select('descripcion, codigo, unidad').order('descripcion');
 
       if (mounted) {
         setState(() {
           _necesidades = neceData;
           _filteredNecesidades = neceData;
           _apicultores = apiData;
+          _productos = List<Map<String, dynamic>>.from(prodData);
           _loading = false;
         });
       }
@@ -60,9 +64,14 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
     setState(() {
       _filteredNecesidades = _necesidades.where((n) {
         final apicultor = (n['apicultores']?['nombre'] ?? '').toString().toLowerCase();
-        final localidad = (n['apicultores']?['localidad'] ?? '').toString().toLowerCase();
+        final localidad = (n['localidad'] ?? n['apicultores']?['localidad'] ?? '').toString().toLowerCase();
         final producto = (n['producto'] ?? '').toString().toLowerCase();
-        return apicultor.contains(query) || localidad.contains(query) || producto.contains(query);
+        final codigo = (n['solicitud_codigo'] ?? '').toString().toLowerCase();
+        
+        return apicultor.contains(query) || 
+               localidad.contains(query) || 
+               producto.contains(query) ||
+               codigo.contains(query);
       }).toList();
     });
   }
@@ -73,17 +82,33 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
     final cantidadController = TextEditingController();
     String selectedTipo = _tabController.index == 0 ? 'Recolección' : 'Distribución';
 
-    // Lista de productos predefinidos (Demo)
-    final List<String> productosDemo = [
-      'Miel de Eucalipto',
-      'Miel de Pradera',
-      'Miel de Monte',
-      'Miel Multiflora',
-      'Miel de Azahar',
-      'Tambores Vacíos',
-      'Insumos Varios',
-      'Alimento Proteico',
-      'Cera Estampada',
+    // Lista de productos reales cargados desde DB
+    final List<Map<String, dynamic>> productos = _productos.isNotEmpty ? _productos : [
+      {'codigo': 'TCM', 'descripcion': 'Tambor con Miel', 'unidad': 'Uni'},
+      {'codigo': 'TRR', 'descripcion': 'Tambor Reacondicionado Raldas', 'unidad': 'Uni'},
+      {'codigo': 'TRC', 'descripcion': 'Tambor Reacondicionado Cosde', 'unidad': 'Uni'},
+      {'codigo': 'TRO', 'descripcion': 'Tambor Reacondicionado Ombu', 'unidad': 'Uni'},
+      {'codigo': 'TNAR', 'descripcion': 'Tambor Nuevo Alto Raldas', 'unidad': 'Uni'},
+      {'codigo': 'TNAF', 'descripcion': 'Tambor Nuevo Alto Fabritam', 'unidad': 'Uni'},
+      {'codigo': 'TNP', 'descripcion': 'Tambor Nuevo Petiso', 'unidad': 'Uni'},
+      {'codigo': 'CO', 'descripcion': 'Cera Operculo', 'unidad': 'Kg'},
+      {'codigo': 'CR', 'descripcion': 'Cera Recupero', 'unidad': 'Kg'},
+      {'codigo': 'CE STD', 'descripcion': 'Cera Estampada STD', 'unidad': 'Uni'},
+      {'codigo': 'CE 3/4', 'descripcion': 'Cera Estampada 3/4', 'unidad': 'Uni'},
+      {'codigo': 'TE', 'descripcion': 'Techo Calden', 'unidad': 'Uni'},
+      {'codigo': 'PI', 'descripcion': 'Piso Calden', 'unidad': 'Uni'},
+      {'codigo': 'AL1 STD', 'descripcion': 'Alzas de Primera STD', 'unidad': 'Uni'},
+      {'codigo': 'AL2 STD', 'descripcion': 'Alzas de Segunda STD', 'unidad': 'Uni'},
+      {'codigo': 'TV', 'descripcion': 'Tabla de Varroa', 'unidad': 'Caja x 600 Uni'},
+      {'codigo': 'AZ', 'descripcion': 'Azucar', 'unidad': 'Bolsa x 50 Kg'},
+      {'codigo': 'GL', 'descripcion': 'Glucosa', 'unidad': 'Kg'},
+      {'codigo': 'TRM S/B', 'descripcion': 'Tambor Reacondicionado Myhura S/B', 'unidad': 'Uni'},
+      {'codigo': 'TRM C/B', 'descripcion': 'Tambor Reacondicionado Myhura C/B', 'unidad': 'Uni'},
+      {'codigo': 'AL1 3/4', 'descripcion': 'Alzas de Primera 3/4', 'unidad': 'Uni'},
+      {'codigo': 'AL2 3/4', 'descripcion': 'Alzas de Segunda 3/4', 'unidad': 'Uni'},
+      {'codigo': 'LA', 'descripcion': 'Largueros', 'unidad': 'Uni'},
+      {'codigo': 'NU', 'descripcion': 'Nucleros', 'unidad': 'Uni'},
+      {'codigo': 'CU', 'descripcion': 'Cuadros', 'unidad': 'Uni'},
     ];
 
     await showModalBottomSheet(
@@ -121,7 +146,13 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                       String searchQuery = '';
                       return StatefulBuilder(
                         builder: (context, setDialogState) {
-                          final filteredApis = _apicultores.where((a) => a['nombre'].toString().toLowerCase().contains(searchQuery.toLowerCase())).toList();
+                          final filteredApis = _apicultores.where((a) {
+                            final name = a['nombre'].toString().toLowerCase();
+                            final loc = (a['localidad'] ?? '').toString().toLowerCase();
+                            final code = (a['apicultor_codigo'] ?? '').toString().toLowerCase();
+                            final query = searchQuery.toLowerCase();
+                            return name.contains(query) || loc.contains(query) || code.contains(query);
+                          }).toList();
                           return AlertDialog(
                             title: const Text('Buscar Apicultor'),
                             content: SizedBox(
@@ -138,11 +169,15 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                                     child: ListView.builder(
                                       shrinkWrap: true,
                                       itemCount: filteredApis.length,
-                                      itemBuilder: (context, i) => ListTile(
-                                        title: Text(filteredApis[i]['nombre']),
-                                        subtitle: Text(filteredApis[i]['localidad'] ?? ''),
-                                        onTap: () => Navigator.pop(context, filteredApis[i]),
-                                      ),
+                                      itemBuilder: (context, i) {
+                                        final api = filteredApis[i];
+                                        final codigo = api['apicultor_codigo'] ?? api['id']?.toString().substring(0,6).toUpperCase();
+                                        return ListTile(
+                                          title: Text(api['nombre']),
+                                          subtitle: Text('${api['localidad'] ?? ''} • Cod: $codigo'),
+                                          onTap: () => Navigator.pop(context, api),
+                                        );
+                                      },
                                     ),
                                   ),
                                 ],
@@ -167,14 +202,23 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFF08201A).withOpacity(0.1)),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.person_search_rounded, size: 20, color: const Color(0xFF08201A).withOpacity(0.5)),
-                      const SizedBox(width: 12),
-                      Text(selectedApicultor != null ? selectedApicultor!['nombre'] : 'Seleccionar apicultor...', 
-                        style: TextStyle(color: selectedApicultor != null ? const Color(0xFF08201A) : Colors.black38)),
-                    ],
-                  ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_search_rounded, size: 20, color: const Color(0xFF08201A).withOpacity(0.5)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            selectedApicultor != null 
+                              ? '${selectedApicultor!['nombre']} (${selectedApicultor!['apicultor_codigo'] ?? ''})' 
+                              : 'Seleccionar apicultor...', 
+                            style: TextStyle(
+                              color: selectedApicultor != null ? const Color(0xFF08201A) : Colors.black38,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ),
               ),
               
@@ -231,7 +275,8 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Cant. Est. (Kg)', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
+                        Text('Cant. Est. (${productos.firstWhere((p) => p['codigo'] == selectedProducto, orElse: () => {'unidad': 'Kg'})['unidad']})', 
+                          style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
                         const SizedBox(height: 8),
                         TextField(
                           controller: cantidadController,
@@ -240,7 +285,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                             filled: true,
                             fillColor: Colors.white,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                            hintText: 'Ej: 500',
+                            hintText: 'Ej: 10',
                           ),
                         ),
                       ],
@@ -262,7 +307,10 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                       String searchQuery = '';
                       return StatefulBuilder(
                         builder: (context, setDialogState) {
-                          final filteredProds = productosDemo.where((p) => p.toLowerCase().contains(searchQuery.toLowerCase())).toList();
+                          final filteredProds = productos.where((p) => 
+                            (p['codigo']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false) || 
+                            (p['descripcion']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false)
+                          ).toList();
                           return AlertDialog(
                             title: const Text('Buscar Producto'),
                             content: SizedBox(
@@ -280,8 +328,10 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                                       shrinkWrap: true,
                                       itemCount: filteredProds.length,
                                       itemBuilder: (context, i) => ListTile(
-                                        title: Text(filteredProds[i]),
-                                        onTap: () => Navigator.pop(context, filteredProds[i]),
+                                        title: Text(filteredProds[i]['codigo'] ?? ''),
+                                        subtitle: Text(filteredProds[i]['descripcion'] ?? ''),
+                                        trailing: Text(filteredProds[i]['unidad'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                        onTap: () => Navigator.pop(context, filteredProds[i]['codigo']),
                                       ),
                                     ),
                                   ),
@@ -324,26 +374,42 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                 height: 55,
                 child: ElevatedButton(
                   onPressed: () async {
-                    if (selectedApicultor == null || cantidadController.text.isEmpty || selectedProducto == null) return;
-                    await SupabaseService().createNecesidad({
-                      'solicitud_codigo': 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
-                      'apicultor_id': selectedApicultor!['id'],
-                      'producto': selectedProducto,
-                      'cantidad': double.tryParse(cantidadController.text) ?? 0,
-                      'tipo': selectedTipo,
-                      'estado': 'Pendiente',
-                    });
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      _fetchData();
+                    if (selectedApicultor == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecciona un apicultor')));
+                      return;
+                    }
+                    if (cantidadController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingresa una cantidad estimada')));
+                      return;
+                    }
+                    if (selectedProducto == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona un producto')));
+                      return;
+                    }
+
+                    try {
+                      await SupabaseService().createNecesidad({
+                        'solicitud_codigo': 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
+                        'apicultor_id': selectedApicultor!['apicultor_codigo'] ?? selectedApicultor!['id'], // En la DB es text y coincide con el codigo
+                        'producto': selectedProducto,
+                        'cantidad': double.tryParse(cantidadController.text) ?? 0,
+                        'tipo': selectedTipo,
+                        'localidad': selectedApicultor!['localidad'],
+                        'estado': 'Pendiente',
+                      });
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        _fetchData();
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud guardada con éxito'), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
+                      }
                     }
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF08201A),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text('GUARDAR SOLICITUD', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  style: DesignTokens.primaryButtonStyle,
+                  child: const Text('GUARDAR SOLICITUD'),
                 ),
               ),
             ],
@@ -356,16 +422,16 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFBF9F8),
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFBF9F8),
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
-        title: const Text('Gestión de Solicitudes', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
-        iconTheme: const IconThemeData(color: Color(0xFF08201A)),
+        title: Text('Gestión de Solicitudes', style: DesignTokens.headlineStyle().copyWith(fontSize: 17)),
+        iconTheme: const IconThemeData(color: DesignTokens.primary),
         bottom: TabBar(
           controller: _tabController,
-          labelColor: const Color(0xFF08201A),
-          indicatorColor: const Color(0xFFFDBE49),
+          labelColor: DesignTokens.primary,
+          indicatorColor: DesignTokens.secondary,
           tabs: const [
             Tab(text: 'RECOLECCIONES'),
             Tab(text: 'DISTRIBUCIONES'),
@@ -373,7 +439,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
         ),
       ),
       body: _loading 
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF08201A)))
+        ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
         : Column(
             children: [
               Padding(
@@ -402,8 +468,8 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
           ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addNecesidad,
-        backgroundColor: const Color(0xFFFDBE49),
-        foregroundColor: const Color(0xFF08201A),
+        backgroundColor: DesignTokens.secondary,
+        foregroundColor: DesignTokens.primary,
         icon: const Icon(Icons.add_rounded),
         label: const Text('NUEVA SOLICITUD', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1)),
       ),

@@ -1,7 +1,9 @@
-import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import '../backend/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'apicultor_detalle.dart';
 import 'package:go_router/go_router.dart';
+import '../backend/design_tokens.dart';
 
 class ApicultoresPageWidget extends StatefulWidget {
   const ApicultoresPageWidget({super.key});
@@ -16,12 +18,6 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
   bool _loading = true;
   final TextEditingController _searchController = TextEditingController();
 
-  // Stitch colors
-  static const kPrimary = Color(0xFF08201A);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
-  static const kOnSurfaceVariant = Color(0xFF424846);
-
   @override
   void initState() {
     super.initState();
@@ -29,13 +25,30 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
   }
 
   Future<void> _fetchData() async {
-    final data = await SupabaseService().getApicultores();
-    if (mounted) {
-      setState(() {
-        _apicultores = data;
-        _filtered = data;
-        _loading = false;
-      });
+    setState(() => _loading = true);
+    try {
+      final data = await SupabaseService().getApicultores();
+      if (mounted) {
+        setState(() {
+          _apicultores = data;
+          _filtered = data;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      // Intento directo si falla el servicio
+      try {
+        final resp = await Supabase.instance.client.from('apicultores').select();
+        if (mounted) {
+          setState(() {
+            _apicultores = List<Map<String, dynamic>>.from(resp);
+            _filtered = _apicultores;
+            _loading = false;
+          });
+        }
+      } catch (e2) {
+        if (mounted) setState(() => _loading = false);
+      }
     }
   }
 
@@ -52,17 +65,17 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
+          icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
           onPressed: () => context.pop(),
         ),
-        title: const Text(
+        title: Text(
           'Directorio de Apicultores',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
+          style: DesignTokens.headlineStyle(),
         ),
       ),
       body: Column(
@@ -74,7 +87,7 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
               onChanged: _onSearch,
               decoration: InputDecoration(
                 hintText: 'Buscar por nombre o localidad...',
-                prefixIcon: const Icon(Icons.search, color: kPrimary),
+                prefixIcon: const Icon(Icons.search, color: DesignTokens.primary),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -83,7 +96,7 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+                ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: _filtered.length,
@@ -104,39 +117,45 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
     final id = a['id']?.toString() ?? '';
     final codigo = a['apicultor_codigo'] ?? (id.length > 6 ? id.substring(0, 6).toUpperCase() : id);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(color: kPrimaryContainer, borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.person_pin_circle_rounded, color: kSecContainer, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(nombre, style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 16, color: kPrimary)),
-                Text(localidad, style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
-              ],
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ApicultorDetalleWidget(apicultor: a)),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(color: DesignTokens.primary, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.person_pin_circle_rounded, color: DesignTokens.secondary, size: 20),
             ),
-          ),
-          Text(
-            codigo,
-            style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 10, color: kPrimary.withOpacity(0.3)),
-          ),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(nombre, style: DesignTokens.headlineStyle().copyWith(fontSize: 16)),
+                  Text(localidad, style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant).copyWith(fontSize: 12)),
+                ],
+              ),
+            ),
+            Text(
+              codigo,
+              style: DesignTokens.labelStyle().copyWith(fontSize: 10, color: DesignTokens.primary.withOpacity(0.3)),
+            ),
+          ],
+        ),
       ),
     );
   }
-
-  static const kPrimaryContainer = Color(0xFF1E352F);
 }

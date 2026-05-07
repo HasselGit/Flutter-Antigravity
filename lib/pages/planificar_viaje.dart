@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher_string.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../backend/design_tokens.dart';
 
 class PlanificarViajeWidget extends StatefulWidget {
   final String? editId;
@@ -23,7 +23,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   
   List<Map<String, dynamic>> _necesidades = [];
   List<Map<String, dynamic>> _filteredNecesidades = [];
-  List<Map<String, dynamic>> _selectedNecesidades = [];
+  final List<Map<String, dynamic>> _selectedNecesidades = [];
   List<Map<String, dynamic>> _vehiculos = [];
   List<Map<String, dynamic>> _choferes = [];
   
@@ -32,6 +32,9 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   DateTime _fechaPlanificada = DateTime.now();
   bool _loading = true;
   bool _saving = false;
+  double _totalKg = 0;
+  int _totalTambores = 0;
+  double _distanciaEstimada = 0;
 
   @override
   void initState() {
@@ -52,7 +55,16 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     setState(() => _loading = true);
     try {
       final service = SupabaseService();
-      final necData = await service.getNecesidadesPendientes();
+      
+      // Fetch needs: Pending ones always, and Planificadas only if we are editing (to show what's already in the trip)
+      final List<Map<String, dynamic>> necData;
+      if (widget.editId != null) {
+        final all = await service.getAllNecesidades(); // Fetch all to find the ones in this trip
+        necData = all; 
+      } else {
+        necData = await service.getNecesidadesPendientes();
+      }
+      
       final vehData = await service.getVehiculos();
       final choData = await service.getChoferes();
 
@@ -80,20 +92,28 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                 _selectedChofer = _choferes.firstWhere((c) => c['id'].toString() == viaje['chofer_id'].toString(), orElse: () => _choferes.first);
               }
               
-              // Seleccionar necesidades que ya están en el viaje
               final paradas = viaje['paradas'] as List? ?? [];
               for (final p in paradas) {
-                // Aquí hay un reto: necesitamos encontrar la solicitud original. 
-                // Por ahora, si no está en pendientes, la agregamos a la lista para que sea visible.
-                // (En una app real, la query de pendientes debería incluir las del viaje actual)
+                final pItems = p['parada_items'] as List? ?? [];
+                final String pProd = pItems.isNotEmpty ? pItems[0]['producto_codigo'] ?? '' : '';
+                
+                final matched = _necesidades.firstWhere(
+                  (n) => (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor']) == p['ubicacion'] && 
+                         n['producto'] == pProd,
+                  orElse: () => <String, dynamic>{},
+                );
+                if (matched.isNotEmpty) {
+                  _selectedNecesidades.add(matched);
+                }
               }
+              _updateCalculos();
             });
           }
         }
         setState(() => _loading = false);
       }
     } catch (e) {
-      print('PlanificarViaje: Error en _fetchData: $e');
+      // print('PlanificarViaje: Error en _fetchData: $e');
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -102,19 +122,18 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredNecesidades = _necesidades.where((n) {
-        final apicultor = (n['apicultores']?['nombre'] ?? '').toString().toLowerCase();
-        final localidad = (n['apicultores']?['localidad'] ?? '').toString().toLowerCase();
+        final apicultor = (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? '').toString().toLowerCase();
+        final localidad = (n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? '').toString().toLowerCase();
         final tipo = (n['tipo'] ?? '').toString().toLowerCase();
-        return apicultor.contains(query) || localidad.contains(query) || tipo.contains(query);
+        final producto = (n['producto'] ?? '').toString().toLowerCase();
+        return apicultor.contains(query) || localidad.contains(query) || tipo.contains(query) || producto.contains(query);
       }).toList();
     });
   }
 
-  // Matriz de distancias aproximadas desde General Pico y entre localidades (Punto 5 del Workflow)
   double _calcularDistanciaAutomatica() {
     if (_selectedNecesidades.isEmpty) return 0;
     
-    // Distancias base desde General Pico (en KM)
     final distanciasDesdePico = {
       'Trenel': 35.0,
       'Realicó': 105.0,
@@ -131,62 +150,41 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
 
     double maxDist = 0;
     for (final n in _selectedNecesidades) {
-      final loc = n['apicultores']?['localidad']?.toString() ?? '';
-      final dist = distanciasDesdePico[loc] ?? 50.0;
-      if (dist > maxDist) maxDist = dist;
-    }
-    
-    // El viaje es ida y vuelta a la parada más lejana + margen por paradas intermedias
-    double total = (maxDist * 2) + (_selectedNecesidades.length > 1 ? (_selectedNecesidades.length * 15.0) : 0);
-    return total;
-  }
-
-  double get _totalKg {
-    double total = 0;
-    for (final n in _selectedNecesidades) {
-      final String prod = (n['producto'] ?? '').toString().toLowerCase();
-      final double cant = (n['cantidad'] ?? 0).toDouble();
-      
-      if (prod.contains('tcm')) {
-        // 80 tambores con miel -> 80 * 300kg = 24.000 kg
-        total += cant * 300;
-      } else if (prod.contains('vacio') || prod.contains('vacío') || prod.contains('tv')) {
-        // Tambores vacíos pesan ~20kg cada uno
-        total += cant * 20;
-      } else {
-        // Miel (en kg), Azúcar (kg), Cera (kg), etc.
-        total += cant;
+      final loc = n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? '';
+      if (distanciasDesdePico.containsKey(loc)) {
+        if (distanciasDesdePico[loc]! > maxDist) maxDist = distanciasDesdePico[loc]!;
       }
     }
-    return total;
+    return maxDist * 2 * 1.15;
   }
   
   void _updateCalculos() {
-    setState(() {
-      _kmController.text = _calcularDistanciaAutomatica().toStringAsFixed(0);
-    });
-  }
-  int get _totalTambores {
-    int total = 0;
-    for (final n in _selectedNecesidades) {
+    double tempKg = 0.0;
+    int tempTambores = 0;
+    
+    for (final Map<String, dynamic> n in _selectedNecesidades) {
+      final double cant = (n['cantidad'] ?? 0).toDouble();
       final String prod = (n['producto'] ?? '').toString().toLowerCase();
-      final num cant = n['cantidad'] ?? 0;
       
-      // TCM son Tambores Con Miel (ya vienen en unidades de tambor)
-      if (prod.contains('tcm')) {
-        total += cant.toInt();
+      if (prod.contains('tcm') || (prod.contains('miel') && prod.contains('tambor'))) {
+        tempKg += cant * 300.0;
+        tempTambores += cant.round();
       } 
-      // Miel cruda (viene en Kg)
-      else if (prod.contains('miel')) {
-        total += (cant / 300).ceil();
-      }
-      // Tambores Vacíos, TV (vienen en unidades)
       else if ((prod.contains('vacío') || prod.contains('vacio') || prod.contains('tv') || prod.contains('tambor')) 
                 && !prod.contains('cera')) {
-        total += cant.toInt();
+        tempTambores += cant.round();
+        tempKg += cant * 20.0; 
+      }
+      else {
+        tempKg += cant;
       }
     }
-    return total;
+    
+    setState(() {
+      _totalKg = tempKg;
+      _totalTambores = tempTambores;
+      _distanciaEstimada = _calcularDistanciaAutomatica();
+    });
   }
 
   bool get _excedeCapacidad {
@@ -199,11 +197,10 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   }
 
   Future<void> _openPreviewMap() async {
-    // Si no hay necesidades, mostramos al menos General Pico
     const String baseLocation = 'General Pico, La Pampa, Argentina';
     
     final intermediateLocalities = _selectedNecesidades
-        .map((n) => n['apicultores']?['localidad']?.toString() ?? '')
+        .map((n) => n['apicultores']?['localidad']?.toString() ?? n['localidad_nombre']?.toString() ?? '')
         .where((l) => l.isNotEmpty)
         .toSet()
         .toList();
@@ -216,12 +213,13 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     
     final url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving';
     
-    // Lanzar directamente sin canLaunch para evitar bloqueos del emulador
     try {
-      await launchUrlString(url, mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
-      print('Error al abrir mapa: $e');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir Google Maps. Verifique que esté instalada.')));
+      // print('Error al abrir mapa: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir Google Maps.')));
+      }
     }
   }
 
@@ -244,6 +242,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             'chofer_id': _selectedChofer!['id'],
             'vehiculo_codigo': _selectedVehiculo!['vehiculo_codigo'],
             'fecha': _fechaPlanificada.toIso8601String(),
+            'descripcion': _descripcionController.text,
           },
           necesidades: _selectedNecesidades,
         );
@@ -255,6 +254,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             'viaje_codigo': 'VIAJE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
             'estado': 'Planificado',
             'fecha': _fechaPlanificada.toIso8601String(),
+            'descripcion': _descripcionController.text,
           },
           necesidades: _selectedNecesidades,
         );
@@ -265,13 +265,14 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
         context.pop();
       }
     } catch (e) {
-      print('PlanificarViaje: Error al crear viaje: $e');
+      // print('PlanificarViaje: Error al crear viaje: $e');
       if (mounted) {
+        String errorMsg = e.toString();
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Error al Planificar'),
-            content: Text('Detalle técnico: $e\n\nPor favor reporte este error.'),
+            content: Text('Detalle técnico: $errorMsg\n\nPor favor reporte este error.'),
             actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
           )
         );
@@ -286,23 +287,21 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBF9F8),
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFBF9F8),
-        title: const Text('Planificador de Ruta', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
+        backgroundColor: DesignTokens.surface,
+        title: Text('Planificador de Ruta', style: DesignTokens.headlineStyle()),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF08201A)),
+        iconTheme: const IconThemeData(color: DesignTokens.primary),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Sección Necesidades
-            const Text('1. Seleccionar Solicitudes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+            Text('1. Seleccionar Solicitudes', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 18)),
             const SizedBox(height: 12),
             
-            // Search Bar
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -331,14 +330,10 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                   final n = _filteredNecesidades[index];
                   final isSelected = _selectedNecesidades.any((element) => element['id'] == n['id']);
                   String productoRaw = n['producto']?.toString() ?? 'Producto';
-                  
-                  // Limpiar prefijos de tipo si existen en el nombre del producto
                   final lowerProd = productoRaw.toLowerCase();
                   
-                  // Limpiar prefijos de tipo sin perder el tipo de operación en el subtítulo
                   String productoLimpio = productoRaw.replaceFirst(RegExp(r'^(recoleccion|recolección|distribucion|distribución|entrega|retiro)\s+', caseSensitive: false), '');
 
-                  // Lógica de unidades: Solo Tambores (que no sean cera), Insumos o Alimentos son "Un."
                   final esUnidades = (lowerProd.contains('tambor') && !lowerProd.contains('cera')) || 
                                      lowerProd.contains('insumo') ||
                                      lowerProd.contains('alimento') ||
@@ -346,30 +341,40 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                                      lowerProd.contains('tv');
                   final unidad = esUnidades ? 'Un.' : 'Kg';
                   
-                  return CheckboxListTile(
-                    value: isSelected,
-                    title: Text(
-                      '$productoLimpio - ${n['apicultores']?['nombre'] ?? 'Sin Nombre'}',
-                      style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF08201A)),
+                  final String apicultorNombre = n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor'] ?? 'Sin Nombre';
+                  final String localidad = n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? n['localidad'] ?? 'Sin Localidad';
+                  final String tipo = n['tipo'] ?? 'S/T';
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: DesignTokens.primary.withOpacity(isSelected ? 0.3 : 0.05), width: isSelected ? 1.5 : 1),
                     ),
-                    subtitle: Text(
-                      '${n['tipo'] ?? 'Operación'}: ${n['cantidad'] ?? 0} $unidad • ${n['apicultores']?['localidad'] ?? 'S/D'}',
-                      style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: Color(0xFF424846)),
+                    child: CheckboxListTile(
+                      value: isSelected,
+                      activeColor: DesignTokens.secondary,
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            _selectedNecesidades.add(n);
+                          } else {
+                            _selectedNecesidades.removeWhere((item) => item['id'] == n['id']);
+                          }
+                          _updateCalculos();
+                        });
+                      },
+                      title: Text(apicultorNombre.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                      subtitle: Text('$productoLimpio ($tipo) • $localidad', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                      secondary: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${n['cantidad']}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                          Text(unidad.toUpperCase(), style: const TextStyle(fontSize: 8)),
+                        ],
+                      ),
                     ),
-                    onChanged: (val) {
-                      setState(() {
-                        if (val!) {
-                          _selectedNecesidades.add(n);
-                        } else {
-                          _selectedNecesidades.removeWhere((element) => element['id'] == n['id']);
-                        }
-                        _updateCalculos(); // Calcular KM automáticamente
-                      });
-                    },
-                    activeColor: const Color(0xFFFDBE49),
-                    checkColor: const Color(0xFF08201A),
-                    controlAffinity: ListTileControlAffinity.trailing,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   );
                 },
               ),
@@ -377,60 +382,27 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             
             const SizedBox(height: 24),
             
-            // Resumen de Carga
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: _excedeCapacidad ? const Color(0xFFFFEBEE) : const Color(0xFFF0F4F3),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _excedeCapacidad ? Colors.red.withOpacity(0.3) : const Color(0xFF08201A).withOpacity(0.1)),
+                border: Border.all(color: _excedeCapacidad ? Colors.red.withOpacity(0.3) : Colors.transparent),
               ),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('TOTAL ESTIMADO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
-                          Text('${_totalKg.toStringAsFixed(0)} KG', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF08201A))),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text('TAMBORES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
-                          Text('$_totalTambores un.', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
-                        ],
-                      ),
+                      Column(children: [const Text('KG TOTAL'), Text('${_totalKg.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))]),
+                      Column(children: [const Text('TAMBORES'), Text('$_totalTambores', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))]),
+                      Column(children: [const Text('KM EST.'), Text('${_distanciaEstimada.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))]),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Capacidad Vehículo:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      Text(_selectedVehiculo != null ? '${_selectedVehiculo!['capacidad_kg'] ?? 0} Kg' : 'Sin Vehículo', 
-                        style: TextStyle(color: _excedeCapacidad ? Colors.red : Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  if (_selectedNecesidades.isNotEmpty)
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: _openPreviewMap,
-                        icon: const Icon(Icons.map_rounded),
-                        label: const Text('VER RECORRIDO Y NODOS EN MAPA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF08201A),
-                          foregroundColor: const Color(0xFFFDBE49),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
+                  if (_selectedNecesidades.isNotEmpty) ...[
+                    const Divider(height: 24),
+                    SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _openPreviewMap, icon: const Icon(Icons.map_rounded), label: const Text('VER RECORRIDO'), style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary, foregroundColor: Colors.white))),
+                  ]
                 ],
               ),
             ),
@@ -441,19 +413,27 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               children: [
                 Expanded(
                   flex: 2,
-                  child: _buildTextField(
-                    label: 'Descripción del Viaje',
-                    controller: _descripcionController,
-                    hint: 'Ej: Ruta norte, urgente...',
-                  ),
+                  child: _buildTextField(label: 'Descripción del Viaje', controller: _descripcionController, hint: 'Ej: Recolección Zona Norte...'),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTextField(
-                    label: 'Distancia (KM)',
-                    controller: _kmController,
-                    hint: 'Ej: 350',
-                    keyboardType: TextInputType.number,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Fecha', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final date = await showDatePicker(context: context, initialDate: _fechaPlanificada, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 30)));
+                          if (date != null) setState(() => _fechaPlanificada = date);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF08201A).withOpacity(0.1))),
+                          child: Text(DateFormat('dd/MM/yy').format(_fechaPlanificada), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -461,23 +441,15 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
 
             const SizedBox(height: 32),
 
-            // Selección de Vehículo y Chofer
-            const Text('2. Logística', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+            Text('2. Logística', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 18)),
             const SizedBox(height: 12),
             
             _buildDropdown<String>(
               label: 'Vehículo',
               hint: 'Seleccione un vehículo...',
               value: _selectedVehiculo?['id']?.toString(),
-              items: _vehiculos.map((v) => DropdownMenuItem(
-                value: v['id'].toString(),
-                child: Text('${v['vehiculo_codigo']} (Max: ${v['capacidad_kg']}Kg / ${v['capacidad_tambores']}T)'),
-              )).toList(),
-              onChanged: (v) {
-                setState(() {
-                  _selectedVehiculo = _vehiculos.firstWhere((element) => element['id'].toString() == v);
-                });
-              },
+              items: _vehiculos.map((v) => DropdownMenuItem(value: v['id'].toString(), child: Text('${v['vehiculo_codigo']} (${v['capacidad_kg']}Kg)'))).toList(),
+              onChanged: (v) => setState(() => _selectedVehiculo = _vehiculos.firstWhere((e) => e['id'].toString() == v)),
             ),
             
             const SizedBox(height: 16),
@@ -486,15 +458,8 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               label: 'Chofer',
               hint: 'Seleccione un chofer...',
               value: _selectedChofer?['id']?.toString(),
-              items: _choferes.map((c) => DropdownMenuItem(
-                value: c['id'].toString(),
-                child: Text('${c['nombre']} ${c['apellido']}'),
-              )).toList(),
-              onChanged: (v) {
-                setState(() {
-                  _selectedChofer = _choferes.firstWhere((element) => element['id'].toString() == v);
-                });
-              },
+              items: _choferes.map((c) => DropdownMenuItem(value: c['id'].toString(), child: Text('${c['nombre']} ${c['apellido']}'))).toList(),
+              onChanged: (v) => setState(() => _selectedChofer = _choferes.firstWhere((e) => e['id'].toString() == v)),
             ),
 
             const SizedBox(height: 40),
@@ -503,35 +468,9 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                onPressed: _saving ? null : () {
-                  if (_selectedVehiculo == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, seleccione un VEHÍCULO')));
-                    return;
-                  }
-                  if (_selectedChofer == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, seleccione un CHOFER')));
-                    return;
-                  }
-                  if (_selectedNecesidades.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe seleccionar al menos una solicitud para planificar')));
-                    return;
-                  }
-                  if (_excedeCapacidad) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La carga excede la capacidad del vehículo'), backgroundColor: Colors.red));
-                    return;
-                  }
-                  _crearViaje();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E352F),
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Color(0xFFC68E17), width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
-                ),
-                child: _saving 
-                  ? const CircularProgressIndicator(color: Color(0xFF08201A))
-                  : const Text('PLANIFICAR RUTA FINAL', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
+                onPressed: _saving ? null : _crearViaje,
+                style: DesignTokens.primaryButtonStyle,
+                child: _saving ? const CircularProgressIndicator(color: Colors.white) : const Text('AGREGAR PARADA'),
               ),
             ),
           ],

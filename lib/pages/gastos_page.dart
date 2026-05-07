@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 import 'package:intl/intl.dart';
 
 class GastosPageWidget extends StatefulWidget {
@@ -15,12 +16,6 @@ class GastosPageWidget extends StatefulWidget {
 class _GastosPageWidgetState extends State<GastosPageWidget> {
   List<Map<String, dynamic>> _gastos = [];
   bool _loading = true;
-
-  // Stitch colors
-  static const kPrimary = Color(0xFF08201A);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
-  static const kOnSurfaceVariant = Color(0xFF424846);
 
   @override
   void initState() {
@@ -41,21 +36,21 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
+          icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
           onPressed: () => context.pop(),
         ),
         title: const Text(
           'Gestión de Gastos',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: DesignTokens.primary),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: _gastos.length,
@@ -66,9 +61,9 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddGastoDialog(),
-        backgroundColor: kPrimary,
-        icon: const Icon(Icons.add_a_photo_rounded, color: kSecContainer),
-        label: const Text('NUEVO GASTO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: DesignTokens.secondary,
+        icon: const Icon(Icons.add_a_photo_rounded, color: DesignTokens.primary),
+        label: const Text('NUEVO GASTO', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -87,7 +82,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,30 +92,30 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: kSecContainer.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(color: DesignTokens.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
                 child: Text(tipo.toUpperCase(), style: const TextStyle(color: Color(0xFF7D5700), fontSize: 10, fontWeight: FontWeight.bold)),
               ),
-              Text('\$ $importe', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: kPrimary)),
+              Text('\$ $importe', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: DesignTokens.primary)),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.person_rounded, size: 14, color: kOnSurfaceVariant),
+              const Icon(Icons.person_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
               const SizedBox(width: 6),
-              Text(chofer, style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
+              Text(chofer, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
               const Spacer(),
-              const Icon(Icons.calendar_today_rounded, size: 14, color: kOnSurfaceVariant),
+              const Icon(Icons.calendar_today_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
               const SizedBox(width: 6),
-              Text(fechaStr, style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
+              Text(fechaStr, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
             ],
           ),
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.local_shipping_rounded, size: 14, color: kOnSurfaceVariant),
+              const Icon(Icons.local_shipping_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
               const SizedBox(width: 6),
-              Text('Viaje: $viaje', style: const TextStyle(fontSize: 12, color: kOnSurfaceVariant)),
+              Text('Viaje: $viaje', style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
             ],
           ),
         ],
@@ -161,7 +156,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Registrar Nuevo Gasto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kPrimary)),
+                  const Text('Registrar Nuevo Gasto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
                   const SizedBox(height: 20),
                   
                   // Fila de Fecha y Comprobante
@@ -247,25 +242,33 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Sección de Foto
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: kSurface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: kPrimary.withOpacity(0.1)),
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.camera_alt_rounded, size: 32, color: kPrimary),
-                        const SizedBox(height: 8),
-                        const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimary)),
-                        const SizedBox(height: 4),
-                        Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: kOnSurfaceVariant.withOpacity(0.6))),
-                      ],
-                    ),
-                  ),
+                   // Sección de Foto (Ahora interactiva)
+                   InkWell(
+                     onTap: () async {
+                       ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                         content: Text('Cámara solicitada. Por favor, adjunte el comprobante.'),
+                         duration: Duration(seconds: 2),
+                       ));
+                     },
+                     child: Container(
+                       width: double.infinity,
+                       padding: const EdgeInsets.all(16),
+                       decoration: BoxDecoration(
+                         color: DesignTokens.surface,
+                         borderRadius: BorderRadius.circular(12),
+                         border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                       ),
+                       child: Column(
+                         children: [
+                           const Icon(Icons.camera_alt_rounded, size: 32, color: DesignTokens.primary),
+                           const SizedBox(height: 8),
+                           const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
+                           const SizedBox(height: 4),
+                           Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
+                         ],
+                       ),
+                     ),
+                   ),
 
                   const SizedBox(height: 28),
                   
@@ -299,12 +302,8 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                           if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
                         }
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      child: const Text('GUARDAR REGISTRO', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                      style: DesignTokens.primaryButtonStyle,
+                      child: const Text('GUARDAR REGISTRO'),
                     ),
                   ),
                   const SizedBox(height: 24),

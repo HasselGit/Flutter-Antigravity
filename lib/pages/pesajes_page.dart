@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class PesajesPageWidget extends StatefulWidget {
   const PesajesPageWidget({super.key});
@@ -15,9 +16,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
   List<Map<String, dynamic>> _pesajes = [];
   bool _loading = true;
 
-  static const kPrimary = Color(0xFF08201A);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
+  // Using DesignTokens
 
   @override
   void initState() {
@@ -30,12 +29,22 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
     try {
       final data = await Supabase.instance.client
           .from('pesajes')
-          .select('*, profiles(nombre, apellido)')
+          .select('id, created_at, peso_bruto, peso_neto, tara, nro_tambor, chofer_id')
           .order('created_at', ascending: false);
+      
+      final List<Map<String, dynamic>> pesajes = List<Map<String, dynamic>>.from(data);
+      for (var p in pesajes) {
+        if (p['chofer_id'] != null) {
+          try {
+            final prof = await Supabase.instance.client.from('profiles').select('nombre, apellido').eq('id', p['chofer_id']).maybeSingle();
+            p['profiles'] = prof;
+          } catch (_) {}
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _pesajes = List<Map<String, dynamic>>.from(data);
+          _pesajes = pesajes;
           _loading = false;
         });
       }
@@ -47,21 +56,21 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F3F3),
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
+          icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
           onPressed: () => context.pop(),
         ),
         title: const Text(
           'Control de Pesajes',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: DesignTokens.primary),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : _pesajes.isEmpty
               ? const Center(child: Text('No hay registros de pesaje.'))
               : ListView.builder(
@@ -98,7 +107,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Tambor: $tambor', style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary)),
+              Text('Tambor: $tambor', style: const TextStyle(fontWeight: FontWeight.bold, color: DesignTokens.primary)),
               Text(fechaStr, style: const TextStyle(fontSize: 12, color: Colors.black45)),
             ],
           ),
@@ -128,7 +137,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
     return Column(
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.bold)),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kPrimary)),
+        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
       ],
     );
   }

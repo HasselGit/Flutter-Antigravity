@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class DistribucionesPageWidget extends StatefulWidget {
   const DistribucionesPageWidget({super.key});
@@ -90,26 +91,24 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
 
   @override
   Widget build(BuildContext context) {
-    const kPrimary = Color(0xFF08201A);
-    const kSecContainer = Color(0xFFFDBE49);
-    const kSurface = Color(0xFFFBF9F8);
+
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F3F3),
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: kPrimary),
+          icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
           onPressed: () => context.go('/home'),
         ),
         title: const Text(
           'Distribuciones',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: kPrimary),
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: DesignTokens.primary),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: kPrimary),
+            icon: const Icon(Icons.refresh_rounded, color: DesignTokens.primary),
             onPressed: _fetchData,
           ),
         ],
@@ -118,17 +117,17 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
           child: TabBar(
             controller: _tabController,
             isScrollable: true,
-            indicatorColor: kSecContainer,
+            indicatorColor: DesignTokens.secondary,
             indicatorWeight: 3,
-            labelColor: kPrimary,
-            unselectedLabelColor: kPrimary.withOpacity(0.4),
+            labelColor: DesignTokens.primary,
+            unselectedLabelColor: DesignTokens.primary.withOpacity(0.4),
             labelStyle: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.8),
             tabs: _tabs.map((t) => Tab(text: t)).toList(),
           ),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : TabBarView(
               controller: _tabController,
               children: [

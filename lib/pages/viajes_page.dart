@@ -1,9 +1,10 @@
-import '/flutter_flow/flutter_flow_theme.dart';
+import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 import 'package:intl/intl.dart';
 
 class ViajesPageWidget extends StatefulWidget {
@@ -79,52 +80,51 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
 
-    const kPrimary = Color(0xFF08201A);
-    const kSecContainer = Color(0xFFFDBE49);
-    const kSurface = Color(0xFFFBF9F8);
+    // Using centralized DesignTokens
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F3F3),
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: kPrimary),
+          icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
           onPressed: () => context.go('/home'),
         ),
         title: Text(
           _userRole == 'Chofer' ? 'Mis Viajes' : 'Control de Viajes',
-          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: kPrimary),
+          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 17, color: DesignTokens.primary),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: kPrimary),
+            icon: const Icon(Icons.refresh_rounded, color: DesignTokens.primary),
             onPressed: _fetchViajes,
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: kSecContainer,
-          labelColor: kPrimary,
-          unselectedLabelColor: kPrimary.withOpacity(0.4),
-          labelStyle: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 0.5),
+          indicatorColor: DesignTokens.secondary,
+          indicatorWeight: 3,
+          labelColor: DesignTokens.primary,
+          unselectedLabelColor: DesignTokens.primary.withOpacity(0.4),
+          labelStyle: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.8),
           unselectedLabelStyle: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 0.5),
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kPrimary))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : TabBarView(
               controller: _tabController,
               children: _statusKeys.map((s) => _buildTripList(s, theme)).toList(),
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/planificarViaje'),
-        backgroundColor: kPrimary,
-        icon: Icon(Icons.add_rounded, color: kSecContainer),
+        backgroundColor: DesignTokens.secondary,
+        icon: const Icon(Icons.add_rounded, color: DesignTokens.primary),
         label: const Text(
           'NUEVO VIAJE',
-          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: Colors.white),
+          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: DesignTokens.primary),
         ),
       ),
     );

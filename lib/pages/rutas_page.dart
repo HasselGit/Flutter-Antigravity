@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 
 class RutasPageWidget extends StatefulWidget {
   const RutasPageWidget({super.key});
@@ -21,15 +22,6 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
   String? _error;
   String? _userRole;
 
-  // Stitch colors
-  static const kPrimary = Color(0xFF08201A);
-  static const kPrimaryContainer = Color(0xFF1E352F);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
-  static const kSurfaceLow = Color(0xFFF5F3F3);
-  static const kOnSurface = Color(0xFF1B1C1C);
-  static const kOnSurfaceVariant = Color(0xFF424846);
-  static const kOutlineVariant = Color(0xFFC2C8C4);
 
   @override
   void initState() {
@@ -67,14 +59,14 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurfaceLow,
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: kPrimary),
+          icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
           onPressed: () => context.go('/home'),
         ),
         title: const Text(
@@ -83,28 +75,28 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
             fontFamily: 'Manrope',
             fontWeight: FontWeight.w800,
             fontSize: 17,
-            color: kPrimary,
+            color: DesignTokens.primary,
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: kPrimary),
+            icon: const Icon(Icons.refresh_rounded, color: DesignTokens.primary),
             onPressed: _fetchRutas,
           ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: kPrimary.withOpacity(0.08)),
+          child: Container(height: 1, color: DesignTokens.primary.withOpacity(0.08)),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
           : _error != null
               ? _buildError()
               : _rutas.isEmpty
                   ? _buildEmpty()
                   : RefreshIndicator(
-                      color: kSecContainer,
+                      color: DesignTokens.secondary,
                       onRefresh: _fetchRutas,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -115,11 +107,11 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       floatingActionButton: (_userRole != null && _userRole != 'Chofer')
           ? FloatingActionButton.extended(
               onPressed: () => context.push('/planificarViaje'),
-              backgroundColor: kSecContainer,
-              icon: const Icon(Icons.add_location_alt_rounded, color: kPrimary),
+              backgroundColor: DesignTokens.secondary,
+              icon: const Icon(Icons.add_location_alt_rounded, color: DesignTokens.primary),
               label: const Text(
                 'NUEVA RUTA',
-                style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: kPrimary),
+                style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: DesignTokens.primary),
               ),
             )
           : null,
@@ -199,8 +191,8 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kPrimary.withOpacity(0.06)),
-          boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
+          border: Border.all(color: DesignTokens.primary.withOpacity(0.06)),
+          boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -216,12 +208,12 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                       children: [
                         Text(
                           trayecto.toUpperCase(),
-                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w900, fontSize: 14, color: kPrimary, letterSpacing: 0.5),
+                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w900, fontSize: 14, color: DesignTokens.primary, letterSpacing: 0.5),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           displayId,
-                          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 10, color: kPrimary.withOpacity(0.4)),
+                          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 10, color: DesignTokens.primary.withOpacity(0.4)),
                         ),
                       ],
                     ),
@@ -236,7 +228,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
 
               Text(
                 desc.isNotEmpty ? desc : 'Sin descripción adicional',
-                style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: kOnSurfaceVariant.withOpacity(0.7), fontStyle: FontStyle.italic),
+                style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: DesignTokens.onSurfaceVariant.withOpacity(0.7), fontStyle: FontStyle.italic),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -262,8 +254,8 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Progreso de Ruta', style: TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: kOnSurfaceVariant.withOpacity(0.6))),
-                    Text(pctStr, style: const TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w800, color: kPrimary)),
+                    Text('Progreso de Ruta', style: TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
+                    Text(pctStr, style: const TextStyle(fontFamily: 'Manrope', fontSize: 12, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -272,7 +264,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 6,
-                    backgroundColor: kPrimary.withOpacity(0.05),
+                    backgroundColor: DesignTokens.primary.withOpacity(0.05),
                     valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                   ),
                 ),
@@ -282,15 +274,15 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: kSurface,
+                  color: DesignTokens.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: kPrimary.withOpacity(0.05)),
+                  border: Border.all(color: DesignTokens.primary.withOpacity(0.05)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildMetricCol('TOTAL ESTIMADO', '${totalKg.round()} kg', Icons.monitor_weight_outlined),
-                    Container(width: 1, height: 24, color: kPrimary.withOpacity(0.1)),
+                    Container(width: 1, height: 24, color: DesignTokens.primary.withOpacity(0.1)),
                     _buildMetricCol('TAMBORES', '$totalTambores un.', Icons.inventory_2_outlined),
                   ],
                 ),
@@ -300,9 +292,9 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Text('VER CONTROL DE RUTA', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, color: kPrimary, letterSpacing: 0.5)),
+                  const Text('VER CONTROL DE RUTA', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, color: DesignTokens.primary, letterSpacing: 0.5)),
                   const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: kPrimary.withOpacity(0.6)),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: DesignTokens.primary.withOpacity(0.6)),
                 ],
               ),
             ],
@@ -316,13 +308,13 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: kSurfaceLow,
+        color: DesignTokens.surfaceLow,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: kOnSurfaceVariant),
+        Icon(icon, size: 12, color: DesignTokens.onSurfaceVariant),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 9, color: kOnSurfaceVariant, letterSpacing: 0.3)),
+        Text(label, style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w700, fontSize: 9, color: DesignTokens.onSurfaceVariant, letterSpacing: 0.3)),
       ]),
     );
   }
@@ -350,13 +342,13 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
         children: [
           Container(
             width: 80, height: 80,
-            decoration: BoxDecoration(color: kPrimary.withOpacity(0.06), shape: BoxShape.circle),
-            child: Icon(Icons.alt_route_rounded, size: 36, color: kPrimary.withOpacity(0.3)),
+            decoration: BoxDecoration(color: DesignTokens.primary.withOpacity(0.06), shape: BoxShape.circle),
+            child: Icon(Icons.alt_route_rounded, size: 36, color: DesignTokens.primary.withOpacity(0.3)),
           ),
           const SizedBox(height: 20),
-          const Text('Sin rutas registradas', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 16, color: kPrimary)),
+          const Text('Sin rutas registradas', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 16, color: DesignTokens.primary)),
           const SizedBox(height: 8),
-          Text('Las rutas aparecerán aquí cuando sean creadas.', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: kOnSurfaceVariant.withOpacity(0.6))),
+          Text('Las rutas aparecerán aquí cuando sean creadas.', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
         ],
       ),
     );
@@ -369,11 +361,11 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
         children: [
           const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.red),
           const SizedBox(height: 16),
-          const Text('Error de conexión', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w600, fontSize: 16, color: kPrimary)),
+          const Text('Error de conexión', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w600, fontSize: 16, color: DesignTokens.primary)),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: _fetchRutas,
-            style: ElevatedButton.styleFrom(backgroundColor: kPrimary, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary, foregroundColor: Colors.white),
             child: const Text('Reintentar'),
           ),
         ],

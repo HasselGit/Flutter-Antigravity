@@ -23,7 +23,7 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
   Future<void> _loadProductos() async {
     final response = await Supabase.instance.client.from('productos').select();
     setState(() {
-      _productos = response;
+      _productos = List<Map<String, dynamic>>.from(response);
     });
   }
 

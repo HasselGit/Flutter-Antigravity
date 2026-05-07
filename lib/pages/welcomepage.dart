@@ -1,10 +1,11 @@
-import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart';
-import '/flutter_flow/flutter_flow_widgets.dart';
+import '../flutter_flow/flutter_flow_theme.dart';
+import '../flutter_flow/flutter_flow_util.dart';
+import '../flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
 import 'dart:math';
-import '/index.dart';
+import '../index.dart';
 import 'package:flutter/material.dart';
+import '../backend/design_tokens.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -142,25 +143,14 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                           ),
                           child: ElevatedButton(
                             onPressed: () => context.pushNamed('Login'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: theme.secondary,
-                                  width: 2,
-                                ),
-                              ),
-                              elevation: 0,
-                            ),
+                            style: DesignTokens.secondaryButtonStyle,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(Icons.login_rounded, size: 20),
                                 const SizedBox(width: 12),
                                 Text(
-                                  'INGRESAR',
+                                  'INICIAR',
                                   style: theme.titleSmall.override(
                                     fontFamily: 'Manrope',
                                     color: Colors.white,

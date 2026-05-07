@@ -1,6 +1,7 @@
 import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import '../backend/supabase_service.dart';
+import '../backend/design_tokens.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -17,11 +18,8 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
   bool _loading = true;
   final TextEditingController _searchController = TextEditingController();
 
-  // Stitch colors
-  static const kPrimary = Color(0xFF08201A);
-  static const kSecContainer = Color(0xFFFDBE49);
-  static const kSurface = Color(0xFFFBF9F8);
-  static const kOnSurfaceVariant = Color(0xFF424846);
+  // Design system constants
+
 
   @override
   void initState() {
@@ -53,17 +51,17 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: kSurface,
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kPrimary),
+          icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
           onPressed: () => context.pop(),
         ),
         title: const Text(
           'Remitos Digitales',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: kPrimary),
+          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, color: DesignTokens.primary),
         ),
       ),
       body: Column(
@@ -75,7 +73,7 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
               onChanged: _onSearch,
               decoration: InputDecoration(
                 hintText: 'Buscar apicultor o fecha...',
-                prefixIcon: const Icon(Icons.search, color: kPrimary),
+                prefixIcon: const Icon(Icons.search, color: DesignTokens.primary),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -84,7 +82,7 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+                ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: _filtered.length,
@@ -112,13 +110,13 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: kPrimary.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: DesignTokens.primary.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
             child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent, size: 24),
           ),
           const SizedBox(width: 16),
@@ -126,18 +124,18 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('N° $numero', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 16, color: kPrimary)),
-                Text(apicultor, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kOnSurfaceVariant)),
-                Text('Fecha: $fechaStr', style: const TextStyle(fontSize: 11, color: kOnSurfaceVariant)),
+                Text('N° $numero', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 16, color: DesignTokens.primary)),
+                Text(apicultor, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: DesignTokens.onSurfaceVariant)),
+                Text('Fecha: $fechaStr', style: const TextStyle(fontSize: 11, color: DesignTokens.onSurfaceVariant)),
               ],
             ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(solicitud, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kPrimary)),
+              Text(solicitud, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
               const SizedBox(height: 4),
-              const Icon(Icons.open_in_new_rounded, size: 16, color: kPrimary),
+              const Icon(Icons.open_in_new_rounded, size: 16, color: DesignTokens.primary),
             ],
           ),
         ],
