@@ -144,7 +144,16 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(nombre, style: DesignTokens.headlineStyle().copyWith(fontSize: 16)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(nombre, 
+                          style: DesignTokens.headlineStyle().copyWith(fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                   Text(localidad, style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant).copyWith(fontSize: 12)),
                 ],
               ),

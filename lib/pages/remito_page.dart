@@ -60,6 +60,20 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
 
       if (parada == null) throw Exception('Parada no encontrada');
 
+      // NEW: Try to find apicultor_id by name (ubicacion) to link the remito correctly
+      String? apiId;
+      try {
+        final api = await Supabase.instance.client
+            .from('apicultores')
+            .select('id, apicultor_codigo')
+            .eq('nombre', parada['ubicacion'] ?? '')
+            .maybeSingle();
+        apiId = api?['apicultor_codigo'] ?? api?['id'];
+      } catch (_) {}
+      
+      _paradaData = parada;
+      if (apiId != null) _paradaData!['apicultor_id'] = apiId;
+
       final itemsRaw = await Supabase.instance.client
           .from('parada_items')
           .select('id, producto_codigo, cantidad, unidad, peso_kg')
@@ -212,6 +226,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
       await Supabase.instance.client.from('remitos').insert({
         'parada_id': widget.paradaId,
+        'apicultor_id': _paradaData?['apicultor_id'], // LINK TO APICULTOR
         'pdf_url': pdfUrl,
         'remito_codigo': humanId,
         'estado': 'Emitido',

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'pages/recolecciones_page.dart';
 import 'pages/pesajes_page.dart';
 import 'pages/distribuciones_page.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'pages/vehiculo_detalle_page.dart';
 import 'pages/productos_page.dart';
 import 'pages/vehiculos_page.dart';
@@ -30,7 +31,6 @@ import 'pages/remitos_lista_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   try {
     print('Main: Inicializando Supabase...');
     await Supabase.initialize(
@@ -39,6 +39,10 @@ void main() async {
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
     );
     print('Main: Supabase OK');
+    
+    print('Main: Inicializando Locale...');
+    await initializeDateFormatting('es_AR', null);
+    print('Main: Locale OK');
   } catch (e) {
     print('Main: Error en inicialización: $e');
   }

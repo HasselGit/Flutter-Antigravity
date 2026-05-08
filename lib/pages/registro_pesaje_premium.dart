@@ -5,50 +5,53 @@ import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
 
-class PesajesPageWidget extends StatefulWidget {
-  const PesajesPageWidget({super.key});
+class RegistroPesajePremiumWidget extends StatefulWidget {
+  final Map<String, dynamic>? pesajeData;
+  const RegistroPesajePremiumWidget({super.key, this.pesajeData});
 
   @override
-  State<PesajesPageWidget> createState() => _PesajesPageWidgetState();
+  State<RegistroPesajePremiumWidget> createState() => _RegistroPesajePremiumWidgetState();
 }
 
-class _PesajesPageWidgetState extends State<PesajesPageWidget> {
+class _RegistroPesajePremiumWidgetState extends State<RegistroPesajePremiumWidget> {
   bool _loading = false;
   List<Map<String, dynamic>> _tambores = [];
   
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _fetchTambores();
   }
 
-  Future<void> _fetchData() async {
+  Future<void> _fetchTambores() async {
+    // Mocking data based on image for now, but connecting to DB
     setState(() => _loading = true);
     try {
-      final client = Supabase.instance.client;
-      final data = await client
+      // En una app real, aquí filtraríamos por un ID de lote o remito
+      final data = await Supabase.instance.client
           .from('pesajes')
-          .select('*, profiles(nombre, apellido)')
-          .order('created_at', ascending: false)
-          .limit(20);
+          .select('*')
+          .limit(10)
+          .order('created_at', ascending: false);
       
-      if (mounted) {
-        setState(() {
-          _tambores = List<Map<String, dynamic>>.from(data);
-          _loading = false;
-        });
-      }
+      setState(() {
+        _tambores = List<Map<String, dynamic>>.from(data);
+        _loading = false;
+      });
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Datos de ejemplo para el encabezado (en una app real vendrían del contexto del viaje/remito)
-    final apicultorNombre = _tambores.isNotEmpty ? (_tambores[0]['apicultor_nombre'] ?? 'Julian Thorne') : 'Registro General';
-    final localidad = _tambores.isNotEmpty ? (_tambores[0]['localidad'] ?? 'Varios') : '...';
+    // Datos de ejemplo basados en el mockup
+    final apicultorNombre = widget.pesajeData?['apicultor'] ?? 'Julian Thorne';
+    final localidad = widget.pesajeData?['localidad'] ?? 'Blue Mountains';
+    final nroPesaje = widget.pesajeData?['codigo'] ?? '#PES-8829';
+    final fecha = widget.pesajeData?['fecha'] ?? '15 de Octubre, 2023';
     
+    // Cálculos
     double totalBruto = _tambores.fold(0, (sum, item) => sum + (double.tryParse(item['peso_bruto']?.toString() ?? '0') ?? 0));
     double totalTara = _tambores.fold(0, (sum, item) => sum + (double.tryParse(item['tara']?.toString() ?? '0') ?? 0));
     double totalNeto = totalBruto - totalTara;
@@ -81,74 +84,67 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _fetchData,
-        color: DesignTokens.secondary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Registro de Pesajes', style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(20)),
-                    child: const Text('EN PROCESO', style: TextStyle(color: Color(0xFFC68E17), fontWeight: FontWeight.w800, fontSize: 10)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today_outlined, size: 16, color: Colors.black54),
-                      const SizedBox(width: 8),
-                      Text(DateFormat('dd de MMMM, yyyy', 'es_AR').format(DateTime.now()), 
-                        style: DesignTokens.bodyStyle().copyWith(color: Colors.black54, fontSize: 14)),
-                    ],
-                  ),
-                  Text('#PES-${DateTime.now().millisecondsSinceEpoch.toString().substring(9)}', 
-                    style: DesignTokens.headlineStyle().copyWith(fontSize: 18, color: const Color(0xFF424846))),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(child: _buildInfoCard(Icons.person_outline, 'APICULTOR', apicultorNombre)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildInfoCard(Icons.location_on_outlined, 'LOCALIDAD', localidad)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(child: _buildTotalCol('BRUTO', '${NumberFormat('#,###', 'es_AR').format(totalBruto)} kg')),
-                  Container(width: 1, height: 40, color: Colors.black12),
-                  Expanded(child: _buildTotalCol('TARA', '${NumberFormat('#,###', 'es_AR').format(totalTara)} kg')),
-                  Container(width: 1, height: 40, color: Colors.black12),
-                  Expanded(child: _buildTotalCol('NETO', '${NumberFormat('#,###', 'es_AR').format(totalNeto)} kg', isHighlighted: true)),
-                ],
-              ),
-              const SizedBox(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Detalle de Tambores', style: DesignTokens.headlineStyle().copyWith(fontSize: 20)),
-                  Text('${_tambores.length} ITEMS', style: DesignTokens.labelStyle().copyWith(color: Colors.black38, fontSize: 10)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildTamboresTable(),
-              const SizedBox(height: 100),
-            ],
-          ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Registro de Pesajes', style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(20)),
+                  child: const Text('EN PROCESO', style: TextStyle(color: Color(0xFFC68E17), fontWeight: FontWeight.w800, fontSize: 10)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today_outlined, size: 16, color: Colors.black54),
+                    const SizedBox(width: 8),
+                    Text(fecha, style: DesignTokens.bodyStyle().copyWith(color: Colors.black54, fontSize: 14)),
+                  ],
+                ),
+                Text(nroPesaje, style: DesignTokens.headlineStyle().copyWith(fontSize: 18, color: const Color(0xFF424846))),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(child: _buildInfoCard(Icons.person_outline, 'APICULTOR', apicultorNombre)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildInfoCard(Icons.location_on_outlined, 'LOCALIDAD', localidad)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(child: _buildTotalCol('BRUTO', '${NumberFormat('#,###', 'es_AR').format(totalBruto)} kg')),
+                Container(width: 1, height: 40, color: Colors.black12),
+                Expanded(child: _buildTotalCol('TARA', '${NumberFormat('#,###', 'es_AR').format(totalTara)} kg')),
+                Container(width: 1, height: 40, color: Colors.black12),
+                Expanded(child: _buildTotalCol('NETO', '${NumberFormat('#,###', 'es_AR').format(totalNeto)} kg', isHighlighted: true)),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Detalle de Tambores', style: DesignTokens.headlineStyle().copyWith(fontSize: 20)),
+                Text('${_tambores.length} ITEMS', style: DesignTokens.labelStyle().copyWith(color: Colors.black38, fontSize: 10)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildTamboresTable(),
+            const SizedBox(height: 100),
+          ],
         ),
       ),
       bottomNavigationBar: _buildBottomNav(),
@@ -157,7 +153,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
         width: MediaQuery.of(context).size.width - 40,
         height: 54,
         child: ElevatedButton.icon(
-          onPressed: () => context.push('/pesajesItem'),
+          onPressed: () {},
           icon: const Icon(Icons.add_circle_outline, color: DesignTokens.primary),
           label: const Text('Añadir Nuevo Registro', style: TextStyle(fontWeight: FontWeight.bold, color: DesignTokens.primary)),
           style: ElevatedButton.styleFrom(
