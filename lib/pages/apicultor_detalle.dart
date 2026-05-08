@@ -139,6 +139,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           _maxTotal = maxT > 0 ? maxT : 1.0;
           _loading = false;
         });
+        print('UI UPDATE: _pendientes has ${_pendientes.length} items');
       }
     } catch (e) {
       print('ApicultorDetalle: Error fetching detailed data: $e');

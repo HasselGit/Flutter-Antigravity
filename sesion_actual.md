@@ -36,9 +36,10 @@ GeoLogística es una plataforma integral para la gestión logística de la indus
 
 ## 6. Estado para la Próxima IA (Handoff)
 *   **Repositorio**: Sincronizado en GitHub.
-*   **Punto de Control**: La app compila correctamente. El flujo de "Operaciones Pendientes" en la ficha del apicultor ya consume datos reales de Supabase.
+*   **Punto de Control**: La app compila correctamente. El flujo de "Operaciones Pendientes" en la ficha del apicultor tiene la lógica de filtrado ultra-robusta implementada, aunque se reporta que Walter Spinozzi aún no muestra los datos en el emulador (posible retraso en renderizado o caché de estado).
 *   **Pendientes Próxima Sesión**:
-    1. Conectar el botón "VER PDF" en la lista de remitos a la lógica de generación de documentos.
+    1. Verificar por qué `_pendientes` se reporta vacío en el emulador de Walter a pesar de los matches positivos en el fetch.
+    2. Conectar el botón "VER PDF" en la lista de remitos a la lógica de generación de documentos.
     2. Validar el flujo de carga de imágenes en el módulo de Gastos.
     3. Pruebas de estrés en la sincronización Google Sheets -> Supabase.
 
