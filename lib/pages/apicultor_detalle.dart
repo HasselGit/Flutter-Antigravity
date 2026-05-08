@@ -832,4 +832,23 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       ],
     );
   }
+
+  Widget _buildEmptyState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.assignment_outlined, size: 32, color: Colors.black12),
+          const SizedBox(height: 12),
+          Text('No hay solicitudes pendientes', style: DesignTokens.bodyStyle().copyWith(color: Colors.black26, fontSize: 13)),
+        ],
+      ),
+    );
+  }
 }
