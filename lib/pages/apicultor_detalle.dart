@@ -34,28 +34,29 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       final code = widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id'];
       if (code == null) return;
       
-      // Intentamos buscar por apicultor_codigo ya que es el identificador único del GSheet
+      // 1. Obtener datos de la DB
       final fullData = await Supabase.instance.client
           .from('apicultores')
-          .select('id, nombre, localidad, apicultor_codigo, provincia, dni, cuit, renapa, telefono')
+          .select('id, nombre, localidad, apicultor_codigo, provincia, cuit, telefono')
           .eq('apicultor_codigo', code)
           .maybeSingle();
           
-      if (fullData != null && mounted) {
+      // 2. Obtener datos del fallback local (que contiene DNI y RENAPA)
+      final localData = ApicultoresData.fallbackApicultores.firstWhere(
+        (a) => a['apicultor_codigo'] == code,
+        orElse: () => {},
+      );
+
+      if (mounted) {
         setState(() {
-          widget.apicultor.addAll(fullData);
-        });
-      } else {
-        // Segundo fallback: Buscar en la lista local de 104 apicultores
-        final localData = ApicultoresData.fallbackApicultores.firstWhere(
-          (a) => a['apicultor_codigo'] == code,
-          orElse: () => {},
-        );
-        if (localData.isNotEmpty && mounted) {
-          setState(() {
+          // Unir datos: Prioridad DB > Local
+          if (localData.isNotEmpty) {
             widget.apicultor.addAll(localData);
-          });
-        }
+          }
+          if (fullData != null) {
+            widget.apicultor.addAll(fullData);
+          }
+        });
       }
     } catch (e) {
       print('Error refreshing apicultor data: $e');
@@ -83,10 +84,28 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes);
       
       final pendientes = allSols.where((s) {
-        final sid = s['apicultor_id']?.toString() ?? '';
+        final sid = (s['apicultor_id']?.toString() ?? '').trim().toUpperCase();
+        final cleanApiId = apiId.toString().trim().toUpperCase();
+        final cleanAltId = alternateId.toString().trim().toUpperCase();
         
-        // Match ESTRICTO por ID o por Código (únicos e irrepetibles)
-        return sid == apiId || sid == alternateId || sid.contains(apiId) || apiId.contains(sid);
+        // Match FLEXIBLE: ID exacto, ID alternativo o si uno contiene al otro
+        // Esto cubre casos como 'A01887' matching '1887' o 'A1887'
+        bool matches = sid == cleanApiId || sid == cleanAltId;
+        
+        if (!matches && sid.isNotEmpty && cleanApiId.isNotEmpty) {
+          // Extraer solo números para comparación numérica si los strings fallan
+          final numericSid = sid.replaceAll(RegExp(r'[^0-9]'), '');
+          final numericApiId = cleanApiId.replaceAll(RegExp(r'[^0-9]'), '');
+          if (numericSid.isNotEmpty && numericApiId.isNotEmpty) {
+            matches = numericSid == numericApiId || 
+                     (numericSid.length > 3 && numericApiId.contains(numericSid)) ||
+                     (numericApiId.length > 3 && numericSid.contains(numericApiId));
+          }
+        }
+        
+        // Solo mostrar las que están realmente PENDIENTES o sin asignar a un viaje
+        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
+        return matches && (estado == 'pendiente' || estado == 'solicitado');
       }).toList();
 
       _debugInfo = '';

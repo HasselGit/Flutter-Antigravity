@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
 
 class GastosPageWidget extends StatefulWidget {
   const GastosPageWidget({super.key});
@@ -131,6 +134,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     String? selectedMetodo = 'Efectivo';
     DateTime selectedFecha = DateTime.now();
     Map<String, dynamic>? selectedViaje;
+    XFile? pickedFile;
 
     // Local list of trips for the dropdown
     List<Map<String, dynamic>> availableTrips = [];
@@ -174,8 +178,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                             if (picked != null) setModalState(() => selectedFecha = picked);
                           },
                           child: InputDecorator(
-                            decoration: const InputDecoration(labelText: 'Fecha', prefixIcon: Icon(Icons.calendar_today_rounded)),
-                            child: Text(DateFormat('dd/MM/yyyy').format(selectedFecha)),
+                            decoration: InputDecoration(
+                              labelText: 'Fecha',
+                              prefixIcon: const Icon(Icons.calendar_today_rounded, color: DesignTokens.primary),
+                              filled: true,
+                              fillColor: DesignTokens.surface,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                            ),
+                            child: Text(DateFormat('dd/MM/yyyy').format(selectedFecha), style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ),
@@ -183,7 +194,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                       Expanded(
                         child: TextField(
                           controller: comprobanteController,
-                          decoration: const InputDecoration(labelText: 'N° Comprobante', prefixIcon: Icon(Icons.receipt_rounded)),
+                          decoration: InputDecoration(
+                            labelText: 'N° Comprobante',
+                            prefixIcon: const Icon(Icons.receipt_rounded, color: DesignTokens.primary),
+                            filled: true,
+                            fillColor: DesignTokens.surface,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                          ),
                         ),
                       ),
                     ],
@@ -192,7 +211,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
                   DropdownButtonFormField<String>(
                     value: selectedTipo,
-                    decoration: const InputDecoration(labelText: 'Tipo de Gasto', prefixIcon: Icon(Icons.category_rounded)),
+                    decoration: InputDecoration(
+                      labelText: 'Tipo de Gasto',
+                      prefixIcon: const Icon(Icons.category_rounded, color: DesignTokens.primary),
+                      filled: true,
+                      fillColor: DesignTokens.surface,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                    ),
                     items: ['Combustible', 'Comida', 'Peaje', 'Reparación', 'Otros']
                         .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                         .toList(),
@@ -202,7 +229,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
                   DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedViaje,
-                    decoration: const InputDecoration(labelText: 'Vincular a Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
+                    decoration: InputDecoration(
+                      labelText: 'Vincular a Viaje',
+                      prefixIcon: const Icon(Icons.local_shipping_rounded, color: DesignTokens.primary),
+                      filled: true,
+                      fillColor: DesignTokens.surface,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                    ),
                     hint: const Text('Seleccione un viaje...'),
                     items: availableTrips.map((v) => DropdownMenuItem(
                       value: v,
@@ -218,14 +253,29 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                         child: TextField(
                           controller: amountController,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Importe (\$)', prefixIcon: Icon(Icons.attach_money_rounded)),
+                          decoration: InputDecoration(
+                            labelText: 'Importe (\$)',
+                            prefixIcon: const Icon(Icons.attach_money_rounded, color: DesignTokens.primary),
+                            filled: true,
+                            fillColor: DesignTokens.surface,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: selectedMetodo,
-                          decoration: const InputDecoration(labelText: 'Forma de Pago'),
+                          decoration: InputDecoration(
+                            labelText: 'Forma de Pago',
+                            filled: true,
+                            fillColor: DesignTokens.surface,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                          ),
                           items: ['Efectivo', 'Tarjeta', 'Transferencia', 'Cuenta Corriente']
                               .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                               .toList(),
@@ -238,17 +288,26 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
                   TextField(
                     controller: descController,
-                    decoration: const InputDecoration(labelText: 'Observaciones', prefixIcon: Icon(Icons.notes_rounded)),
+                    decoration: InputDecoration(
+                      labelText: 'Observaciones',
+                      prefixIcon: const Icon(Icons.notes_rounded, color: DesignTokens.primary),
+                      filled: true,
+                      fillColor: DesignTokens.surface,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                    ),
                   ),
                   const SizedBox(height: 20),
 
-                   // Sección de Foto (Ahora interactiva)
+                   // Sección de Foto (Ahora funcional)
                    InkWell(
                      onTap: () async {
-                       ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                         content: Text('Cámara solicitada. Por favor, adjunte el comprobante.'),
-                         duration: Duration(seconds: 2),
-                       ));
+                       final ImagePicker picker = ImagePicker();
+                       final XFile? image = await picker.pickImage(source: ImageSource.camera);
+                       if (image != null) {
+                         setModalState(() => pickedFile = image);
+                       }
                      },
                      child: Container(
                        width: double.infinity,
@@ -258,15 +317,27 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                          borderRadius: BorderRadius.circular(12),
                          border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
                        ),
-                       child: Column(
-                         children: [
-                           const Icon(Icons.camera_alt_rounded, size: 32, color: DesignTokens.primary),
-                           const SizedBox(height: 8),
-                           const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
-                           const SizedBox(height: 4),
-                           Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
-                         ],
-                       ),
+                       child: pickedFile != null 
+                         ? Column(
+                             children: [
+                               ClipRRect(
+                                 borderRadius: BorderRadius.circular(8),
+                                 child: Image.file(File(pickedFile!.path), height: 100, width: double.infinity, fit: BoxFit.cover),
+                               ),
+                               const SizedBox(height: 8),
+                               const Text('FOTO ADJUNTADA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                               const Text('Toca para cambiar', style: TextStyle(fontSize: 10, color: Colors.black26)),
+                             ],
+                           )
+                         : Column(
+                             children: [
+                               const Icon(Icons.camera_alt_rounded, size: 32, color: DesignTokens.primary),
+                               const SizedBox(height: 8),
+                               const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
+                               const SizedBox(height: 4),
+                               Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
+                             ],
+                           ),
                      ),
                    ),
 
@@ -282,6 +353,20 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                           return;
                         }
                         try {
+                          String? publicUrl;
+                          if (pickedFile != null) {
+                            final bytes = await pickedFile!.readAsBytes();
+                            final ext = p.extension(pickedFile!.path);
+                            final fileName = 'gasto_${DateTime.now().millisecondsSinceEpoch}$ext';
+                            
+                            await Supabase.instance.client.storage.from('gastos').uploadBinary(
+                              fileName, 
+                              bytes,
+                              fileOptions: const FileOptions(contentType: 'image/jpeg'),
+                            );
+                            publicUrl = Supabase.instance.client.storage.from('gastos').getPublicUrl(fileName);
+                          }
+
                           final user = Supabase.instance.client.auth.currentUser;
                           await Supabase.instance.client.from('gastos').insert({
                             'tipo_gasto': selectedTipo,
@@ -292,6 +377,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                             'viaje_id': selectedViaje?['id'],
                             'fecha': selectedFecha.toIso8601String(),
                             'chofer_id': user?.id,
+                            'comprobante_url': publicUrl,
                           });
                           if (ctx.mounted) {
                             Navigator.pop(ctx);

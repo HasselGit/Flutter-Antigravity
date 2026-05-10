@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../components/agregaritem.dart';
 import '../backend/design_tokens.dart';
+import '../backend/app_states.dart';
 
 class ParadaDetalleWidget extends StatefulWidget {
   const ParadaDetalleWidget({super.key, required this.paradaId});
@@ -77,7 +78,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
             children: [
               FutureBuilder<Map<String, dynamic>?>(
                 future: widget.paradaId != null 
-                  ? Supabase.instance.client.from('paradas').select('id, orden_secuencia, tipo, ubicacion, localidad, bruto_kg, neto_kg').eq('id', widget.paradaId!).maybeSingle().then((data) {
+                  ? Supabase.instance.client.from('paradas').select('id, orden_secuencia, tipo, ubicacion, localidad, bruto_kg, neto_kg, viaje_id, apicultor_id').eq('id', widget.paradaId!).maybeSingle().then((data) {
                       if (data != null) {
                         data['apicultor_nombre'] = data['ubicacion']; // Map to legacy field name used in UI
                       }
@@ -102,6 +103,9 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         _buildHeader(p),
                         const SizedBox(height: 32),
                         _buildItemsSection(),
+                        // Sección de pesaje — opcional para Recoleccion
+                        if ((p['tipo'] ?? '').toString().toLowerCase().contains('recolec')) ...
+                          [const SizedBox(height: 32), _buildPesajeSection(p)],
                         const SizedBox(height: 32),
                         _buildDigitalRemitoForm(p),
                         const SizedBox(height: 100),
@@ -114,6 +118,100 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
           ),
         ),
       ),
+    );
+  }
+
+  // ─── SECCIÓN DE PESAJE (solo Recoleccion) ──────────────────────────────────
+  Widget _buildPesajeSection(Map<String, dynamic> p) {
+    final viajeId = p['viaje_id']?.toString() ?? '';
+    final apicultorNombre = p['ubicacion'] ?? p['localidad'] ?? 'S/D';
+    final localidad = p['localidad'] ?? 'S/D';
+    final apicultorId = p['apicultor_id']?.toString();
+
+    // Obtener viaje_codigo del viaje asociado
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: viajeId.isNotEmpty
+          ? Supabase.instance.client.from('viajes').select('viaje_codigo').eq('id', viajeId).maybeSingle()
+          : Future.value(null),
+      builder: (context, snap) {
+        final viajeCode = snap.data?['viaje_codigo']?.toString() ?? 'V-S/N';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('PESAJE DE TAMBORES (TCM) — OPCIONAL', style: DesignTokens.labelStyle()),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: DesignTokens.secondary.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: DesignTokens.secondary.withOpacity(0.15)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: DesignTokens.secondary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.scale_rounded, size: 22, color: DesignTokens.secondary),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Registrar pesos por tambor',
+                              style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 15, color: DesignTokens.primary),
+                            ),
+                            Text(
+                              'Escán cod. SENASA \u2022 Ingresá Bruto y Tara',
+                              style: TextStyle(fontSize: 12, color: DesignTokens.primary.withOpacity(0.45)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () => context.push(
+                        '/agregarPesaje',
+                        extra: {
+                          'paradaId': widget.paradaId ?? '',
+                          'viajeId': viajeId,
+                          'viajeCode': viajeCode,
+                          'apicultorNombre': apicultorNombre,
+                          'localidad': localidad,
+                          if (apicultorId != null) 'apicultorId': apicultorId,
+                        },
+                      ).then((_) => setState(() {})),
+                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                      label: const Text(
+                        'AGREGAR PESAJE',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DesignTokens.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -341,7 +439,16 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   }
 
   Future<void> _generarRemito(Map<String, dynamic> p) async {
-    // Implementación de generación de remito
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generando remito digital...')));
+    final nombre = _receptorNombreController.text.trim();
+    final dni = _receptorDniController.text.trim();
+    if (nombre.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ingrese el nombre del responsable')));
+      return;
+    }
+    // Navegar a RemitoPage con todos los parámetros
+    context.push(
+      '/remito?paradaId=${widget.paradaId}&receptorTipo=${Uri.encodeComponent(_receptorTipo ?? 'Apicultor')}&receptorNombre=${Uri.encodeComponent(nombre)}&receptorDni=${Uri.encodeComponent(dni)}',
+    );
   }
 }

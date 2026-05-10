@@ -28,6 +28,9 @@ import 'pages/planificar_viaje.dart';
 import 'pages/apicultores_page.dart';
 import 'pages/gastos_page.dart';
 import 'pages/remitos_lista_page.dart';
+import 'pages/agregar_pesaje.dart';
+import 'pages/cargas_page.dart';
+import 'pages/carga_detalle.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -222,6 +225,37 @@ final GoRouter _router = GoRouter(
       path: '/remitosLista',
       name: 'RemitosListaPage',
       builder: (context, state) => const RemitosListaPageWidget(),
+    ),
+    GoRoute(
+      path: '/agregarPesaje',
+      name: 'AgregarPesaje',
+      builder: (context, state) {
+        // Acepta params por extra (desde context.push) o por queryParameters (URL directa)
+        final extra = state.extra as Map<String, dynamic>?;
+        final params = state.uri.queryParameters;
+        return AgregarPesajeWidget(
+          paradaId: extra?['paradaId']?.toString() ?? params['paradaId'] ?? '',
+          viajeId: extra?['viajeId']?.toString() ?? params['viajeId'],
+          viajeCode: extra?['viajeCode']?.toString() ?? params['viajeCode'] ?? 'V-S/N',
+          apicultorNombre: extra?['apicultorNombre']?.toString() ?? params['apicultorNombre'] ?? 'S/D',
+          localidad: extra?['localidad']?.toString() ?? params['localidad'] ?? 'S/D',
+          apicultorId: extra?['apicultorId']?.toString() ?? params['apicultorId'],
+        );
+      },
+    ),
+    GoRoute(
+      path: '/cargas',
+      name: 'CargasPage',
+      builder: (context, state) => const CargasPageWidget(),
+    ),
+    GoRoute(
+      path: '/cargaDetalle',
+      name: 'CargaDetalle',
+      builder: (context, state) {
+        final id = state.uri.queryParameters['id'];
+        final isNew = state.uri.queryParameters['new'] == 'true';
+        return CargaDetalleWidget(cargaId: id, isNew: isNew);
+      },
     ),
   ],
 );

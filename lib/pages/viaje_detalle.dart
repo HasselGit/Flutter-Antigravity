@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:geo_logistica/backend/supabase_service.dart';
 import 'package:geo_logistica/backend/design_tokens.dart';
+import 'package:geo_logistica/backend/app_states.dart';
 import 'package:geo_logistica/flutter_flow/flutter_flow_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ViajeDetalleWidget extends StatefulWidget {
   final String viajeId;
@@ -17,22 +19,55 @@ class ViajeDetalleWidget extends StatefulWidget {
 class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   Map<String, dynamic>? _viaje;
   bool _loading = true;
+  bool _saving = false;
+  String? _userRole;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadRoleAndData();
+  }
+
+  Future<void> _loadRoleAndData() async {
+    final prefs = await SharedPreferences.getInstance();
+    _userRole = prefs.getString('user_puesto');
+    _userId = prefs.getString('user_id');
+    await _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
       final data = await SupabaseService().getViajeDetalle(widget.viajeId);
-      setState(() => _viaje = data);
+      if (mounted) setState(() => _viaje = data);
     } catch (e) {
       print('Error cargando detalle: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  bool get _isChofer => _userRole == 'Chofer';
+  bool get _canEditRoute =>
+      _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras';
+
+  Future<void> _cambiarEstado(String nuevoEstado) async {
+    setState(() => _saving = true);
+    try {
+      await SupabaseService().updateViajeEstado(widget.viajeId, nuevoEstado);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Viaje actualizado: $nuevoEstado'),
+          backgroundColor: Colors.green,
+        ));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -49,8 +84,11 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         ? '${chofer['nombre']} ${chofer['apellido']}' 
         : 'ID: ${_viaje!['chofer_id'] ?? 'S/D'}';
 
-    final bool esPlanificado = _viaje!['estado'] == 'Planificado';
+    final bool esPendiente = _viaje!['estado'] == AppStates.pendiente;
+    final bool esEnCurso = _viaje!['estado'] == AppStates.enCurso;
     final bool tieneRuta = paradas.isNotEmpty;
+    final bool todasTerminadas = tieneRuta &&
+        paradas.every((p) => AppStates.normalize(p['estado']) == AppStates.terminado);
 
     return Scaffold(
       backgroundColor: theme.primaryBackground,
@@ -69,13 +107,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
             _buildInfoCard(theme, choferNombre),
             const SizedBox(height: 24),
 
-            // BOTÓN AGREGAR RUTA (Si es planificado y no tiene ruta)
-            if (esPlanificado && !tieneRuta)
+            // BOTÓN AGREGAR RUTA (solo Gerente/CEO/Compras, si Pendiente y sin ruta)
+            if (_canEditRoute && esPendiente && !tieneRuta)
               Padding(
                 padding: const EdgeInsets.only(bottom: 24),
                 child: SizedBox(
-                  width: double.infinity,
-                  height: 60,
+                  width: double.infinity, height: 60,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.add_road),
                     label: const Text('AGREGAR RUTA Y SOLICITUDES'),
@@ -84,6 +121,72 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   ),
                 ),
               ),
+
+            // BOTONES DE ESTADO PARA CHOFER
+            if (_isChofer) ...[
+              if (esPendiente && tieneRuta)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: SizedBox(
+                    width: double.infinity, height: 56,
+                    child: ElevatedButton.icon(
+                      icon: _saving
+                          ? const SizedBox(width: 18, height: 18,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.play_circle_outline_rounded),
+                      label: const Text('INICIAR VIAJE'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1565C0),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      onPressed: _saving ? null : () => _cambiarEstado(AppStates.enCurso),
+                    ),
+                  ),
+                ),
+              if (esEnCurso && todasTerminadas)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: SizedBox(
+                    width: double.infinity, height: 56,
+                    child: ElevatedButton.icon(
+                      icon: _saving
+                          ? const SizedBox(width: 18, height: 18,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.check_circle_outline_rounded),
+                      label: const Text('FINALIZAR VIAJE'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1A6B43),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      onPressed: _saving ? null : () => _cambiarEstado(AppStates.terminado),
+                    ),
+                  ),
+                ),
+              // Aviso de ruta bloqueada
+              if (esEnCurso)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                    child: const Row(children: [
+                      Icon(Icons.lock_outline_rounded, color: Colors.orange, size: 16),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Ruta bloqueada — Contacte al Gerente para modificaciones.',
+                          style: TextStyle(fontFamily: 'Inter', fontSize: 12,
+                              color: Colors.orange, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+            ],
 
             // SECCIÓN: HOJA DE RUTA (NODOS Y REMITOS)
             _buildSectionTitle(theme, 'Operaciones y Documentación', Icons.assignment_outlined),

@@ -71,8 +71,9 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: DesignTokens.primary),
-          onPressed: () => context.pop(),
+          onPressed: () => context.go('/home'),
         ),
+        centerTitle: false,
         title: Text(
           'Directorio de Apicultores',
           style: DesignTokens.headlineStyle(),

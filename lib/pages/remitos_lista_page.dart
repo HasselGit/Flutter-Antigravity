@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
 
 class RemitosListaPageWidget extends StatefulWidget {
   const RemitosListaPageWidget({super.key});
@@ -52,23 +55,16 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: DesignTokens.primary, size: 20),
           onPressed: () => context.go('/home'),
         ),
-        centerTitle: true,
-        title: null,
+        centerTitle: false,
+        title: Text('Remitos PDF', style: DesignTokens.headlineStyle()),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Remitos PDF', style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 4),
-                Text('Gestión y control de documentación de carga.', style: DesignTokens.bodyStyle().copyWith(color: Colors.black38, fontSize: 14)),
-              ],
-            ),
+            child: Text('Gestión y control de documentación de carga.', style: DesignTokens.bodyStyle().copyWith(color: Colors.black38, fontSize: 14)),
           ),
           const SizedBox(height: 24),
           _buildSearchAndFilter(),
@@ -88,7 +84,6 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -228,9 +223,22 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
               Text(DateFormat('dd MMM yyyy • HH:mm').format(DateTime.tryParse(r['created_at']?.toString() ?? '') ?? DateTime.now()), 
                 style: const TextStyle(fontSize: 12, color: Colors.black38)),
               const Spacer(),
-              _buildCircleButton(Icons.download_outlined),
+              _buildCircleButton(Icons.download_outlined, onTap: () async {
+                final url = r['pdf_url'];
+                if (url != null) {
+                  final resp = await http.get(Uri.parse(url));
+                  await Printing.sharePdf(bytes: resp.bodyBytes, filename: 'Remito_${r['remito_codigo']}.pdf');
+                }
+              }),
               const SizedBox(width: 12),
-              _buildTextButton('VER PDF'),
+              _buildTextButton('VER PDF', onTap: () async {
+                final url = r['pdf_url'];
+                if (url != null) {
+                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL del PDF no disponible')));
+                }
+              }),
             ],
           ),
         ],
@@ -254,27 +262,35 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
     );
   }
 
-  Widget _buildCircleButton(IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFF5F5F5)),
-        borderRadius: BorderRadius.circular(10),
+  Widget _buildCircleButton(IconData icon, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFF5F5F5)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, size: 20, color: Colors.black38),
       ),
-      child: Icon(icon, size: 20, color: Colors.black38),
     );
   }
 
-  Widget _buildTextButton(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(color: const Color(0xFF1E302C), borderRadius: BorderRadius.circular(10)),
-      child: Row(
-        children: [
-          const Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 16),
-          const SizedBox(width: 8),
-          Text(text, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-        ],
+  Widget _buildTextButton(String text, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(color: const Color(0xFF1E302C), borderRadius: BorderRadius.circular(10)),
+        child: Row(
+          children: [
+            const Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Text(text, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
@@ -292,40 +308,5 @@ class _RemitosListaPageWidgetState extends State<RemitosListaPageWidget> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return Container(
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildNavItem(Icons.local_shipping_outlined, 'Flota', onTap: () => context.go('/vehiculos')),
-          _buildNavItem(Icons.person_outline, 'Apicultores', onTap: () => context.go('/apicultores')),
-          _buildNavItem(Icons.route_outlined, 'Rutas', onTap: () => context.go('/rutas')),
-          _buildNavItem(Icons.description_outlined, 'Remitos', active: true, onTap: () {}),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildNavItem(IconData icon, String label, {bool active = false, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: active ? const Color(0xFFC68E17) : Colors.black26, size: 24),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(
-            fontSize: 8, 
-            fontWeight: FontWeight.w900,
-            color: active ? const Color(0xFFC68E17) : Colors.black26
-          )),
-        ],
-      ),
-    );
-  }
 }

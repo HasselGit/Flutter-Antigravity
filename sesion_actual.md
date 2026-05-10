@@ -1,47 +1,157 @@
 # Blueprint Maestro de Sesión: GeoLogística
-**Fecha de actualización:** 08 de Mayo de 2026 (17:00hs)
+**Fecha de actualización:** 09 de Mayo de 2026 (20:30hs)
 
 ## 1. Contexto del Proyecto
 GeoLogística es una plataforma integral para la gestión logística de la industria apícola, diseñada bajo el sistema estético "Stitch Premium" (Verde Bosque, Dorado Miel, Crema). La aplicación gestiona desde la solicitud del productor hasta la entrega final y el pesaje, integrando Supabase como motor de datos.
 
 ## 2. Arquitectura Técnica
 *   **Framework:** Flutter (Mobile/Desktop).
-*   **Backend:** Supabase (Auth, DB, Storage).
-*   **Navegación:** GoRouter (Rutas centralizadas en `main.dart`).
+*   **Backend:** Supabase (Auth, DB, Storage). URL: `https://suwcqdlxnmfcvmlnzizl.supabase.co`
+*   **Navegación:** GoRouter (Rutas centralizadas en `main.dart`). Usa `context.go()` para navegación principal y `context.push()` para sub-pantallas.
 *   **Estado:** State Management local + SharedPreferences para persistencia de roles y sesión.
-*   **Diseño:** `DesignTokens` (localizado en `lib/backend/design_tokens.dart`) define la paleta oficial (#08201A, #C68E17, #FBFBFB).
+*   **Diseño:** `DesignTokens` (`lib/backend/design_tokens.dart`). Paleta: `#1E302C` (primary), `#C68E17` (secondary), `#FBFBFB` (surface).
+*   **Fuentes:** Manrope (títulos), Work Sans (labels), Inter (body).
 
 ## 3. Modelo de Datos y Lógica de Negocio (Core)
-### Tablas Críticas en Supabase:
-*   **`apicultores`**: Maestro de productores. El campo `apicultor_codigo` (ej: A01887) es el identificador humano, mientras que `id` es el UUID/Serial.
-*   **`solicitudes`**: Pedidos de "Recolección" o "Distribución". Se vinculan mediante `apicultor_id` (que puede ser el UUID o el código humano en algunos casos históricos).
-*   **`viajes`**: Contenedor principal de rutas. Estados: `Planificado`, `En Proceso`, `Terminado`.
-*   **`paradas`**: Nodos de un viaje. Vinculados a una `solicitud`.
-*   **`parada_items`**: Detalle de productos (Tambores, Alzas, Insumos) por parada.
-*   **`remitos`**: Documentos digitales finales vinculados a una parada/viaje.
 
-## 4. Avances Consolidados (Día 1 hasta Hoy)
-### Módulos Finalizados:
-*   **Autenticación**: Login robusto con redirección por roles (Chofer, Gerente, CEO, Compras).
-*   **Directorio de Apicultores**: Búsqueda por nombre/localidad y ficha técnica detallada.
-*   **Planificador de Rutas**: Sistema de creación de viajes con selección de vehículo, chofer y paradas múltiples.
-*   **Control de Pesajes**: Interfaz premium para el registro de kilos brutos, tara y neto.
-*   **Gestión de Gastos**: Registro de combustible, peajes y viáticos con soporte para imágenes (en proceso).
-*   **Remitos Digitales (NUEVO)**: Interfaz de alta fidelidad con filtros por tipo de operación y búsqueda integrada.
+### Tablas en Supabase (confirmadas y activas):
+| Tabla | Propósito |
+|---|---|
+| `apicultores` | Maestro de productores. `apicultor_codigo` (ej: A01887) es el ID humano. |
+| `solicitudes` | Pedidos de Recolección/Distribución. Estados: Pendiente → En Curso → Terminado |
+| `viajes` | Contenedor de rutas. Estados: **Pendiente → En Curso → Terminado** (estandarizados) |
+| `paradas` | Nodos de un viaje. Tiene `viaje_id`, `tipo` (Recoleccion/Distribucion), `localidad`, `ubicacion`. Estados: Pendiente → Terminado |
+| `parada_items` | Productos por parada. Campos: `producto_codigo`, `cantidad` (neto), `total_kg` (bruto). |
+| `pesajes` | Un registro por tambor. Campos: `parada_id`, `viaje_id`, `apicultor_id`, `senasa_codigo`, `peso_bruto`, `tara`, `peso_neto`. |
+| `cargas` | **NUEVA (09/05/2026)**. Carga asignada a un viaje. Estados: Pendiente → En Curso → Terminado. Gestionada por Encargado de Depósito. |
+| `carga_items` | Ítems de cada carga. Campos: `carga_id`, `producto_codigo`, `cantidad`, `unidad`. |
+| `remitos` | Documentos digitales vinculados a parada/viaje. |
+| `vehiculos` | Vehículos con `capacidad_kg`, `capacidad_tambores`, **`carga_actual_kg`**, **`carga_actual_tambores`** (depósito circulante). |
 
-## 5. Cambios Específicos de Hoy (08/05/2026)
-*   **Estabilización de Datos**: Se restauró la búsqueda estricta en `apicultor_detalle.dart`. Ahora el sistema busca coincidencias por ID único y Código alternativo, garantizando que las 6 solicitudes cargadas para el usuario de prueba (Walter) sean visibles.
-*   **Interfaz de Remitos**: Se eliminaron elementos heredados de "ApiaryLogistics". La página ahora muestra "Remitos PDF" con una barra de navegación funcional (Flota, Apicultores, Rutas, Remitos).
-*   **Branding GeoLogística**: Eliminación de overlays de debug rojos y limpieza de la AppBar para un look premium minimalista.
+### Estados Unificados (estándar para TODA la app):
+```
+TODOS LOS ESTADOS = Pendiente | En Curso | Terminado
+```
+- ~~`Planificado`~~ → `Pendiente`
+- ~~`En Proceso`~~ → `En Curso`
+- ~~`Finalizado`~~ / ~~`Completado`~~ → `Terminado`
+- Las constantes están centralizadas en `lib/backend/app_states.dart`
 
-## 6. Estado para la Próxima IA (Handoff)
-*   **Repositorio**: Sincronizado en GitHub.
-*   **Punto de Control**: La app compila correctamente. El flujo de "Operaciones Pendientes" en la ficha del apicultor tiene la lógica de filtrado ultra-robusta implementada, aunque se reporta que Walter Spinozzi aún no muestra los datos en el emulador (posible retraso en renderizado o caché de estado).
-*   **Pendientes Próxima Sesión**:
-    1. Verificar por qué `_pendientes` se reporta vacío en el emulador de Walter a pesar de los matches positivos en el fetch.
-    2. Conectar el botón "VER PDF" en la lista de remitos a la lógica de generación de documentos.
-    2. Validar el flujo de carga de imágenes en el módulo de Gastos.
-    3. Pruebas de estrés en la sincronización Google Sheets -> Supabase.
+### Flujo de Negocio Completo:
+```
+SOLICITUD (Pendiente)
+    ↓ Gerente/CEO/Compras planifica
+VIAJE (Pendiente) + PARADAS (Pendientes) + PARADA_ITEMS
+    ↓ Gerente/CEO/Compras asigna carga (opcional — no todos los viajes tienen carga)
+CARGA (Pendiente) — asignada al viaje, Depósito la gestiona
+    ↓ Encargado de Depósito: INICIAR CARGA
+CARGA (En Curso) — Depósito cargando el camión
+    ↓ Encargado de Depósito: CONFIRMAR CARGA TERMINADA
+CARGA (Terminado) → vehiculo.carga_actual_kg actualizado
+    ↓ Chofer: INICIAR VIAJE (desde ViajeDetalle)
+VIAJE (En Curso) — Chofer en ruta
+    ↓ En cada parada: pesaje (opcional en Recolección) → firma → PDF
+PARADA (Terminada) + REMITO (Emitido)
+    ↓ Chofer: FINALIZAR VIAJE (cuando todas las paradas terminadas)
+VIAJE (Terminado) + SOLICITUD (Terminada)
+```
+
+### Reglas de Negocio Clave:
+| Regla | Implementación |
+|---|---|
+| No todo viaje tiene carga | Cargas es entidad separada y opcional por viaje |
+| No toda recolección requiere pesaje | Sección de pesaje es OPCIONAL (visible pero no obligatoria) |
+| Chofer NO puede cambiar ruta | Sin botón de edición en ViajeDetalle para rol Chofer |
+| Cambio de ruta = autorización del Gerente | Solo Gerente/CEO/Compras acceden a PlanificarViaje |
+| Camión como depósito circulante | `carga_actual_kg` se suma con Carga Terminada |
+| Alerta de capacidad | Visible en CargaDetalle y VehiculoDetalle |
+
+## 4. Arquitectura de Archivos Clave
+```
+lib/
+├── main.dart                    ← GoRouter con todas las rutas
+├── backend/
+│   ├── app_states.dart          ← NUEVO: constantes de estado centralizadas + normalizer
+│   ├── design_tokens.dart       ← Paleta, tipografía, estilos de botones
+│   └── supabase_service.dart    ← Queries de datos (getCargas, createCarga, updateCargaEstado, etc.)
+└── pages/
+    ├── gerentehome.dart         ← Dashboard Gerencial (referencia de diseño de AppBar)
+    ├── choferhome.dart          ← Dashboard Chofer. Tabs: PENDIENTES / EN CURSO / TERMINADOS
+    ├── depositohome.dart        ← Hub del Depósito: acceso a Cargas, Vehículos, Remitos, Viajes
+    ├── cargas_page.dart         ← NUEVA: lista de cargas con 3 tabs de estado (mismo estilo rutas_page)
+    ├── carga_detalle.dart       ← NUEVA: detalle de carga + barra de depósito circulante + cambio de estado
+    ├── viaje_detalle.dart       ← Detalle de viaje. Botones INICIAR/FINALIZAR para Chofer. Ruta bloqueada.
+    ├── paradadetalle.dart       ← Operación en parada. Pesaje OPCIONAL. Fix: navega a RemitoPage correctamente.
+    ├── agregar_pesaje.dart      ← Formulario por tambor. Guarda en tabla pesajes.
+    ├── planificar_viaje.dart    ← Crear/editar viajes (solo Gerente/CEO/Compras)
+    ├── pesajes_page.dart        ← Lista de pesajes agrupados por viaje/parada
+    ├── remitos_lista_page.dart  ← Lista de remitos PDF con filtros
+    └── remito_page.dart         ← Generación de remito digital (firma + PDF + WhatsApp)
+```
+
+## 5. Convenciones de UI — Estándar de AppBar
+Todas las páginas principales deben seguir el patrón de `gerentehome.dart`:
+```dart
+AppBar(
+  backgroundColor: Colors.white,   // o DesignTokens.surface
+  elevation: 0,
+  centerTitle: false,               // ← SIEMPRE false
+  leading: IconButton(
+    icon: Icon(Icons.arrow_back_ios_new_rounded, color: DesignTokens.primary, size: 20),
+    onPressed: () => context.go('/home'),  // go() para módulos principales
+  ),
+  title: Text('Nombre de Página', style: DesignTokens.headlineStyle()),
+)
+```
+
+## 6. Avances Completados en Sesión 09/05/2026 (tarde/noche)
+
+### Estandarización de Estados:
+- ✅ **`app_states.dart`** creado: constantes `Pendiente`, `En Curso`, `Terminado` + método `normalize()` + helpers de colores.
+- ✅ **Migración en Supabase**: todos los registros históricos migrados al nuevo estándar.
+- ✅ **`choferhome.dart`**: tabs renombrados, comparaciones actualizadas a `AppStates.*`.
+- ✅ **`supabase_service.dart`**: `getStats()` y creación de viajes usan nuevos estados.
+
+### Módulo de Cargas (NUEVO):
+- ✅ **Tabla `cargas`** y **`carga_items`** creadas en Supabase.
+- ✅ **`cargas_page.dart`**: lista con tabs Pendiente/En Curso/Terminado. Mismo formato de card que `rutas_page.dart`. FAB para crear carga (solo Gerente/CEO/Compras).
+- ✅ **`carga_detalle.dart`**: header, barra de depósito circulante (carga actual vs capacidad, alerta si excede), lista de ítems, botones de cambio de estado (solo Encargado de Depósito: INICIAR CARGA → CONFIRMAR TERMINADA).
+- ✅ **`depositohome.dart`** rediseñado: hub con grid de acciones rápidas + alertas de cargas pendientes.
+
+### Depósito Circulante del Vehículo:
+- ✅ Columnas `carga_actual_kg` y `carga_actual_tambores` agregadas a tabla `vehiculos`.
+- ✅ `_actualizarDepositoCirculante()` en `supabase_service.dart`: se ejecuta al confirmar carga `Terminada`.
+- ✅ Visualización en `carga_detalle.dart`: barra de progreso kg/tambores + texto proyectado.
+
+### Fix Crítico — Remito:
+- ✅ **`paradadetalle.dart`**: `_generarRemito()` ahora navega correctamente a `/remito` pasando `paradaId`, `receptorTipo`, `receptorNombre`, `receptorDni` como query params.
+
+### Chofer — Cambio de Estado del Viaje:
+- ✅ **`viaje_detalle.dart`**: botón **INICIAR VIAJE** (azul) cuando estado `Pendiente` y tiene paradas.
+- ✅ Botón **FINALIZAR VIAJE** (verde) cuando estado `En Curso` y todas las paradas están `Terminado`.
+- ✅ Aviso "RUTA BLOQUEADA — Contacte al Gerente" cuando viaje `En Curso`.
+- ✅ Botón de editar ruta solo visible para roles Gerente/CEO/Compras.
+
+### Rutas en `main.dart`:
+- ✅ `/cargas` → `CargasPageWidget`
+- ✅ `/cargaDetalle?id=X` → `CargaDetalleWidget(cargaId: X)`
+- ✅ `/cargaDetalle?new=true` → `CargaDetalleWidget(isNew: true)`
+
+## 7. Estado Técnico del Entorno
+- **Compilación**: ✅ `flutter build apk --debug` → `Exit code: 0` — BUILD SUCCESS.
+- **App corriendo**: ✅ `flutter run -d emulator-5554` — activa en emulador Android.
+- **Supabase**: Tablas `cargas`, `carga_items` activas. Columnas `carga_actual_*` en `vehiculos`. Estados migrados.
+- **GitHub**: Sincronizar al final de cada sesión.
+- **Java**: Java 17. Warnings de `options source 8` son ignorables.
+- **Emulador**: `sdk gphone64 x86 64` (API 34 Android). `emulator-5554`.
+
+## 8. Pendientes — Próxima Sesión
+1. **Vincular solicitudes al cerrar remito**: al finalizar una parada (generar remito), cambiar `solicitudes.estado = 'Terminado'` para las solicitudes relacionadas.
+2. **VehiculoDetalle**: mostrar sección "DEPÓSITO CIRCULANTE" con barra de progreso kg/tambores.
+3. **Gastos vinculados al viaje activo**: el chofer registra gastos directamente desde ViajeDetalle.
+4. **WhatsApp con número precargado**: el link `wa.me/` debe incluir el teléfono del apicultor.
+5. **Proteger edición de viajes activos**: no permitir `updateViajeCompleto` si hay paradas con remito generado.
+6. **Testing flujo completo**: Solicitud → Planificación → Carga → Depósito → Viaje → Pesaje → Remito.
 
 ---
-*Este documento es la única fuente de verdad para la continuidad del desarrollo. GeoLogística v1.0.5 - "Ready for Field Testing".*
+*GeoLogística v1.2.0 — "Cargas & Estados Unificados" — 09/05/2026 20:30hs*

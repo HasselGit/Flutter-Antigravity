@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'apicultores_data.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -22,7 +21,7 @@ class SupabaseService {
       ).timeout(const Duration(seconds: 5));
       
       if (authRes.user != null) {
-        final profile = await _client.from('profiles').select('id, nombre, apellido, email, puesto').eq('id', authRes.user!.id).maybeSingle();
+        final profile = await _client.from('profiles').select().eq('id', authRes.user!.id).maybeSingle();
         if (profile != null) {
           print('SupabaseService: Login exitoso vía Auth para ${profile['nombre']}');
           return await _saveLocal(profile);
@@ -36,11 +35,11 @@ class SupabaseService {
     try {
       final response = await _client
           .from('profiles')
-          .select('id, nombre, apellido, email, puesto')
+          .select()
           .eq('email', cleanEmail)
           .timeout(const Duration(seconds: 5));
 
-      if ((response as List).isNotEmpty) {
+      if (response != null && (response as List).isNotEmpty) {
         final user = (response as List).first;
         // Solo verificamos contraseña si existe la columna, si no, confiamos en el email para desarrollo
         if (user.containsKey('contrasena') && user['contrasena'] != cleanPass) {
@@ -73,7 +72,7 @@ class SupabaseService {
       print('SupabaseService: Obteniendo viajes maestros (UserId: $userId, Role: $role)');
       
       // 1. Obtener viajes básicos
-      var query = _client.from('viajes').select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion');
+      var query = _client.from('viajes').select();
       if (role == 'Chofer' && userId != null) {
         query = query.eq('chofer_id', userId);
       }
@@ -102,7 +101,7 @@ class SupabaseService {
       print('SupabaseService: Buscando viaje maestro con ID: $viajeId');
       
       // 1. Cargar el viaje base
-      final viaje = await _client.from('viajes').select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion').eq('id', viajeId).maybeSingle();
+      final viaje = await _client.from('viajes').select().eq('id', viajeId).maybeSingle();
       if (viaje == null) return null;
 
       // 2. Cargar Chofer (Plan B de búsqueda manual)
@@ -113,13 +112,15 @@ class SupabaseService {
         } catch (_) {}
       }
 
+      // 3. Cargar Paradas y sus Items (Productos)
       try {
-        final paradas = await _client.from('paradas').select('id, viaje_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)').eq('viaje_id', viajeId).order('orden_secuencia');
+        final paradas = await _client.from('paradas').select('*, parada_items(*)').eq('viaje_id', viajeId).order('orden_secuencia');
         viaje['paradas'] = paradas;
       } catch (_) { viaje['paradas'] = []; }
 
+      // 4. Cargar Gastos
       try {
-        final gastos = await _client.from('gastos').select('id, categoria, monto, fecha, comprobante_url').eq('viaje_id', viajeId).order('fecha');
+        final gastos = await _client.from('gastos').select().eq('viaje_id', viajeId).order('fecha');
         viaje['gastos'] = gastos;
       } catch (_) { viaje['gastos'] = []; }
 
@@ -157,25 +158,13 @@ class SupabaseService {
       final paradasData = await _client.from('paradas').select('bruto_kg').not('bruto_kg', 'is', null).timeout(const Duration(seconds: 10));
       double totalKg = paradasData.fold(0.0, (sum, p) => sum + (p['bruto_kg'] as num).toDouble());
 
-      final viajesDataRaw = await _client.from('viajes').select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion').eq('estado', 'En Curso').timeout(const Duration(seconds: 10));
-      final List<Map<String, dynamic>> viajesData = List<Map<String, dynamic>>.from(viajesDataRaw);
-      
-      // Join choferes manualmente
-      for (var v in viajesData) {
-        if (v['chofer_id'] != null) {
-          try {
-            final chofer = await _client.from('profiles').select('nombre, apellido').eq('id', v['chofer_id']).maybeSingle();
-            v['profiles'] = chofer;
-          } catch (_) {}
-        }
-      }
-
+      final viajesData = await _client.from('viajes').select('*, profiles(nombre, apellido)').eq('estado', 'En Curso').timeout(const Duration(seconds: 10));
       final pesajesData = await _client.from('pesajes').select('id').timeout(const Duration(seconds: 10));
 
       return {
         'totalKg': totalKg,
         'viajesEnCurso': viajesData.length,
-        'viajesActivos': viajesData,
+        'viajesActivos': List<Map<String, dynamic>>.from(viajesData),
         'tamboresStock': pesajesData.length,
       };
     } catch (e) {
@@ -183,106 +172,17 @@ class SupabaseService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getNecesidadesPendientes() async {
-    // Fetch explicit columns to avoid p.rol error and ensure all needed data for planning
-    final solicitudes = await _fetchList('solicitudes', 
-      select: 'id, apicultor_id, apicultor_nombre, localidad_nombre, producto, cantidad, tipo, estado, created_at', 
-      filter: {'estado': 'Pendiente'}
-    );
-    return await _joinApicultores(solicitudes);
-  }
+  /// Logística: Solicitudes (antes Necesidades), Vehículos y Choferes.
+  Future<List<Map<String, dynamic>>> getNecesidadesPendientes() async => _fetchList('solicitudes', select: '*, apicultores(nombre, localidad)', filter: {'estado': 'Pendiente'});
+  Future<List<Map<String, dynamic>>> getAllNecesidades() async => _fetchList('solicitudes', select: '*, apicultores(nombre, localidad)', order: 'created_at');
+  Future<List<Map<String, dynamic>>> getVehiculos() async => _fetchList('vehiculos', order: 'vehiculo_codigo');
+  Future<List<Map<String, dynamic>>> getChoferes() async => _fetchList('profiles', filter: {'puesto': 'Chofer'});
+  Future<List<Map<String, dynamic>>> getApicultores() async => _fetchList('apicultores', select: '*', order: 'nombre');
+  Future<List<Map<String, dynamic>>> getProductos() async => _fetchList('productos', order: 'nombre');
+  Future<List<Map<String, dynamic>>> getGastos() async => _fetchList('gastos', select: '*, profiles:chofer_id(nombre, apellido), viajes(viaje_codigo)', order: 'fecha');
+  Future<List<Map<String, dynamic>>> getRemitos() async => _fetchList('remitos', select: '*, apicultores(nombre), solicitudes(solicitud_codigo)', order: 'created_at');
 
-  Future<List<Map<String, dynamic>>> getAllNecesidades() async {
-    final solicitudes = await _fetchList('solicitudes', 
-      select: 'id, apicultor_id, solicitud_codigo, producto, cantidad, tipo, localidad, estado, created_at', 
-      order: 'created_at'
-    );
-    return await _joinApicultores(solicitudes);
-  }
-
-  Future<List<Map<String, dynamic>>> _joinApicultores(List<Map<String, dynamic>> solicitudes) async {
-    if (solicitudes.isEmpty) return [];
-    try {
-      final apicultores = await getApicultores();
-      print('SupabaseService: Uniendo ${solicitudes.length} solicitudes con ${apicultores.length} apicultores');
-      
-      final Map<String, Map<String, dynamic>> apiMap = {};
-      for (var a in apicultores) {
-        final id = a['id']?.toString().trim();
-        if (id != null) apiMap[id] = a;
-      }
-
-      for (var s in solicitudes) {
-        final apiId = s['apicultor_id']?.toString().trim();
-        
-        // Ensure we always have an 'apicultores' object for UI consistency
-        if (apiId != null && apiMap.containsKey(apiId)) {
-          s['apicultores'] = apiMap[apiId];
-        } else {
-          // Fallback logic if ID doesn't match or is null
-          s['apicultores'] = {
-            'nombre': 'S/D', 
-            'localidad': s['localidad'] ?? 'S/D',
-          };
-          
-          // Direct fetch if we have an ID but not in cache
-          if (apiId != null && apiId.length > 5) { // Evitar IDs numéricos del mock anterior
-            try {
-              final api = await _client.from('apicultores').select('id, nombre, localidad').eq('id', apiId).maybeSingle();
-              if (api != null) s['apicultores'] = api;
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (e) {
-      print('SupabaseService: Error uniendo apicultores: $e');
-    }
-    return solicitudes;
-  }
-  Future<List<Map<String, dynamic>>> getVehiculos() async => _fetchList('vehiculos', select: 'id, vehiculo_codigo, patente, modelo, capacidad_kg, capacidad_tambores', order: 'vehiculo_codigo');
-  Future<List<Map<String, dynamic>>> getChoferes() async => _fetchList('profiles', select: 'id, nombre, apellido, puesto', filter: {'puesto': 'Chofer'});
-
-  Future<List<Map<String, dynamic>>> getApicultores() async {
-    try {
-      final list = await _fetchList('apicultores', select: 'id, nombre, localidad, apicultor_codigo, provincia, dni, cuit, renapa, telefono', order: 'nombre');
-      if (list.isNotEmpty) return list;
-      
-      // Fallback: Datos reales del Google Sheet si la DB está vacía
-      print('SupabaseService: Usando datos de respaldo para apicultores');
-      return ApicultoresData.fallbackApicultores;
-    } catch (e) {
-      print('SupabaseService: Error en getApicultores: $e');
-      return ApicultoresData.fallbackApicultores;
-    }
-  }
-  Future<List<Map<String, dynamic>>> getProductos() async => _fetchList('productos', select: 'id, descripcion, codigo, unidad', order: 'descripcion');
-  Future<List<Map<String, dynamic>>> getGastos() async {
-    final gastos = await _fetchList('gastos', select: 'id, categoria, monto, fecha, chofer_id, viaje_id', order: 'fecha');
-    for (var g in gastos) {
-      if (g['chofer_id'] != null) {
-        try {
-          final profile = await _client.from('profiles').select('nombre, apellido').eq('id', g['chofer_id']).maybeSingle();
-          g['profiles'] = profile;
-        } catch (_) {}
-      }
-    }
-    return gastos;
-  }
-
-  Future<List<Map<String, dynamic>>> getRemitos() async {
-    final remitos = await _fetchList('remitos', select: 'id, remito_codigo, parada_id, apicultor_id, created_at', order: 'created_at');
-    for (var r in remitos) {
-      if (r['apicultor_id'] != null) {
-        try {
-          final api = await _client.from('apicultores').select('nombre').eq('id', r['apicultor_id']).maybeSingle();
-          r['apicultores'] = api;
-        } catch (_) {}
-      }
-    }
-    return remitos;
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchList(String table, {required String select, Map<String, String>? filter, String? order}) async {
+  Future<List<Map<String, dynamic>>> _fetchList(String table, {String select = '*', Map<String, String>? filter, String? order}) async {
     try {
       dynamic query = _client.from(table).select(select);
       if (filter != null) {
@@ -304,29 +204,22 @@ class SupabaseService {
   /// Escritura: Crear Viaje Completo y Solicitudes.
   Future<void> createViajeCompleto({required Map<String, dynamic> viajeData, required List<Map<String, dynamic>> necesidades}) async {
     try {
-      print('SupabaseService: Insertando Viaje...');
       final viajeResp = await _client.from('viajes').insert(viajeData).select('id').single();
       final viajeId = viajeResp['id'];
-      print('SupabaseService: Viaje creado ID: $viajeId');
-      
       int seq = 1;
       for (final nec in necesidades) {
-        print('SupabaseService: Procesando solicitud ${nec['id']}...');
         final paradaData = {
           'viaje_id': viajeId,
-          'ubicacion': nec['apicultores']?['nombre'] ?? nec['apicultor'] ?? 'Sin Nombre',
+          'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
           'tipo': nec['tipo'] ?? 'Operación', 
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
-          'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
+          'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
         };
         
-        // El campo apicultor_id no existe en la tabla paradas según el error PGRST204
-        // La relación se mantiene implícita vía ubicacion/localidad o se manejará por vista si es necesario.
+        // apicultor_id no existe en la tabla paradas según el esquema actual, se evita para prevenir error PGRST204
 
-        print('SupabaseService: Insertando Parada...');
         final paradaResp = await _client.from('paradas').insert(paradaData).select('id').single();
-        print('SupabaseService: Parada creada ID: ${paradaResp['id']}');
 
         try {
           final String producto = nec['producto']?.toString() ?? '';
@@ -358,15 +251,8 @@ class SupabaseService {
     }
   }
 
-
-  /// Crea una nueva necesidad/solicitud en la tabla solicitudes.
   Future<void> createNecesidad(Map<String, dynamic> data) async {
-    try {
-      await _client.from('solicitudes').insert(data);
-    } catch (e) {
-      print('SupabaseService: Error en createNecesidad: $e');
-      rethrow;
-    }
+    try { await _client.from('solicitudes').insert(data); } catch (e) { rethrow; }
   }
 
   /// Registra un pesaje de tambor.
@@ -428,14 +314,14 @@ class SupabaseService {
       for (final nec in necesidades) {
         final paradaData = {
           'viaje_id': viajeId,
-          'ubicacion': nec['apicultores']?['nombre'] ?? nec['apicultor'] ?? 'Sin Nombre',
+          'ubicacion': nec['apicultores']?['nombre'] ?? 'Sin Nombre',
           'tipo': nec['tipo'] ?? 'Operación', 
           'estado': 'Pendiente',
           'orden_secuencia': seq++,
-          'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
+          'localidad': nec['apicultores']?['localidad'] ?? 'S/D',
         };
         
-        // El campo apicultor_id no existe en la tabla paradas
+        // apicultor_id no existe en la tabla paradas según el esquema actual
 
         final paradaResp = await _client.from('paradas').insert(paradaData).select('id').single();
         

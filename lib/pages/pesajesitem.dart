@@ -295,19 +295,9 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
                             await SupabaseService().createParadaItem({
                               if (widget.paradaId != null) 'parada_id': widget.paradaId,
                               'producto_codigo': codigoSenasa,
-                              'cantidad': 1,
-                              'peso_kg': neto,
+                              'cantidad': neto,   // neto va en cantidad
+                              'total_kg': bruto,  // bruto va en total_kg
                             });
-                            
-                            try {
-                              await SupabaseService().createPesaje({
-                                'parada_id': widget.paradaId,
-                                'senasa_id': codigoSenasa,
-                                'peso_bruto': bruto,
-                                'tara': tara,
-                                'peso_neto': neto,
-                              });
-                            } catch (_) {}
 
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pesaje guardado'), backgroundColor: Colors.green));

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
+import '../backend/app_states.dart';
 import 'package:go_router/go_router.dart';
 
 class ChoferHomeWidget extends StatefulWidget {
@@ -61,9 +62,9 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_selectedTab == 0) return _viajes.where((v) => v['estado'] == 'Planificado').toList();
-    if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == 'En Proceso' || v['estado'] == 'En Curso' || v['estado'] == 'Cargado').toList();
-    if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == 'Terminado' || v['estado'] == 'Finalizado').toList();
+    if (_selectedTab == 0) return _viajes.where((v) => v['estado'] == AppStates.pendiente).toList();
+    if (_selectedTab == 1) return _viajes.where((v) => v['estado'] == AppStates.enCurso).toList();
+    if (_selectedTab == 2) return _viajes.where((v) => v['estado'] == AppStates.terminado).toList();
     return _viajes;
   }
 
@@ -224,9 +225,9 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _tabPill(theme, 0, 'PLANIFICADOS'),
+                          _tabPill(theme, 0, 'PENDIENTES'),
                           const SizedBox(width: 8),
-                          _tabPill(theme, 1, 'EN PROCESO'),
+                          _tabPill(theme, 1, 'EN CURSO'),
                           const SizedBox(width: 8),
                           _tabPill(theme, 2, 'TERMINADOS'),
                         ],
@@ -335,11 +336,11 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
     Color chipColor;
     Color chipBg;
     Color leftBorder;
-    if (estado == 'En Proceso' || estado == 'En Curso') {
+    if (estado == AppStates.enCurso) {
       chipColor = const Color(0xFF7D5700);
       chipBg = const Color(0xFFFDEFCC);
       leftBorder = const Color(0xFFFDBE49);
-    } else if (estado == 'Terminado') {
+    } else if (estado == AppStates.terminado) {
       chipColor = const Color(0xFF1A6B43);
       chipBg = const Color(0xFFD4F0E1);
       leftBorder = const Color(0xFF249689);
@@ -515,7 +516,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
   }
 
   Widget _buildEmpty(FlutterFlowTheme theme) {
-    final labels = ['viajes planificados', 'viajes en proceso', 'viajes terminados'];
+    final labels = ['viajes pendientes', 'viajes en curso', 'viajes terminados'];
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
