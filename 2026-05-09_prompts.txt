@@ -1,0 +1,90 @@
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 09/05/2026
+Para usar en Google Antigravity (otra computadora)
+══════════════════════════════════════════════════════════════════
+
+CONTEXTO INICIAL DEL DÍA:
+──────────────────────────
+vamos a continuar donde nos quedamos, y quiero me digas si entiendes las logica y relacion de datos de como se crean las solicitudes, como se crea un viaje y partir de que informacion, como se entrelaza con la ruta o rutas ese viaje creado. los estados de los viajes, de las rutas y de los tipos de operaciones. Como el chofer se relaciona con el viaje y por consiguiente con la ruta, que son las paradas. Como el chofer una vez que tiene un viaje asignado y lo pasa a estado de en curso o en proceso ese viaje puede cambiar de ruta y por ende de paradas.
+
+RESULTADO: El asistente analizó toda la lógica de negocio y explicó el flujo completo.
+
+──────────────────────────
+PROMPT 2:
+todos los viajes no salen con cargas en deposito, solo se cargan los camiones de los viajes con cargas asignadas. No todas las recolecciones implican pesajes. estandaricemos todos los estados a pendiente, en curso y terminado. tiene que haber una pagina de cargas con su lista segun su estado y cuando seleccionas una entonces mostrar todos los detalles correspondientes, puedes usar el mismo formato de tabla que usamos para otras page. El camion tiene que funcionar como un deposito circulante, con capacidad actualizada por cada carga y descarga y avisar cuando se excede la capacidad. el chofer siempre necesita autorizacion para cambiar de ruta. crea un plan y avanza con todo lo necesario
+
+RESULTADO:
+- Se creó app_states.dart con constantes Pendiente/En Curso/Terminado
+- Se crearon cargas_page.dart y carga_detalle.dart
+- Se actualizó supabase_service.dart con métodos de cargas y depósito circulante
+- Se actualizó depositohome.dart como hub del Encargado de Depósito
+- Se añadieron botones INICIAR/FINALIZAR VIAJE para el Chofer en viaje_detalle.dart
+- Se corrigió la navegación al remito en paradadetalle.dart
+- Se normalizaron tabs en choferhome.dart
+- Se ejecutaron SQLs en Supabase: tablas cargas, carga_items, columnas carga_actual_*
+- Se migraron todos los estados históricos al nuevo estándar
+
+──────────────────────────
+PROMPT 3:
+compila
+
+RESULTADO: ✅ flutter build apk --debug → EXIT CODE 0. Build exitoso.
+
+──────────────────────────
+PROMPT 4:
+Failed to Hot Restart: DebugAdapterException: app '...' not found
+
+RESULTADO: Se mataron procesos dart colgados. Se ejecutó flutter run -d emulator-5554. App corriendo.
+
+──────────────────────────
+PROMPT 5:
+actualiza sesion_actual.md con todo hasta este instante y guarda todo en mi github
+
+RESULTADO: Commit [main 9ca0d34] 37 files changed. Push exitoso a HasselGit/Flutter-Antigravity.
+
+──────────────────────────
+PROMPT 6:
+tienes un error en vs code [screenshot mostrando: getCargaDetalle, updateCargaEstado, createCarga not found]
+
+RESULTADO: El merge conflict había sobreescrito supabase_service.dart con la versión vieja.
+Se restauró el archivo completo. Recompilación exitosa (exit code 0).
+
+──────────────────────────
+PROMPT 7:
+hagamos algo para probar el funcionamiento de la app vamos a borrar todas las distribuciones, las recolecciones, los viajes, todas las rutas, cargas, remitos, pesajes para hacer el proceso desde el principio mañana
+
+RESULTADO: SQL ejecutado en Supabase:
+- DELETE FROM pesajes, carga_items, cargas, remitos, parada_items, paradas, gastos, viajes
+- UPDATE vehiculos SET carga_actual_kg = 0, carga_actual_tambores = 0
+- UPDATE solicitudes SET estado = 'Pendiente'
+- Resultado: 0 viajes, 0 cargas, 22 solicitudes listas en Pendiente.
+
+──────────────────────────
+PROMPT 8:
+no me dijiste cuantos choferes tengo para usar, no estan?
+
+RESULTADO: 4 Choferes: Alberto Gomez, Cristian Muse, Esteban Fernandez, Mauricio Perez
+2 Encargados de Depósito: Carlos Santana, Carolina Merlo (rol era Deposito, sin reconocer)
+
+──────────────────────────
+PROMPT 9:
+si ajusta ese rol, luego quiero que agendes el comando: "guarda todo" [...] Si entiendes ya guarda todo.
+
+RESULTADO:
+- UPDATE profiles SET puesto = 'Encargado de Deposito' WHERE puesto = 'Deposito'
+- homepage.dart: añadido card "Depósito" para rol Encargado de Deposito
+- Restricción: Encargado de Deposito NO ve Planificador ni Solicitudes
+- sesion_actual.md actualizado a v1.2.1
+- Archivo de prompts 2026-05-09_prompts.txt creado
+- git add + commit + push
+
+══════════════════════════════════════════════════════════════════
+PARA RETOMAR MAÑANA — DECIRLE AL ASISTENTE:
+══════════════════════════════════════════════════════════════════
+
+"Continuemos con GeoLogística. Lee sesion_actual.md para el contexto completo.
+El proyecto está en c:\Users\Usuario\Desktop\Geologistica
+Supabase URL: https://suwcqdlxnmfcvmlnzizl.supabase.co
+Hoy vamos a hacer el test completo del flujo: Solicitud → Viaje → Carga → Depósito → Chofer → Parada → Remito."
+
+══════════════════════════════════════════════════════════════════

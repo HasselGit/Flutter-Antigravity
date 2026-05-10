@@ -190,6 +190,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
+                        if (_userRole == 'Encargado de Deposito')
+                          _moduleCard(
+                            icon: Icons.warehouse_rounded,
+                            title: 'Depósito',
+                            subtitle: 'Cargas y depósito\ncirculante',
+                            bgColor: const Color(0xFF1A4B3A),
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/depositoHome'),
+                          ),
                         if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
@@ -208,7 +217,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gerenteHome'),
                           ),
                         ],
-                        if (_userRole != 'Chofer') ...[
+                        if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
                           _moduleCard(
                             icon: Icons.assignment_ind_rounded,
                             title: 'Planificador',
