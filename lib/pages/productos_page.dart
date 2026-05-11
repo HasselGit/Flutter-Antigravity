@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/productos_data.dart';
 
@@ -16,6 +17,7 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   List<Map<String, dynamic>> _filteredProductos = [];
   final _searchController = TextEditingController();
   bool _loading = true;
+  String? _userRole;
 
   static const kPrimary = Color(0xFF08201A);
   static const kSecContainer = Color(0xFFFDBE49);
@@ -24,7 +26,13 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   @override
   void initState() {
     super.initState();
+    _loadRole();
     _fetchData();
+  }
+
+  Future<void> _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _userRole = prefs.getString('user_puesto'));
   }
 
   Future<void> _fetchData() async {
@@ -33,6 +41,7 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
       final data = await SupabaseService().getProductos();
       if (mounted) {
         setState(() {
+          data.sort((a, b) => (a['descripcion'] ?? '').toString().toLowerCase().compareTo((b['descripcion'] ?? '').toString().toLowerCase()));
           _productos = data;
           _filteredProductos = data;
           _loading = false;
@@ -81,11 +90,13 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addProduct,
-        backgroundColor: kPrimary,
-        child: const Icon(Icons.add, color: kSecContainer),
-      ),
+      floatingActionButton: (_userRole == 'CEO' || _userRole == 'Gerente' || _userRole == 'Compras') 
+        ? FloatingActionButton(
+            onPressed: _addProduct,
+            backgroundColor: kPrimary,
+            child: const Icon(Icons.add, color: kSecContainer),
+          )
+        : null,
     );
   }
 
@@ -157,7 +168,9 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
                   shrinkWrap: true,
                   itemCount: ProductosData.masterCatalog.length,
                   itemBuilder: (ctx, i) {
-                    final item = ProductosData.masterCatalog[i];
+                    final sortedCatalog = List<Map<String, dynamic>>.from(ProductosData.masterCatalog)
+                      ..sort((a, b) => (a['descripcion'] ?? '').toString().toLowerCase().compareTo((b['descripcion'] ?? '').toString().toLowerCase()));
+                    final item = sortedCatalog[i];
                     final isAlreadyAdded = _productos.any((p) => p['codigo'] == item['producto']);
                     
                     return ListTile(

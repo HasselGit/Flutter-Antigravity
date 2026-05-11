@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
 import '../backend/productos_data.dart';
 import '../backend/design_tokens.dart';
+import '../backend/app_states.dart';
 
 class NecesidadesPageWidget extends StatefulWidget {
   const NecesidadesPageWidget({super.key});
@@ -78,12 +79,27 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
   }
 
   Future<void> _addNecesidad() async {
-    Map<String, dynamic>? selectedApicultor;
-    String? selectedProducto;
-    final cantidadController = TextEditingController();
-    String selectedTipo = _tabController.index == 0 ? 'Recolección' : 'Distribución';
+    await _showSolicitudModal();
+  }
 
-    // Lista de productos reales cargados desde DB o Catálogo Maestro
+  Future<void> _editNecesidad(Map<String, dynamic> data) async {
+    await _showSolicitudModal(data: data);
+  }
+
+  Future<void> _showSolicitudModal({Map<String, dynamic>? data}) async {
+    final bool isEdit = data != null;
+    Map<String, dynamic>? selectedApicultor;
+    if (isEdit) {
+      selectedApicultor = _apicultores.firstWhere(
+        (a) => (a['apicultor_codigo'] ?? a['id']) == data['apicultor_id'],
+        orElse: () => {'nombre': 'Apicultor ${data['apicultor_id']}', 'localidad': data['localidad'], 'id': data['apicultor_id']}
+      );
+    }
+    
+    String? selectedProducto = data?['producto'];
+    final cantidadController = TextEditingController(text: data?['cantidad']?.toString() ?? '');
+    String selectedTipo = data?['tipo'] ?? (_tabController.index == 0 ? 'Recolección' : 'Distribución');
+
     final List<Map<String, dynamic>> productos = _productos.isNotEmpty ? _productos : ProductosData.masterCatalog;
 
     await showModalBottomSheet(
@@ -104,7 +120,8 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Nueva Solicitud', style: TextStyle(fontFamily: 'Manrope', fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
+                  Text(isEdit ? 'Editar Solicitud' : 'Nueva Solicitud', 
+                    style: const TextStyle(fontFamily: 'Manrope', fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
                   IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
                 ],
               ),
@@ -365,28 +382,38 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                     }
 
                     try {
-                      await SupabaseService().createNecesidad({
-                        'solicitud_codigo': 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
-                        'apicultor_id': selectedApicultor!['apicultor_codigo'] ?? selectedApicultor!['id'], // En la DB es text y coincide con el codigo
+                      final payload = {
+                        'apicultor_id': selectedApicultor!['apicultor_codigo'] ?? selectedApicultor!['id'],
                         'producto': selectedProducto,
                         'cantidad': double.tryParse(cantidadController.text) ?? 0,
                         'tipo': selectedTipo,
                         'localidad': selectedApicultor!['localidad'],
-                        'estado': 'Pendiente',
-                      });
+                        'estado': data?['estado'] ?? AppStates.pendiente,
+                      };
+
+                      if (isEdit) {
+                        await SupabaseService().updateSolicitud(data!['id'].toString(), payload);
+                      } else {
+                        payload['solicitud_codigo'] = 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+                        await SupabaseService().createNecesidad(payload);
+                      }
+
                       if (context.mounted) {
                         Navigator.pop(context);
                         _fetchData();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud guardada con éxito'), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(isEdit ? 'Solicitud actualizada' : 'Solicitud guardada'), 
+                          backgroundColor: Colors.green
+                        ));
                       }
                     } catch (e) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
                       }
                     }
                   },
                   style: DesignTokens.primaryButtonStyle,
-                  child: const Text('GUARDAR SOLICITUD'),
+                  child: Text(isEdit ? 'ACTUALIZAR SOLICITUD' : 'GUARDAR SOLICITUD'),
                 ),
               ),
             ],
@@ -394,6 +421,34 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Solicitud'),
+        content: const Text('¿Estás seguro de que deseas eliminar esta solicitud? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('ELIMINAR')
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SupabaseService().deleteSolicitud(id);
+        _fetchData();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud eliminada')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   @override
@@ -477,7 +532,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
         itemBuilder: (context, index) {
           final n = list[index];
           final api = n['apicultores'] ?? {};
-          final estado = n['estado'] ?? 'Pendiente';
+          final estado = n['estado'] ?? AppStates.pendiente;
           
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
@@ -500,20 +555,35 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                   Text('${n['cantidad']} Kg estimados', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF08201A))),
                 ],
               ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: estado == 'Pendiente' ? const Color(0xFFFDEFCC) : const Color(0xFFD4F0E1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  estado.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: estado == 'Pendiente' ? const Color(0xFF7D5700) : const Color(0xFF1A6B43),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (estado == AppStates.pendiente) ...[
+                    IconButton(
+                      icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary),
+                      onPressed: () => _editNecesidad(n),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                      onPressed: () => _confirmDelete(n['id'].toString()),
+                    ),
+                  ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: estado == AppStates.pendiente ? const Color(0xFFFDEFCC) : const Color(0xFFD4F0E1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      estado.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: estado == AppStates.pendiente ? const Color(0xFF7D5700) : const Color(0xFF1A6B43),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           );

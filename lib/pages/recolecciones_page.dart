@@ -25,6 +25,7 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
   List<Map<String, dynamic>> _terminadas = [];  // En viajes terminados
   bool _loading = true;
   String? _error;
+  String? _userRole;
 
   final List<String> _tabs = ['PLANIFICADAS', 'ASIGNADAS', 'EN CURSO', 'TERMINADAS'];
 
@@ -32,7 +33,21 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadRole();
     _fetchData();
+  }
+
+  Future<void> _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('user_puesto');
+    if (mounted) {
+      setState(() {
+        _userRole = role;
+        if (_userRole == 'Chofer') {
+          _tabController = TabController(length: 3, vsync: this);
+        }
+      });
+    }
   }
 
   @override
@@ -122,7 +137,7 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
             labelColor: DesignTokens.primary,
             unselectedLabelColor: DesignTokens.primary.withOpacity(0.4),
             labelStyle: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.8),
-            tabs: _tabs.map((t) => Tab(text: t)).toList(),
+            tabs: _tabs.where((t) => _userRole != 'Chofer' || t != 'PLANIFICADAS').map((t) => Tab(text: t)).toList(),
           ),
         ),
       ),
@@ -131,7 +146,7 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
           : TabBarView(
               controller: _tabController,
               children: [
-                _buildList(_planificadas, 'planificada', isSolicitud: true),
+                if (_userRole != 'Chofer') _buildList(_planificadas, 'planificada', isSolicitud: true),
                 _buildList(_asignadas, 'asignada'),
                 _buildList(_enCurso, 'en curso'),
                 _buildList(_terminadas, 'terminada'),
@@ -198,10 +213,29 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(code, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF08201A), fontSize: 12)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFF1A6B43).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Text(isSolicitud ? 'PENDIENTE' : 'VIAJE', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF1A6B43))),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isSolicitud && (_userRole == 'CEO' || _userRole == 'Gerente' || _userRole == 'Compras')) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary, size: 18),
+                        onPressed: () => context.push('/necesidades'),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                        onPressed: () => _confirmDeleteSolicitud(item['id'].toString()),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: const Color(0xFF1A6B43).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Text(isSolicitud ? 'PENDIENTE' : 'VIAJE', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF1A6B43))),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -220,5 +254,33 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteSolicitud(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Solicitud'),
+        content: const Text('¿Estás seguro de que deseas eliminar esta solicitud pendiente?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('ELIMINAR')
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SupabaseService().deleteSolicitud(id);
+        _fetchData();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud eliminada')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 }

@@ -25,8 +25,8 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   String? _error;
   String? _userRole;
 
-  final List<String> _tabs = ['PLANIFICADOS', 'EN PROCESO', 'TERMINADOS'];
-  final List<String> _statusKeys = ['Planificado', 'En Proceso', 'Terminado'];
+  final List<String> _tabs = ['PENDIENTE', 'EN PROCESO', 'TERMINADOS'];
+  final List<String> _statusKeys = ['Pendiente', 'En Proceso', 'Terminado'];
 
   @override
   void initState() {
@@ -65,7 +65,7 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   List<Map<String, dynamic>> _filtered(String status) {
     return _viajes.where((v) {
       final vEstado = (v['estado'] ?? '').toString();
-      if (status == 'Planificado') return vEstado == 'Planificado';
+      if (status == 'Pendiente') return vEstado == 'Pendiente' || vEstado == 'Planificado';
       if (status == 'En Proceso') {
         return vEstado == 'En Proceso' || vEstado == 'En Curso' || vEstado == 'Cargado';
       }
@@ -74,6 +74,37 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
       }
       return vEstado == status;
     }).toList();
+  }
+
+  Future<void> _confirmDelete(String id, String codigo) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Viaje'),
+        content: Text('¿Está seguro de eliminar el viaje $codigo? Las solicitudes incluidas volverán a estar pendientes.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('ELIMINAR'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _loading = true);
+      try {
+        await SupabaseService().deleteViaje(id);
+        _fetchViajes();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+          setState(() => _loading = false);
+        }
+      }
+    }
   }
 
   @override
@@ -119,7 +150,10 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
               children: _statusKeys.map((s) => _buildTripList(s, theme)).toList(),
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/planificarViaje'),
+        onPressed: () async {
+          await context.push('/planificarViaje');
+          _fetchViajes();
+        },
         backgroundColor: DesignTokens.secondary,
         icon: const Icon(Icons.add_rounded, color: DesignTokens.primary),
         label: const Text(
@@ -273,9 +307,20 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
                             ),
                             if ((_userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
                                 (estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado'))
-                              IconButton(
-                                icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary),
-                                onPressed: () => context.push('/planificarViaje?editId=$id'),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary),
+                                    onPressed: () async {
+                                      await context.push('/planificarViaje?editId=$id');
+                                      _fetchViajes();
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                                    onPressed: () => _confirmDelete(id, codigo),
+                                  ),
+                                ],
                               ),
                           ],
                         ),

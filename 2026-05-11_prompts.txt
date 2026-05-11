@@ -1,0 +1,41 @@
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 11/05/2026
+Para usar en Google Antigravity / Sincronización de Sesión
+══════════════════════════════════════════════════════════════════
+
+CONTEXTO INICIAL DEL DÍA:
+──────────────────────────
+Estabilización de navegación en Android, corrección de bloqueos en el login y optimización de rendimiento gráfico.
+
+PROMPT 1:
+"se bloqueo volviendo de login a welcome page"
+RESULTADO:
+- Se habilitó 'android:enableOnBackInvokedCallback="true"' en el Manifest.
+- Se cambió 'context.go' por 'context.pop' en botones de retorno para estabilizar la pila de navegación.
+
+──────────────────────────
+PROMPT 2:
+"bloqueado otra vez cuando intento loggearme" / "por que fallan estas cosas que siempre funcionaron"
+RESULTADO:
+- Se identificó el cuello de botella: HoneycombPainter (fondos de panal) sobrecargando la UI en emuladores al redimensionar por el teclado.
+- Solución: Fondo de login estático (resizeToAvoidBottomInset: false) y simplificación del número de hexágonos (radio aumentado a 100).
+- Diagnóstico: Se añadieron prints de trazabilidad en SupabaseService.login y HomePage._fetchData.
+- Home: Desactivada temporalmente la carga de stats reales para garantizar login inmediato.
+
+──────────────────────────
+PROMPT 3:
+"la solicitud_id desaparece al editar viaje"
+RESULTADO:
+- Se actualizó 'SupabaseService.updateViajeCompleto' para asegurar la persistencia del 'solicitud_id' en cada parada durante la edición.
+
+══════════════════════════════════════════════════════════════════
+PARA RETOMAR MAÑANA — DECIRLE AL ASISTENTE:
+══════════════════════════════════════════════════════════════════
+
+"Continuemos con GeoLogística. Lee sesion_actual.md y los prompts del 11/05/2026. 
+Ya estabilizamos el login y la navegación. 
+1. Reactiva el fondo de panal pero asegúrate de que sea eficiente (o usa una imagen). 
+2. Reactiva las estadísticas reales en la HomePage (están en modo dummy ahora).
+3. Verifica que la lógica de edición de Cargas y Rutas Pendientes funcione correctamente sin duplicar datos."
+
+══════════════════════════════════════════════════════════════════

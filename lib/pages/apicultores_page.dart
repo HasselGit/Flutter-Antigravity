@@ -29,6 +29,10 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
     try {
       final data = await SupabaseService().getApicultores();
       if (mounted) {
+        // Forzar ordenamiento alfabético en memoria
+        data.sort((a, b) => (a['nombre'] ?? '').toString().toLowerCase()
+            .compareTo((b['nombre'] ?? '').toString().toLowerCase()));
+            
         setState(() {
           _apicultores = data;
           _filtered = data;
@@ -38,7 +42,10 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
     } catch (e) {
       // Intento directo si falla el servicio
       try {
-        final resp = await Supabase.instance.client.from('apicultores').select();
+        final resp = await Supabase.instance.client
+          .from('apicultores')
+          .select('*')
+          .order('nombre', ascending: true);
         if (mounted) {
           setState(() {
             _apicultores = List<Map<String, dynamic>>.from(resp);
@@ -54,11 +61,17 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
 
   void _onSearch(String val) {
     setState(() {
-      _filtered = _apicultores.where((a) {
+      final filtered = _apicultores.where((a) {
         final name = (a['nombre'] ?? '').toString().toLowerCase();
         final loc = (a['localidad'] ?? '').toString().toLowerCase();
         return name.contains(val.toLowerCase()) || loc.contains(val.toLowerCase());
       }).toList();
+      
+      // Re-ordenar siempre al buscar
+      filtered.sort((a, b) => (a['nombre'] ?? '').toString().trim().toLowerCase()
+          .compareTo((b['nombre'] ?? '').toString().trim().toLowerCase()));
+          
+      _filtered = filtered;
     });
   }
 
@@ -99,9 +112,18 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
                 : ListView.builder(
+                    key: ValueKey(_filtered.length + (_searchController.text.length)),
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: _filtered.length,
                     itemBuilder: (context, index) {
+                      // Ordenar de nuevo por seguridad extrema antes de mostrar
+                      if (index == 0) {
+                        _filtered.sort((a, b) {
+                          final nA = (a['nombre'] ?? '').toString().trim().toLowerCase();
+                          final nB = (b['nombre'] ?? '').toString().trim().toLowerCase();
+                          return nA.compareTo(nB);
+                        });
+                      }
                       final a = _filtered[index];
                       return _buildApicultorCard(a);
                     },

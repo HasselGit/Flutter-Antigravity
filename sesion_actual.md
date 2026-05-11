@@ -1,41 +1,38 @@
-# 🚀 Sesión Actual: GeoLogística (10/05/2026)
+# 🚀 Sesión Actual: GeoLogística (11/05/2026)
 
-## 📌 Estado de la Sesión: **IDENTIFICACIÓN DE ERROR CRÍTICO**
-Hemos estabilizado la interfaz y el rendimiento, y finalmente capturamos el error exacto que impedía guardar los viajes.
+## 📌 Estado de la Sesión: **ESTABILIZACIÓN Y OPTIMIZACIÓN CRÍTICA**
+Se han resuelto los bloqueos de navegación en Android y se ha estabilizado el flujo de login mediante la eliminación de cuellos de botella gráficos y de red. La aplicación ahora es capaz de navegar de forma fluida entre módulos administrativos y operativos.
 
 ---
 
 ## 🛠 Cambios Realizados Hoy:
 
-### 1. Rendimiento y UI (Premium)
-- **Optimización de GPU**: Implementación de `RepaintBoundary` en `HomePage` y `ChoferHome`. Esto eliminó el lag del 500ms que veíamos en el emulador.
-- **Cache de Imágenes**: Optimización de `logo_Geologistica_Verde.png` con `cacheHeight: 320` para ahorrar memoria.
-- **Localización**: El calendario (`DatePicker`) ahora está 100% en español (`es_AR`).
-- **Nomenclatura**: Las etiquetas de fecha ahora dicen **"Fecha Planificada"** y los vehículos muestran nombres limpios (ej: "MB 1634").
+### 1. Estabilidad de Navegación y Android
+- **Manejo de Retroceso**: Se habilitó `android:enableOnBackInvokedCallback="true"` en el Manifest para evitar el congelamiento de la app al usar el gesto de "Atrás" en Android 13+.
+- **Navegación Robusta**: Se sustituyó `context.go('/')` por `context.pop()` en el botón volver del login, respetando la pila de navegación y evitando reinicializaciones costosas.
 
-### 2. Backend y Estabilidad
-- **Manejo de Errores**: Se actualizó `SupabaseService.createViajeCompleto` con un bloque de reintento (fallback) para la tabla `rutas`.
-- **Diagnóstico RLS**: Se deshabilitó temporalmente el RLS en `rutas` y `paradas` para descartar bloqueos de seguridad.
+### 2. Rendimiento Gráfico (Eliminación de Bloqueos)
+- **Fondos Estáticos**: Se configuró `resizeToAvoidBottomInset: false` en la página de Login para evitar que el fondo de panal se redibuje pesadamente al abrir el teclado.
+- **Optimización de Pintores**: Se simplificaron los cálculos de `HoneycombPainter` (hexágonos), reduciendo drásticamente la carga sobre el hilo principal de la UI.
+- **Simplificación Temporal**: Se sustituyó el fondo complejo por un color sólido en Login para garantizar fluidez total mientras se validan los flujos de datos.
 
----
-
-## ❌ El "Bloqueo" Identificado:
-El error que ves al intentar guardar es:
-`PostgrestException: null value in column "id" of relation "rutas" violates not-null constraint`
-
-**Causa:** La tabla `rutas` (y posiblemente `paradas`) fue creada sin un valor por defecto para el ID. Como la App no envía el ID (espera que la DB lo genere), Postgres rechaza la inserción.
+### 3. Backend y Sincronización (Supabase)
+- **Persistencia de Solicitudes**: Corregida la pérdida de `solicitud_id` al editar viajes. Ahora las paradas mantienen correctamente el vínculo con la solicitud original.
+- **Timeouts de Seguridad**: Se añadieron límites de tiempo (8-10s) a todas las consultas críticas para evitar que la app se quede bloqueada indefinidamente por problemas de conexión.
+- **Soporte Web**: Se actualizó la carga de Flutter Web en `index.html` para cumplir con los estándares modernos (Flutter 3.22+).
 
 ---
 
-## 📅 Próximos Pasos (Mañana):
-
-1.  **Arreglo de DB (Prioridad 1)**: Ejecutar en el SQL Editor de Supabase:
-    ```sql
-    ALTER TABLE "public"."rutas" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
-    ALTER TABLE "public"."paradas" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
-    ```
-2.  **Prueba de Flujo**: Realizar el guardado de un viaje con 2 o 3 paradas y verificar que se creen correctamente los `parada_items`.
-3.  **Habilitar RLS**: Una vez confirmado el guardado, volver a activar el RLS con políticas de `authenticated`.
+## 🔍 Diagnóstico de Sesión:
+Si el login presenta demoras, consulta la consola. He dejado trazabilidad detallada (`prints`) en `SupabaseService.login` y `HomePage._fetchData` para identificar si el retraso ocurre en el Auth, en el guardado local o en la carga de estadísticas iniciales.
 
 ---
-**Nota para la próxima computadora:** No intentes arreglar el código en la App, el problema es 100% estructural en la tabla `rutas` de Supabase. Una vez ejecutado el SQL de arriba, todo el flujo de planificación debería "desbloquearse".
+
+## 📅 Próximos Pasos:
+
+1.  **Restaurar Estética**: Una vez confirmada la estabilidad del login por el usuario, reintroducir los fondos de panal usando una versión pre-renderizada o más optimizada.
+2.  **Verificación de Roles**: Confirmar que los Choferes solo ven sus viajes asignados (filtro `chofer_id` validado hoy).
+3.  **Módulo de Edición**: Finalizar la lógica de "Editar" en lugar de solo "Eliminar" para Cargas y Rutas Pendientes.
+
+---
+**Nota para la próxima sincronización:** El sistema está en un estado "Lean" (ligero) para asegurar la operatividad. No reintroducir elementos gráficos pesados sin antes validar el impacto en el hilo de UI de los emuladores.

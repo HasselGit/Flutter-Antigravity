@@ -44,14 +44,20 @@ class _LoginWidgetState extends State<LoginWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: DesignTokens.surfaceLow,
       body: Stack(
         children: [
-          Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: LoginHoneycombPainter(color: DesignTokens.primary.withOpacity(0.03))))),
+          // Fondo plano temporal para descartar problemas de rendimiento
+          Container(color: DesignTokens.surfaceLow),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: EdgeInsets.only(
+                  left: 24, 
+                  right: 24, 
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 24
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -98,7 +104,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                     ),
                     const SizedBox(height: 24),
                     TextButton(
-                      onPressed: () => context.go('/'),
+                      onPressed: () => context.pop(),
                       child: const Text('VOLVER', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: DesignTokens.primary, letterSpacing: 1)),
                     ),
                   ],
@@ -133,11 +139,13 @@ class LoginHoneycombPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.0;
-    const radius = 40.0;
-    final hexWidth = radius * sqrt(3);
-    final hexHeight = radius * 2;
-    for (double y = -radius; y < size.height + radius; y += hexHeight * 0.75) {
-      bool offset = ((y / (hexHeight * 0.75)).round() % 2 == 0);
+    const radius = 100.0;
+    final double hexWidth = radius * 1.732;
+    final double hexHeight = radius * 2;
+    final double verticalSpacing = hexHeight * 0.75;
+
+    for (double y = -radius; y < size.height + radius; y += verticalSpacing) {
+      bool offset = ((y / verticalSpacing).round() % 2 == 0);
       for (double x = -hexWidth; x < size.width + hexWidth; x += hexWidth) {
         double cx = x + (offset ? hexWidth / 2 : 0);
         _drawHexagon(canvas, Offset(cx, y), radius, paint);

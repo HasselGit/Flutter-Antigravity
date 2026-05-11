@@ -518,8 +518,26 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
   void _openMap(List<Map<String, dynamic>> paradas) async {
     if (paradas.isEmpty) return;
-    final localities = paradas.map((p) => p['localidad']).where((l) => l != null).join('|');
-    final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico&destination=General+Pico&waypoints=$localities&travelmode=driving';
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    
+    // Ordenar paradas por secuencia para asegurar el recorrido correcto
+    final paradasOrdenadas = List<Map<String, dynamic>>.from(paradas);
+    paradasOrdenadas.sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
+    
+    final waypoints = paradasOrdenadas
+        .map((p) => '${p['ubicacion']}, ${p['localidad']}, La Pampa, Argentina')
+        .map((s) => Uri.encodeComponent(s))
+        .join('|');
+        
+    final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico,+La+Pampa&destination=General+Pico,+La+Pampa&waypoints=$waypoints&travelmode=driving';
+    
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir Google Maps'))
+        );
+      }
+    }
   }
 }

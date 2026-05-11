@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'apicultores_data.dart';
+import 'package:intl/intl.dart';
 import 'productos_data.dart';
 import 'app_states.dart';
 
@@ -14,28 +14,39 @@ class SupabaseService {
   // ─── AUTH ─────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String email, String password) async {
+    print('SupabaseService: Iniciando login para $email');
     final cleanEmail = email.trim();
     final cleanPass = password.trim();
     try {
+      print('SupabaseService: Intentando signInWithPassword...');
       final authRes = await _client.auth.signInWithPassword(
         email: cleanEmail, password: cleanPass,
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 8));
+      
       if (authRes.user != null) {
+        print('SupabaseService: Auth OK, buscando perfil...');
         final profile = await _client.from('profiles')
             .select('id, nombre, apellido, email, puesto')
             .eq('id', authRes.user!.id).maybeSingle();
-        if (profile != null) return await _saveLocal(profile);
+        if (profile != null) {
+          print('SupabaseService: Perfil encontrado, guardando local...');
+          return await _saveLocal(profile);
+        }
       }
     } catch (e) { print('SupabaseService: Auth falló: $e'); }
+
+    print('SupabaseService: Intentando login manual por email...');
     try {
       final response = await _client.from('profiles')
           .select('id, nombre, apellido, email, puesto')
-          .eq('email', cleanEmail).timeout(const Duration(seconds: 5));
+          .eq('email', cleanEmail).timeout(const Duration(seconds: 8));
       if ((response as List).isNotEmpty) {
-        final user = (response as List).first;
-        return await _saveLocal(user);
+        print('SupabaseService: Login manual OK');
+        return await _saveLocal((response as List).first);
       }
     } catch (e) { print('SupabaseService: Login manual falló: $e'); }
+    
+    print('SupabaseService: Todos los intentos fallaron');
     throw Exception('Credenciales incorrectas');
   }
 
@@ -53,43 +64,32 @@ class SupabaseService {
 
   Future<List<Map<String, dynamic>>> getViajes({String? userId, String? role}) async {
     try {
-      dynamic query = _client.from('viajes')
-          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion');
+      // Consulta optimizada con joins para evitar el bucle de queries individuales
+      var query = _client.from('viajes').select('*, paradas(*)');
+
       if (role == 'Chofer' && userId != null) {
         query = query.eq('chofer_id', userId);
       }
+
       final List<dynamic> data = await query
-          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, fecha_planificada, fecha_inicio, fecha_terminado, descripcion')
-          .order('fecha', ascending: false)
-          .timeout(const Duration(seconds: 10));
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
+
       final viajes = List<Map<String, dynamic>>.from(data);
       for (var v in viajes) {
         v['estado'] = AppStates.normalize(v['estado']);
+        // Cargar chofer manualmente para evitar errores de relación
         if (v['chofer_id'] != null) {
           try {
             final chofer = await _client.from('profiles')
                 .select('nombre, apellido').eq('id', v['chofer_id']).maybeSingle();
             v['chofer'] = chofer;
-          } catch (_) { v['chofer'] = null; }
-        }
-        try {
-          final paradas = await _client.from('paradas')
-              .select('id, orden_secuencia, tipo, ubicacion, localidad, estado, parada_items(id, producto_codigo, cantidad, unidad)')
-              .eq('viaje_id', v['id']).order('orden_secuencia');
-          v['paradas'] = paradas;
-        } catch (_) { v['paradas'] = []; }
-        if (v['vehiculo_codigo'] != null) {
-          try {
-            final veh = await _client.from('vehiculos')
-                .select('vehiculo_codigo, capacidad_kg, capacidad_tambores')
-                .eq('vehiculo_codigo', v['vehiculo_codigo']).maybeSingle();
-            v['capacidad_kg'] = veh?['capacidad_kg'];
           } catch (_) {}
         }
       }
       return viajes;
     } catch (e) {
-      print('SupabaseService: Error en getViajes: $e');
+      print('SupabaseService: Error crítico en getViajes: $e');
       return [];
     }
   }
@@ -125,7 +125,7 @@ class SupabaseService {
       } catch (_) { 
         // Fallback a paradas directas si no hay rutas aún
         final paradas = await _client.from('paradas')
-            .select('id, viaje_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+            .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
             .eq('viaje_id', viajeId).order('orden_secuencia');
         viaje['paradas'] = paradas;
       }
@@ -231,46 +231,35 @@ class SupabaseService {
   // ─── SOLICITUDES / NECESIDADES ────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getNecesidadesPendientes() async {
-    final solicitudes = await _fetchList('solicitudes',
-        select: 'id, apicultor_id, producto, cantidad, tipo, estado, created_at',
-        filter: {'estado': AppStates.pendiente});
-    return await _joinApicultores(solicitudes);
+    try {
+      final List<dynamic> data = await _client
+          .from('solicitudes')
+          .select('*, apicultores(*)')
+          .eq('estado', AppStates.pendiente)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('SupabaseService: Error en getNecesidadesPendientes: $e');
+      return [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> getAllNecesidades() async {
-    final solicitudes = await _fetchList('solicitudes',
-        select: 'id, apicultor_id, solicitud_codigo, producto, cantidad, tipo, localidad, estado, created_at',
-        order: 'created_at');
-    return await _joinApicultores(solicitudes);
+    try {
+      final List<dynamic> data = await _client
+          .from('solicitudes')
+          .select('*, apicultores(*)')
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('SupabaseService: Error en getAllNecesidades: $e');
+      return [];
+    }
   }
 
-  Future<List<Map<String, dynamic>>> _joinApicultores(List<Map<String, dynamic>> solicitudes) async {
-    if (solicitudes.isEmpty) return [];
-    try {
-      final apicultores = await getApicultores();
-      final Map<String, Map<String, dynamic>> apiMap = {};
-      for (var a in apicultores) {
-        final id = a['id']?.toString().trim();
-        if (id != null) apiMap[id] = a;
-      }
-      for (var s in solicitudes) {
-        final apiId = s['apicultor_id']?.toString().trim();
-        if (apiId != null && apiMap.containsKey(apiId)) {
-          s['apicultores'] = apiMap[apiId];
-        } else {
-          s['apicultores'] = {'nombre': 'S/D', 'localidad': s['localidad'] ?? 'S/D'};
-          if (apiId != null && apiId.length > 5) {
-            try {
-              final api = await _client.from('apicultores')
-                  .select('id, nombre, localidad').eq('id', apiId).maybeSingle();
-              if (api != null) s['apicultores'] = api;
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (e) { print('SupabaseService: Error uniendo apicultores: $e'); }
-    return solicitudes;
-  }
+
 
   // ─── CARGAS ───────────────────────────────────────────────────────────────
 
@@ -414,6 +403,14 @@ class SupabaseService {
 
   // ─── CATÁLOGOS ────────────────────────────────────────────────────────────
 
+  Future<List<Map<String, dynamic>>> getApicultores() async {
+    final List<dynamic> data = await _client
+        .from('apicultores')
+        .select('*')
+        .order('nombre', ascending: true);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
   Future<List<Map<String, dynamic>>> getVehiculos() async =>
       _fetchList('vehiculos',
           select: 'id, vehiculo_codigo, patente, modelo, capacidad_kg, capacidad_tambores, carga_actual_kg, carga_actual_tambores',
@@ -424,17 +421,7 @@ class SupabaseService {
           select: 'id, nombre, apellido, puesto',
           filter: {'puesto': 'Chofer'});
 
-  Future<List<Map<String, dynamic>>> getApicultores() async {
-    try {
-      final list = await _fetchList('apicultores',
-          select: 'id, nombre, localidad, apicultor_codigo, provincia, dni, cuit, renapa, telefono',
-          order: 'nombre');
-      if (list.isNotEmpty) return list;
-      return ApicultoresData.fallbackApicultores;
-    } catch (e) {
-      return ApicultoresData.fallbackApicultores;
-    }
-  }
+
 
   Future<List<Map<String, dynamic>>> getProductos() async {
     try {
@@ -492,10 +479,14 @@ class SupabaseService {
     final data = Map<String, dynamic>.from(viajeData);
     data['estado'] = AppStates.pendiente;
     data['fecha_planificada'] = data['fecha'] ?? DateTime.now().toIso8601String();
+    data['fecha'] = data['fecha_planificada']; // Sincronizar para ordenamiento exacto
+
+    final String humanCode = 'V-${DateFormat('ddMM').format(DateTime.now())}-${DateTime.now().millisecondsSinceEpoch.toString().substring(10)}';
+    data['viaje_codigo'] = humanCode;
     
     final viajeResp = await _client.from('viajes').insert(data).select('id, viaje_codigo').single();
     final viajeId = viajeResp['id'];
-    final viajeCodigo = viajeResp['viaje_codigo'];
+    final viajeCodigo = viajeResp['viaje_codigo'] ?? humanCode;
 
     // Crear Ruta inicial por defecto con manejo de errores resiliente
     dynamic rutaId;
@@ -520,11 +511,13 @@ class SupabaseService {
 
     int seq = 1;
     for (final nec in necesidades) {
+      final String rawTipo = (nec['tipo'] ?? 'Recolección').toString();
+      final String tipoFixed = rawTipo.contains('istribu') ? 'Distribucion' : 'Recoleccion';
       final paradaResp = await _client.from('paradas').insert({
         'viaje_id': viajeId,
         'ruta_id': rutaId,
         'ubicacion': nec['apicultores']?['nombre'] ?? nec['apicultor'] ?? 'Sin Nombre',
-        'tipo': nec['tipo'] ?? 'Operación',
+        'tipo': tipoFixed,
         'estado': AppStates.pendiente,
         'orden_secuencia': seq++,
         'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
@@ -573,6 +566,7 @@ class SupabaseService {
         'estado': AppStates.pendiente,
         'orden_secuencia': seq++,
         'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
+        'solicitud_id': nec['id'],
       }).select('id').single();
       try {
         final String producto = nec['producto']?.toString() ?? '';
@@ -608,6 +602,58 @@ class SupabaseService {
 
   Future<void> createParadaItem(Map<String, dynamic> data) async =>
       await _client.from('parada_items').insert(data);
+
+  Future<void> deleteViaje(String viajeId) async {
+    try {
+      // 1. Obtener las paradas para saber qué solicitudes liberar y qué items borrar
+      final paradasRes = await _client.from('paradas').select('id, solicitud_id').eq('viaje_id', viajeId);
+      final List<Map<String, dynamic>> paradas = List<Map<String, dynamic>>.from(paradasRes as List);
+      
+      final List<String> solicitudIds = paradas
+          .where((p) => p['solicitud_id'] != null)
+          .map((p) => p['solicitud_id'].toString())
+          .toList();
+
+      // 2. Liberar solicitudes
+      if (solicitudIds.isNotEmpty) {
+        await _client.from('solicitudes')
+            .update({'estado': AppStates.pendiente})
+            .filter('id', 'in', solicitudIds);
+      }
+
+      // 3. Borrar paradas e items
+      for (var p in paradas) {
+         await _client.from('parada_items').delete().eq('parada_id', p['id']);
+      }
+      await _client.from('paradas').delete().eq('viaje_id', viajeId);
+      await _client.from('rutas').delete().eq('viaje_id', viajeId);
+      await _client.from('gastos').delete().eq('viaje_id', viajeId);
+      
+      // 4. Borrar viaje
+      await _client.from('viajes').delete().eq('id', viajeId);
+    } catch (e) {
+      print('SupabaseService: Error eliminando viaje: $e');
+      throw 'No se pudo eliminar el viaje: $e';
+    }
+  }
+
+  Future<void> deleteSolicitud(String id) async {
+    try {
+      await _client.from('solicitudes').delete().eq('id', id);
+    } catch (e) {
+      print('SupabaseService: Error eliminando solicitud: $e');
+      throw 'No se pudo eliminar la solicitud: $e';
+    }
+  }
+
+  Future<void> updateSolicitud(String id, Map<String, dynamic> data) async {
+    try {
+      await _client.from('solicitudes').update(data).eq('id', id);
+    } catch (e) {
+      print('SupabaseService: Error actualizando solicitud: $e');
+      throw 'No se pudo actualizar la solicitud: $e';
+    }
+  }
 
   // ─── HELPER PRIVADO ───────────────────────────────────────────────────────
 

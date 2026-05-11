@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/design_tokens.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/apicultores_data.dart';
@@ -21,12 +22,19 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   List<Map<String, dynamic>> _historial = [];
   Map<String, Map<String, double>> _resumenDetallado = {}; // Product -> {Tipo: Total}
   double _maxTotal = 1.0;
+  String? _userRole;
 
   @override
   void initState() {
     super.initState();
+    _loadRole();
     _refreshApicultorData();
     _fetchDetailedData();
+  }
+
+  Future<void> _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _userRole = prefs.getString('user_puesto'));
   }
 
   Future<void> _refreshApicultorData() async {
@@ -168,6 +176,26 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (_userRole == 'Chofer') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Acceso Restringido')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_person_rounded, size: 64, color: Colors.orange),
+              const SizedBox(height: 16),
+              const Text('No tiene permisos para ver perfiles de apicultores', 
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
+              ElevatedButton(onPressed: () => context.pop(), child: const Text('VOLVER'))
+            ],
+          ),
+        ),
+      );
+    }
+
     final a = widget.apicultor;
     return Scaffold(
       backgroundColor: const Color(0xFFFBFBFB),
@@ -242,12 +270,14 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
               ),
             ),
           ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSolicitudModal,
-        backgroundColor: DesignTokens.secondary,
-        elevation: 8,
-        child: const Icon(Icons.add_rounded, color: DesignTokens.primary, size: 32),
-      ),
+      floatingActionButton: (_userRole == 'CEO' || _userRole == 'Gerente' || _userRole == 'Compras') 
+        ? FloatingActionButton(
+            onPressed: _showAddSolicitudModal,
+            backgroundColor: DesignTokens.secondary,
+            elevation: 8,
+            child: const Icon(Icons.add_rounded, color: DesignTokens.primary, size: 32),
+          )
+        : null,
     );
   }
 

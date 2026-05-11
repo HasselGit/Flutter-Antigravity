@@ -247,55 +247,51 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                   ),
                   const SizedBox(height: 16),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: amountController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: 'Importe (\$)',
-                            prefixIcon: const Icon(Icons.attach_money_rounded, color: DesignTokens.primary),
-                            filled: true,
-                            fillColor: DesignTokens.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: selectedMetodo,
-                          decoration: InputDecoration(
-                            labelText: 'Forma de Pago',
-                            filled: true,
-                            fillColor: DesignTokens.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
-                          ),
-                          items: ['Efectivo', 'Tarjeta', 'Transferencia', 'Cuenta Corriente']
-                              .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                              .toList(),
-                          onChanged: (v) => setModalState(() => selectedMetodo = v),
-                        ),
-                      ),
-                    ],
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Importe (\$)',
+                      prefixIcon: const Icon(Icons.attach_money_rounded, color: DesignTokens.primary),
+                      filled: true,
+                      fillColor: DesignTokens.surface,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedMetodo,
+                    decoration: InputDecoration(
+                      labelText: 'Forma de Pago',
+                      prefixIcon: const Icon(Icons.payment_rounded, color: DesignTokens.primary),
+                      filled: true,
+                      fillColor: DesignTokens.surface,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                    ),
+                    items: ['Efectivo', 'Tarjeta', 'Transferencia', 'Cuenta Corriente']
+                        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                        .toList(),
+                    onChanged: (v) => setModalState(() => selectedMetodo = v),
                   ),
                   const SizedBox(height: 16),
 
                   TextField(
                     controller: descController,
+                    maxLines: 2,
                     decoration: InputDecoration(
                       labelText: 'Observaciones',
+                      alignLabelWithHint: true,
                       prefixIcon: const Icon(Icons.notes_rounded, color: DesignTokens.primary),
                       filled: true,
                       fillColor: DesignTokens.surface,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
                   ),
                   const SizedBox(height: 20),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -59,8 +60,39 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
       // Fetch needs: Pending ones always, and Planificadas only if we are editing (to show what's already in the trip)
       final List<Map<String, dynamic>> necData;
       if (widget.editId != null) {
-        final all = await service.getAllNecesidades(); // Fetch all to find the ones in this trip
-        necData = all; 
+        // Obtenemos las pendientes
+        final pendientes = await service.getNecesidadesPendientes();
+        // Obtenemos el viaje para ver qué solicitudes tiene ya asignadas
+        final viaje = await service.getViajeDetalle(widget.editId!);
+        final List<Map<String, dynamic>> asignadasAlViaje = [];
+        
+        if (viaje != null && viaje['paradas'] != null) {
+          final List<String> solIds = [];
+          for (var p in (viaje['paradas'] as List)) {
+            final items = p['parada_items'] as List?;
+            if (items != null && items.isNotEmpty) {
+              for (var item in items) {
+                if (item['solicitud_id'] != null) solIds.add(item['solicitud_id'].toString());
+              }
+            }
+          }
+          if (solIds.isNotEmpty) {
+            // Buscamos estas solicitudes específicas aunque no estén pendientes
+            final data = await Supabase.instance.client.from('solicitudes')
+                .select('*, apicultores(*)').filter('id', 'in', solIds);
+            asignadasAlViaje.addAll(List<Map<String, dynamic>>.from(data as List));
+          }
+        }
+        
+        // Unir listas sin duplicados
+        final Map<String, Map<String, dynamic>> combined = {};
+        for (var s in pendientes) {
+          combined[s['id'].toString()] = s;
+        }
+        for (var s in asignadasAlViaje) {
+          combined[s['id'].toString()] = s;
+        }
+        necData = combined.values.toList();
       } else {
         necData = await service.getNecesidadesPendientes();
       }
@@ -70,15 +102,22 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
 
       if (mounted) {
         setState(() {
-          // Ordenar alfabéticamente por nombre de apicultor
-          necData.sort((a, b) {
-            final nameA = (a['apicultores']?['nombre'] ?? a['apicultor_nombre'] ?? a['apicultor'] ?? '').toString().toLowerCase();
-            final nameB = (b['apicultores']?['nombre'] ?? b['apicultor_nombre'] ?? b['apicultor'] ?? '').toString().toLowerCase();
+          // Asegurar IDs únicos para evitar duplicados visuales
+          final Map<String, Map<String, dynamic>> uniqueMap = {};
+          for (var item in necData) {
+            if (item['id'] != null) uniqueMap[item['id'].toString()] = item;
+          }
+          final cleanedList = uniqueMap.values.toList();
+
+          // Ordenar alfabéticamente
+          cleanedList.sort((a, b) {
+            final nameA = (a['apicultores']?['nombre'] ?? a['apicultor_nombre'] ?? '').toString().toLowerCase();
+            final nameB = (b['apicultores']?['nombre'] ?? b['apicultor_nombre'] ?? '').toString().toLowerCase();
             return nameA.compareTo(nameB);
           });
           
-          _necesidades = necData;
-          _filteredNecesidades = List.from(necData);
+          _necesidades = cleanedList;
+          _filteredNecesidades = List.from(cleanedList);
           _vehiculos = vehData;
           _choferes = choData;
         });
@@ -102,14 +141,21 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               final paradas = viaje['paradas'] as List? ?? [];
               for (final p in paradas) {
                 final pItems = p['parada_items'] as List? ?? [];
-                final String pProd = pItems.isNotEmpty ? pItems[0]['producto_codigo'] ?? '' : '';
+                // Intentar buscar por ID de solicitud primero (más preciso)
+                final String? sId = p['solicitud_id']?.toString();
                 
                 final matched = _necesidades.firstWhere(
-                  (n) => (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor']) == p['ubicacion'] && 
-                         n['producto'] == pProd,
+                  (n) {
+                    if (sId != null && n['id']?.toString() == sId) return true;
+                    // Fallback por ubicación y producto si no hay ID
+                    final String pProd = pItems.isNotEmpty ? pItems[0]['producto_codigo'] ?? '' : '';
+                    return (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor']) == p['ubicacion'] && 
+                           n['producto'] == pProd;
+                  },
                   orElse: () => <String, dynamic>{},
                 );
-                if (matched.isNotEmpty) {
+                
+                if (matched.isNotEmpty && !_selectedNecesidades.any((exist) => exist['id'] == matched['id'])) {
                   _selectedNecesidades.add(matched);
                 }
               }
@@ -126,14 +172,17 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   }
 
   void _filterNecesidades() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      setState(() => _filteredNecesidades = List.from(_necesidades));
+      return;
+    }
+    
     setState(() {
       _filteredNecesidades = _necesidades.where((n) {
         final apicultor = (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? '').toString().toLowerCase();
         final localidad = (n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? '').toString().toLowerCase();
-        final tipo = (n['tipo'] ?? '').toString().toLowerCase();
-        final producto = (n['producto'] ?? '').toString().toLowerCase();
-        return apicultor.contains(query) || localidad.contains(query) || tipo.contains(query) || producto.contains(query);
+        return apicultor.contains(query) || localidad.contains(query);
       }).toList();
     });
   }
@@ -268,7 +317,12 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ruta planificada con éxito'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ruta planificada con éxito', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)), 
+            backgroundColor: DesignTokens.secondary,
+          )
+        );
         context.pop();
       }
     } catch (e) {
@@ -336,21 +390,14 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                 itemBuilder: (context, index) {
                   final n = _filteredNecesidades[index];
                   final isSelected = _selectedNecesidades.any((element) => element['id'] == n['id']);
-                  String productoRaw = n['producto']?.toString() ?? 'Producto';
-                  final lowerProd = productoRaw.toLowerCase();
-                  
-                  String productoLimpio = productoRaw.replaceFirst(RegExp(r'^(recoleccion|recolección|distribucion|distribución|entrega|retiro)\s+', caseSensitive: false), '');
-
-                  final esUnidades = (lowerProd.contains('tambor') && !lowerProd.contains('cera')) || 
-                                     lowerProd.contains('insumo') ||
-                                     lowerProd.contains('alimento') ||
-                                     lowerProd.contains('tcm') ||
-                                     lowerProd.contains('tv');
-                  final unidad = esUnidades ? 'Un.' : 'Kg';
-                  
-                  final String apicultorNombre = n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor'] ?? 'Sin Nombre';
-                  final String localidad = n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? n['localidad'] ?? 'Sin Localidad';
+                  final String productoRaw = n['producto']?.toString() ?? 'Producto';
+                  final String apicultorNombre = (n['apicultores']?['nombre'] ?? n['apicultor_nombre'] ?? n['apicultor'] ?? 'Sin Nombre').toString().toUpperCase();
+                  final String localidad = (n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? n['localidad'] ?? 'Sin Localidad').toString();
                   final String tipo = n['tipo'] ?? 'S/T';
+                  
+                  // Simplificar detección de unidad para evitar bloqueos
+                  final bool esUnidades = productoRaw.toLowerCase().contains('tambor') || productoRaw.toLowerCase().contains('un');
+                  final String unidad = esUnidades ? 'Un.' : 'Kg';
                   
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -372,8 +419,8 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                           _updateCalculos();
                         });
                       },
-                      title: Text(apicultorNombre.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                      subtitle: Text('$productoLimpio ($tipo) • $localidad', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                      title: Text(apicultorNombre, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                      subtitle: Text('$productoRaw ($tipo) • $localidad', style: const TextStyle(fontSize: 11, color: Colors.black54)),
                       secondary: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -461,7 +508,17 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               label: 'Vehículo',
               hint: 'Seleccione un vehículo...',
               value: _selectedVehiculo?['id']?.toString(),
-              items: _vehiculos.map((v) => DropdownMenuItem(value: v['id'].toString(), child: Text('${v['vehiculo_codigo']}'))).toList(),
+              items: _vehiculos.map((v) {
+                String display = v['vehiculo_codigo']?.toString() ?? '';
+                // Limpia el texto eliminando lo que esté entre paréntesis (ej: MB 1634 (Taller) -> MB 1634)
+                if (display.contains('(')) {
+                  display = display.split('(')[0].trim();
+                }
+                return DropdownMenuItem(
+                  value: v['id'].toString(), 
+                  child: Text(display)
+                );
+              }).toList(),
               onChanged: (v) => setState(() => _selectedVehiculo = _vehiculos.firstWhere((e) => e['id'].toString() == v)),
             ),
             

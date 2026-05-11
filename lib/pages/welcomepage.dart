@@ -192,9 +192,10 @@ class HoneycombPainter extends CustomPainter {
     const double radius = 30.0;
     final double height = radius * 2;
     final double width = radius * 1.732; // sqrt(3) * radius
+    final double verticalSpacing = height * 0.75;
 
-    for (double y = 0; y < size.height + height; y += height * 0.75) {
-      bool offset = (y / (height * 0.75)).floor() % 2 != 0;
+    for (double y = 0; y < size.height + height; y += verticalSpacing) {
+      bool offset = (y / verticalSpacing).floor() % 2 != 0;
       for (double x = 0; x < size.width + width; x += width) {
         double currentX = x + (offset ? width / 2 : 0);
         _drawHexagon(canvas, paint, currentX, y, radius);

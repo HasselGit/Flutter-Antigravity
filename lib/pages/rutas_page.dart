@@ -225,6 +225,31 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                   ),
                 ],
               ),
+              if ((_userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
+                  (estado == 'Planificado' || estado == 'Pendiente'))
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary, size: 20),
+                        onPressed: () async {
+                          await context.push('/planificarViaje?editId=$id');
+                          _fetchRutas();
+                        },
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                        onPressed: () => _confirmDeleteRoute(id, displayId),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ],
+                  ),
+                ),
 
               Text(
                 desc.isNotEmpty ? desc : 'Sin descripción adicional',
@@ -302,6 +327,34 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteRoute(String id, String displayId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Ruta'),
+        content: Text('¿Estás seguro de que deseas eliminar la ruta $displayId? Las solicitudes asociadas volverán a estar pendientes.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('ELIMINAR')
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SupabaseService().deleteViaje(id);
+        _fetchRutas();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ruta eliminada correctamente')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Widget _infoChip(IconData icon, String label) {

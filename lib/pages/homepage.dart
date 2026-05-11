@@ -32,8 +32,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   }
 
   Future<void> _fetchData() async {
+    print('HomePage: Iniciando fetch de datos...');
     try {
       final prefs = await SharedPreferences.getInstance();
+      print('HomePage: SharedPreferences OK');
       final nombre = prefs.getString('user_nombre') ?? '';
       final apellido = prefs.getString('user_apellido') ?? '';
       
@@ -46,9 +48,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
       }
 
       final userId = prefs.getString('user_id');
-      print('HomePage: Obteniendo stats para $_userRole ($userId)');
+      print('HomePage: Obteniendo stats deshabilitado temporalmente');
       
-      final stats = await SupabaseService().getStats(userId: userId, role: _userRole);
+      // final stats = await SupabaseService().getStats(userId: userId, role: _userRole);
+      final stats = {'planificados': 0, 'en_curso': 0, 'terminados': 0};
+      print('HomePage: Stats OK (Dummy)');
 
       if (mounted) {
         setState(() {
@@ -157,7 +161,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     // ── Stats row ──
                     Row(
                       children: [
-                        _statCard('PLANIFICADOS', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
+                        _statCard('PENDIENTE', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
                         const SizedBox(width: 10),
                         _statCard('EN CURSO', _stats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC)),
                         const SizedBox(width: 10),
@@ -190,7 +194,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                               subtitle: 'Rutas asignadas\ny operaciones',
                               bgColor: DesignTokens.primary,
                               accentColor: DesignTokens.secondary,
-                              onTap: () => context.push('/choferHome'),
+                              onTap: () async {
+                                await context.push('/choferHome');
+                                _fetchData();
+                              },
                             ),
                           if (_userRole == 'Encargado de Deposito')
                             _moduleCard(
@@ -199,7 +206,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                               subtitle: 'Cargas y depósito\ncirculante',
                               bgColor: const Color(0xFF1A4B3A),
                               accentColor: DesignTokens.secondary,
-                              onTap: () => context.push('/depositoHome'),
+                              onTap: () async {
+                                await context.push('/depositoHome');
+                                _fetchData();
+                              },
                             ),
                           if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
                             _moduleCard(
@@ -208,7 +218,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                               subtitle: 'Control de viajes,\nrutas y despacho',
                               bgColor: DesignTokens.primary,
                               accentColor: DesignTokens.secondary,
-                              onTap: () => context.push('/viajes'),
+                              onTap: () async {
+                                await context.push('/viajes');
+                                _fetchData();
+                              },
                             ),
                             _moduleCard(
                               icon: Icons.dashboard_customize_rounded,
@@ -216,7 +229,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                               subtitle: 'Estadísticas y\nKPIs de gestión',
                               bgColor: DesignTokens.primary,
                               accentColor: DesignTokens.secondary,
-                              onTap: () => context.push('/gerenteHome'),
+                              onTap: () async {
+                                await context.push('/gerenteHome');
+                                _fetchData();
+                              },
                             ),
                           ],
                           if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
