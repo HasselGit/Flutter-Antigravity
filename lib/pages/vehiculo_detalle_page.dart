@@ -111,20 +111,77 @@ class _VehiculoDetalleWidgetState extends State<VehiculoDetalleWidget> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: Colors.green.withOpacity(0.2)),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Container(
-                          width: 12, height: 12,
-                          decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+                        Row(
+                          children: [
+                            Container(
+                              width: 12, height: 12,
+                              decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('DISPONIBLE PARA VIAJE', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        const Text('DISPONIBLE PARA VIAJE', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                        const SizedBox(height: 24),
+                        _buildProgressBar(
+                          label: 'CARGA EN KG',
+                          current: (_vehiculo?['carga_actual_kg'] as num?)?.toDouble() ?? 0,
+                          total: (_vehiculo?['capacidad_kg'] as num?)?.toDouble() ?? 1,
+                          unit: 'KG',
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildProgressBar(
+                          label: 'CARGA EN TAMBORES',
+                          current: (_vehiculo?['carga_actual_tambores'] as num?)?.toDouble() ?? 0,
+                          total: (_vehiculo?['capacidad_tambores'] as num?)?.toDouble() ?? 1,
+                          unit: 'UN',
+                          color: const Color(0xFFC68E17),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildProgressBar({required String label, required double current, required double total, required String unit, required Color color}) {
+    final double percent = (current / total).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+            Text('${current.toStringAsFixed(0)} / ${total.toStringAsFixed(0)} $unit', 
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Stack(
+          children: [
+            Container(
+              height: 10,
+              width: double.infinity,
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(5)),
+            ),
+            FractionallySizedBox(
+              widthFactor: percent,
+              child: Container(
+                height: 10,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

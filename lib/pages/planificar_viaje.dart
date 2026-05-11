@@ -70,8 +70,15 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
 
       if (mounted) {
         setState(() {
+          // Ordenar alfabéticamente por nombre de apicultor
+          necData.sort((a, b) {
+            final nameA = (a['apicultores']?['nombre'] ?? a['apicultor_nombre'] ?? a['apicultor'] ?? '').toString().toLowerCase();
+            final nameB = (b['apicultores']?['nombre'] ?? b['apicultor_nombre'] ?? b['apicultor'] ?? '').toString().toLowerCase();
+            return nameA.compareTo(nameB);
+          });
+          
           _necesidades = necData;
-          _filteredNecesidades = necData;
+          _filteredNecesidades = List.from(necData);
           _vehiculos = vehData;
           _choferes = choData;
         });
@@ -420,11 +427,17 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Fecha', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
+                      const Text('Fecha Planificada', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: () async {
-                          final date = await showDatePicker(context: context, initialDate: _fechaPlanificada, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 30)));
+                          final date = await showDatePicker(
+                            context: context, 
+                            initialDate: _fechaPlanificada, 
+                            firstDate: DateTime.now().subtract(const Duration(days: 365)), 
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            locale: const Locale('es', 'AR'),
+                          );
                           if (date != null) setState(() => _fechaPlanificada = date);
                         },
                         child: Container(
@@ -448,7 +461,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               label: 'Vehículo',
               hint: 'Seleccione un vehículo...',
               value: _selectedVehiculo?['id']?.toString(),
-              items: _vehiculos.map((v) => DropdownMenuItem(value: v['id'].toString(), child: Text('${v['vehiculo_codigo']} (${v['capacidad_kg']}Kg)'))).toList(),
+              items: _vehiculos.map((v) => DropdownMenuItem(value: v['id'].toString(), child: Text('${v['vehiculo_codigo']}'))).toList(),
               onChanged: (v) => setState(() => _selectedVehiculo = _vehiculos.firstWhere((e) => e['id'].toString() == v)),
             ),
             
@@ -470,7 +483,9 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
               child: ElevatedButton(
                 onPressed: _saving ? null : _crearViaje,
                 style: DesignTokens.primaryButtonStyle,
-                child: _saving ? const CircularProgressIndicator(color: Colors.white) : const Text('AGREGAR PARADA'),
+                child: _saving 
+                  ? const CircularProgressIndicator(color: Colors.white) 
+                  : Text(widget.editId != null ? 'GUARDAR CAMBIOS' : 'PLANIFICAR VIAJE'),
               ),
             ),
           ],

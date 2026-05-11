@@ -92,6 +92,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 'assets/images/logo_Geologistica_Verde.png',
                 width: 32,
                 height: 32,
+                cacheWidth: 64,
                 fit: BoxFit.cover,
               ),
             ),
@@ -173,68 +174,61 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     ),
                     const SizedBox(height: 14),
 
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 1.05,
-                      children: [
-                        if (_userRole == 'Chofer' || _userRole == null)
-                          _moduleCard(
-                            icon: Icons.local_shipping_rounded,
-                            title: 'Mis Viajes',
-                            subtitle: 'Rutas asignadas\ny operaciones',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/choferHome'),
-                          ),
-                        if (_userRole == 'Encargado de Deposito')
-                          _moduleCard(
-                            icon: Icons.warehouse_rounded,
-                            title: 'Depósito',
-                            subtitle: 'Cargas y depósito\ncirculante',
-                            bgColor: const Color(0xFF1A4B3A),
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/depositoHome'),
-                          ),
-                        if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
-                          _moduleCard(
-                            icon: Icons.alt_route_rounded,
-                            title: 'Gestión de Viajes',
-                            subtitle: 'Lista completa\nde rutas y viajes',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/viajes'),
-                          ),
-                          _moduleCard(
-                            icon: Icons.dashboard_customize_rounded,
-                            title: 'Dashboard',
-                            subtitle: 'Estadísticas y\nKPIs de gestión',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/gerenteHome'),
-                          ),
-                        ],
-                        if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
-                          _moduleCard(
-                            icon: Icons.assignment_ind_rounded,
-                            title: 'Planificador',
-                            subtitle: 'Crear rutas y\nasignar choferes',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/planificarViaje'),
-                          ),
-                          _moduleCard(
-                            icon: Icons.list_alt_rounded,
-                            title: 'Solicitudes',
-                            subtitle: 'Gestión de carga\ny recolecciones',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/necesidades'),
-                          ),
-                        ],
+                    RepaintBoundary(
+                      child: GridView.count(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                        childAspectRatio: 1.05,
+                        children: [
+                          if (_userRole == 'Chofer' || _userRole == null)
+                            _moduleCard(
+                              icon: Icons.local_shipping_rounded,
+                              title: 'Mis Viajes',
+                              subtitle: 'Rutas asignadas\ny operaciones',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/choferHome'),
+                            ),
+                          if (_userRole == 'Encargado de Deposito')
+                            _moduleCard(
+                              icon: Icons.warehouse_rounded,
+                              title: 'Depósito',
+                              subtitle: 'Cargas y depósito\ncirculante',
+                              bgColor: const Color(0xFF1A4B3A),
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/depositoHome'),
+                            ),
+                          if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
+                            _moduleCard(
+                              icon: Icons.alt_route_rounded,
+                              title: 'Logística',
+                              subtitle: 'Control de viajes,\nrutas y despacho',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/viajes'),
+                            ),
+                            _moduleCard(
+                              icon: Icons.dashboard_customize_rounded,
+                              title: 'Dashboard',
+                              subtitle: 'Estadísticas y\nKPIs de gestión',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/gerenteHome'),
+                            ),
+                          ],
+                          if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
+                            _moduleCard(
+                              icon: Icons.list_alt_rounded,
+                              title: 'Solicitudes',
+                              subtitle: 'Gestión de carga\ny recolecciones',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/necesidades'),
+                            ),
+                          ],
                           _moduleCard(
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
@@ -267,16 +261,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gastos'),
                           ),
-                          _moduleCard(
-                            icon: Icons.alt_route_rounded,
-                            title: 'Control de Ruta',
-                            subtitle: 'Trayectos activos\nen tiempo real',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/rutas'),
-                          ),
                         ],
                       ),
+                    ),
 
                     const SizedBox(height: 28),
 

@@ -55,9 +55,11 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
           children: [
             // Honeycomb Pattern Background
             Positioned.fill(
-              child: CustomPaint(
-                painter: HoneycombPainter(
-                  color: theme.primary.withOpacity(0.03),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: HoneycombPainter(
+                    color: theme.primary.withOpacity(0.03),
+                  ),
                 ),
               ),
             ),
@@ -96,6 +98,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                                 child: Image.asset(
                                   'assets/images/logo_Geologistica_Verde.png',
                                   height: 160,
+                                  cacheHeight: 320,
                                   fit: BoxFit.contain,
                                 ),
                               ),

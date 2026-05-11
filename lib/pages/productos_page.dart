@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
+import '../backend/productos_data.dart';
 
 class ProductosPageWidget extends StatefulWidget {
   const ProductosPageWidget({super.key});
@@ -12,6 +13,8 @@ class ProductosPageWidget extends StatefulWidget {
 
 class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   List<Map<String, dynamic>> _productos = [];
+  List<Map<String, dynamic>> _filteredProductos = [];
+  final _searchController = TextEditingController();
   bool _loading = true;
 
   static const kPrimary = Color(0xFF08201A);
@@ -25,11 +28,13 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   }
 
   Future<void> _fetchData() async {
+    setState(() => _loading = true);
     try {
-      final data = await Supabase.instance.client.from('productos').select().order('descripcion');
+      final data = await SupabaseService().getProductos();
       if (mounted) {
         setState(() {
           _productos = data;
+          _filteredProductos = data;
           _loading = false;
         });
       }
@@ -48,13 +53,34 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
         title: const Text('Inventario de Productos', style: TextStyle(color: kPrimary, fontWeight: FontWeight.bold)),
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: kPrimary), onPressed: () => context.pop()),
       ),
-      body: _loading 
-        ? const Center(child: CircularProgressIndicator(color: kSecContainer))
-        : ListView.builder(
-            padding: const EdgeInsets.all(20),
-            itemCount: _productos.length,
-            itemBuilder: (context, index) => _buildProductCard(_productos[index]),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterProducts,
+              decoration: InputDecoration(
+                hintText: 'Buscar producto o código...',
+                prefixIcon: const Icon(Icons.search, color: kPrimary),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
           ),
+          Expanded(
+            child: _loading 
+              ? const Center(child: CircularProgressIndicator(color: kSecContainer))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  itemCount: _filteredProductos.length,
+                  itemBuilder: (context, index) => _buildProductCard(_filteredProductos[index]),
+                ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addProduct,
         backgroundColor: kPrimary,
@@ -118,46 +144,87 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
             children: [
               const Text('Nuevo Producto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kPrimary)),
               const SizedBox(height: 20),
+              const Text('Seleccionar del Catálogo Maestro:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kPrimary)),
+              const SizedBox(height: 12),
+              Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: kPrimary.withOpacity(0.1)),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: ProductosData.masterCatalog.length,
+                  itemBuilder: (ctx, i) {
+                    final item = ProductosData.masterCatalog[i];
+                    final isAlreadyAdded = _productos.any((p) => p['codigo'] == item['producto']);
+                    
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        isAlreadyAdded ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded,
+                        color: isAlreadyAdded ? Colors.green : kPrimary.withOpacity(0.5),
+                      ),
+                      title: Text(item['descripcion'] ?? '', style: TextStyle(
+                        fontWeight: isAlreadyAdded ? FontWeight.bold : FontWeight.normal,
+                        color: isAlreadyAdded ? Colors.black45 : Colors.black,
+                      )),
+                      subtitle: Text('Código: ${item['producto']} • ${item['unidad']}'),
+                      trailing: isAlreadyAdded ? const Text('Ya agregado', style: TextStyle(fontSize: 10, color: Colors.green)) : null,
+                      onTap: isAlreadyAdded ? null : () {
+                        setModalState(() {
+                          descController.text = item['descripcion'] ?? '';
+                          codeController.text = item['producto'] ?? '';
+                          selectedUnidad = item['unidad'] ?? 'UN';
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
               TextField(
                 controller: descController,
                 decoration: InputDecoration(
-                  labelText: 'Descripción',
+                  labelText: 'Descripción confirmada',
                   prefixIcon: const Icon(Icons.inventory_2_outlined, color: kPrimary),
                   filled: true,
                   fillColor: kSurface,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: kPrimary.withOpacity(0.05))),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kSecContainer, width: 2)),
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: codeController,
-                decoration: InputDecoration(
-                  labelText: 'Código de Producto',
-                  prefixIcon: const Icon(Icons.qr_code_rounded, color: kPrimary),
-                  filled: true,
-                  fillColor: kSurface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: kPrimary.withOpacity(0.05))),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kSecContainer, width: 2)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedUnidad,
-                decoration: InputDecoration(
-                  labelText: 'Unidad de Medida',
-                  filled: true,
-                  fillColor: kSurface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: kPrimary.withOpacity(0.05))),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kSecContainer, width: 2)),
-                ),
-                items: ['KG', 'UN', 'L', 'Tambor']
-                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                    .toList(),
-                onChanged: (v) => setModalState(() => selectedUnidad = v),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: codeController,
+                      decoration: InputDecoration(
+                        labelText: 'Código',
+                        filled: true,
+                        fillColor: kSurface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: selectedUnidad,
+                      decoration: InputDecoration(
+                        labelText: 'Unidad',
+                        filled: true,
+                        fillColor: kSurface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                      items: ['KG', 'UN', 'L', 'Tambor', 'Uni', 'Bolsa x 50 Kg', 'Caja x 600 Uni']
+                          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                          .toList(),
+                      onChanged: (v) => setModalState(() => selectedUnidad = v),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 32),
               SizedBox(
@@ -193,5 +260,14 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
         ),
       ),
     );
+  }
+  void _filterProducts(String query) {
+    setState(() {
+      _filteredProductos = _productos.where((p) {
+        final desc = (p['descripcion'] ?? '').toString().toLowerCase();
+        final cod = (p['codigo'] ?? '').toString().toLowerCase();
+        return desc.contains(query.toLowerCase()) || cod.contains(query.toLowerCase());
+      }).toList();
+    });
   }
 }

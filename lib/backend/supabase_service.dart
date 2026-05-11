@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'apicultores_data.dart';
+import 'productos_data.dart';
 import 'app_states.dart';
 
 class SupabaseService {
@@ -58,6 +59,7 @@ class SupabaseService {
         query = query.eq('chofer_id', userId);
       }
       final List<dynamic> data = await query
+          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, fecha_planificada, fecha_inicio, fecha_terminado, descripcion')
           .order('fecha', ascending: false)
           .timeout(const Duration(seconds: 10));
       final viajes = List<Map<String, dynamic>>.from(data);
@@ -95,7 +97,7 @@ class SupabaseService {
   Future<Map<String, dynamic>?> getViajeDetalle(dynamic viajeId) async {
     try {
       final viaje = await _client.from('viajes')
-          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion')
+          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, fecha_planificada, fecha_inicio, fecha_terminado, descripcion')
           .eq('id', viajeId).maybeSingle();
       if (viaje == null) return null;
       viaje['estado'] = AppStates.normalize(viaje['estado']);
@@ -107,11 +109,26 @@ class SupabaseService {
         } catch (_) {}
       }
       try {
+        final rutas = await _client.from('rutas')
+            .select('*, paradas(*, parada_items(*))')
+            .eq('viaje_id', viajeId).order('created_at');
+        viaje['rutas_data'] = rutas;
+        
+        // Mantener paradas en raíz para compatibilidad legacy, pero vinculadas a sus rutas
+        final List<dynamic> allParadas = [];
+        for (var r in rutas) {
+          final pList = List<Map<String, dynamic>>.from(r['paradas'] ?? []);
+          for (var p in pList) p['ruta_codigo'] = r['ruta_codigo'];
+          allParadas.addAll(pList);
+        }
+        viaje['paradas'] = allParadas..sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
+      } catch (_) { 
+        // Fallback a paradas directas si no hay rutas aún
         final paradas = await _client.from('paradas')
             .select('id, viaje_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
             .eq('viaje_id', viajeId).order('orden_secuencia');
         viaje['paradas'] = paradas;
-      } catch (_) { viaje['paradas'] = []; }
+      }
       try {
         final gastos = await _client.from('gastos')
             .select('id, categoria, monto, fecha, comprobante_url')
@@ -126,7 +143,39 @@ class SupabaseService {
   }
 
   Future<void> updateViajeEstado(String viajeId, String nuevoEstado) async {
-    await _client.from('viajes').update({'estado': nuevoEstado}).eq('id', viajeId);
+    final Map<String, dynamic> updates = {'estado': nuevoEstado};
+    if (nuevoEstado == AppStates.enCurso) {
+      updates['fecha_inicio'] = DateTime.now().toIso8601String();
+    } else if (nuevoEstado == AppStates.terminado) {
+      updates['fecha_terminado'] = DateTime.now().toIso8601String();
+    }
+    await _client.from('viajes').update(updates).eq('id', viajeId);
+  }
+
+  // ─── RUTAS ────────────────────────────────────────────────────────────────
+
+  Future<void> updateRutaEstado(String rutaId, String nuevoEstado) async {
+    final Map<String, dynamic> updates = {'estado': nuevoEstado};
+    if (nuevoEstado == AppStates.enCurso) {
+      updates['fecha_inicio'] = DateTime.now().toIso8601String();
+    } else if (nuevoEstado == AppStates.terminado) {
+      updates['fecha_terminado'] = DateTime.now().toIso8601String();
+    }
+    await _client.from('rutas').update(updates).eq('id', rutaId);
+  }
+
+  Future<void> solicitarCambioRuta({required String rutaId, required String paradaId}) async {
+    await _client.from('rutas').update({
+      'cambio_solicitado': true,
+      'cambio_solicitado_en_parada_id': paradaId,
+    }).eq('id', rutaId);
+  }
+
+  Future<void> aprobarCambioRuta({required String rutaId, required String rolAprobador}) async {
+    await _client.from('rutas').update({
+      'cambio_solicitado': false,
+      'aprobado_por_rol': rolAprobador,
+    }).eq('id', rutaId);
   }
 
   // ─── STATS ────────────────────────────────────────────────────────────────
@@ -387,10 +436,17 @@ class SupabaseService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getProductos() async =>
-      _fetchList('productos',
+  Future<List<Map<String, dynamic>>> getProductos() async {
+    try {
+      final list = await _fetchList('productos',
           select: 'id, descripcion, codigo, unidad',
           order: 'descripcion');
+      if (list.isNotEmpty) return list;
+      return ProductosData.masterCatalog;
+    } catch (e) {
+      return ProductosData.masterCatalog;
+    }
+  }
 
   Future<List<Map<String, dynamic>>> getGastos() async {
     final gastos = await _fetchList('gastos',
@@ -435,18 +491,46 @@ class SupabaseService {
   }) async {
     final data = Map<String, dynamic>.from(viajeData);
     data['estado'] = AppStates.pendiente;
-    final viajeResp = await _client.from('viajes').insert(data).select('id').single();
+    data['fecha_planificada'] = data['fecha'] ?? DateTime.now().toIso8601String();
+    
+    final viajeResp = await _client.from('viajes').insert(data).select('id, viaje_codigo').single();
     final viajeId = viajeResp['id'];
+    final viajeCodigo = viajeResp['viaje_codigo'];
+
+    // Crear Ruta inicial por defecto con manejo de errores resiliente
+    dynamic rutaId;
+    try {
+      final rutaResp = await _client.from('rutas').insert({
+        'viaje_id': viajeId,
+        'ruta_codigo': 'R-$viajeCodigo-01',
+        'estado': AppStates.pendiente,
+        'fecha_planificada': data['fecha_planificada'],
+      }).select('id').single();
+      rutaId = rutaResp['id'];
+    } catch (e) {
+      print('SupabaseService: Error insertando ruta con codigo, reintentando simplificado: $e');
+      // Reintento sin ruta_codigo por si la columna no existe o tiene RLS restrictivo
+      final rutaResp = await _client.from('rutas').insert({
+        'viaje_id': viajeId,
+        'estado': AppStates.pendiente,
+        'fecha_planificada': data['fecha_planificada'],
+      }).select('id').single();
+      rutaId = rutaResp['id'];
+    }
+
     int seq = 1;
     for (final nec in necesidades) {
       final paradaResp = await _client.from('paradas').insert({
         'viaje_id': viajeId,
+        'ruta_id': rutaId,
         'ubicacion': nec['apicultores']?['nombre'] ?? nec['apicultor'] ?? 'Sin Nombre',
         'tipo': nec['tipo'] ?? 'Operación',
         'estado': AppStates.pendiente,
         'orden_secuencia': seq++,
         'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
+        'solicitud_id': nec['id'], // Vinculación solicitud-parada
       }).select('id').single();
+      
       try {
         final String producto = nec['producto']?.toString() ?? '';
         final String lowerProd = producto.toLowerCase();
@@ -462,6 +546,7 @@ class SupabaseService {
           'unidad': esUnidades ? 'UN' : 'KG',
         });
       } catch (e) { print('SupabaseService: Error en parada_item: $e'); }
+      
       await _client.from('solicitudes')
           .update({'estado': AppStates.enCurso}).eq('id', nec['id']);
     }

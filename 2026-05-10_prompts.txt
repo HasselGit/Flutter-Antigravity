@@ -1,0 +1,44 @@
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 10/05/2026
+Para usar en Google Antigravity (otra computadora)
+══════════════════════════════════════════════════════════════════
+
+CONTEXTO INICIAL DEL DÍA:
+──────────────────────────
+Estabilización del flujo de planificación de viajes y optimización de rendimiento UI.
+
+PROMPT 1:
+"ok pero antes solo en esa lista para agregar un nuevo producto aparecian los otros productos del catalogo que se podian agregar, luego en el resto de app aparecian los productos agregados o dados de alta por decir asi, no se cuantos cambios hiciste pero eso antes funcionaba perfecto, es lo que necesito ahora."
+
+RESULTADO: Se restauró la lógica de catálogos en la planificación de viajes.
+
+──────────────────────────
+PROMPT 2 (El error de guardado):
+"creando el viaje sigue diciendo solo Fecha, el almanaque que aparece para seleccionar la fecha tiene que ser en español. Los camiones tienen que tener nombres como MB 1634 sin el otro texto entre parentisis y soluciona de una vez ese error que no me deja guardar el viaje nuevo."
+
+RESULTADO:
+- UI: Fecha renombrada a "Fecha Planificada".
+- UI: DatePicker localizado a 'es_AR' (Español).
+- UI: Dropdown de vehículos simplificado (Nombre limpio).
+- Rendimiento: Implementado RepaintBoundary en HomePage y ChoferHome para eliminar lag en emulador.
+- Backend: Se identificó el error de RLS en 'rutas'.
+
+──────────────────────────
+PROMPT 3 (Diagnóstico Final):
+"ejecuta todo tu" / "analiza y luego guarda todo incluye este error"
+
+RESULTADO FINAL DEL DÍA:
+Se identificó la causa raíz del bloqueo de guardado:
+ERROR: PostgrestException: null value in column "id" of relation "rutas" violates not-null constraint.
+
+DIAGNÓSTICO: La tabla 'rutas' en Supabase NO tiene configurado el valor por defecto para la columna 'id' (UUID), por lo que falla al intentar insertar sin ID manual.
+
+══════════════════════════════════════════════════════════════════
+PARA RETOMAR MAÑANA — DECIRLE AL ASISTENTE:
+══════════════════════════════════════════════════════════════════
+
+"Continuemos con GeoLogística. Lee sesion_actual.md. 
+Nos quedamos en que el guardado de viajes falla por un 'not-null constraint' en la columna 'id' de la tabla 'rutas'. 
+Ejecuta el SQL para poner el DEFAULT gen_random_uuid() en la tabla 'rutas' y 'paradas' para solucionar esto de una vez."
+
+══════════════════════════════════════════════════════════════════

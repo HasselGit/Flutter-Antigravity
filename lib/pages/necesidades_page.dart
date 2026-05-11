@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
+import '../backend/productos_data.dart';
 import '../backend/design_tokens.dart';
 
 class NecesidadesPageWidget extends StatefulWidget {
@@ -82,34 +83,8 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
     final cantidadController = TextEditingController();
     String selectedTipo = _tabController.index == 0 ? 'Recolección' : 'Distribución';
 
-    // Lista de productos reales cargados desde DB
-    final List<Map<String, dynamic>> productos = _productos.isNotEmpty ? _productos : [
-      {'codigo': 'TCM', 'descripcion': 'Tambor con Miel', 'unidad': 'Uni'},
-      {'codigo': 'TRR', 'descripcion': 'Tambor Reacondicionado Raldas', 'unidad': 'Uni'},
-      {'codigo': 'TRC', 'descripcion': 'Tambor Reacondicionado Cosde', 'unidad': 'Uni'},
-      {'codigo': 'TRO', 'descripcion': 'Tambor Reacondicionado Ombu', 'unidad': 'Uni'},
-      {'codigo': 'TNAR', 'descripcion': 'Tambor Nuevo Alto Raldas', 'unidad': 'Uni'},
-      {'codigo': 'TNAF', 'descripcion': 'Tambor Nuevo Alto Fabritam', 'unidad': 'Uni'},
-      {'codigo': 'TNP', 'descripcion': 'Tambor Nuevo Petiso', 'unidad': 'Uni'},
-      {'codigo': 'CO', 'descripcion': 'Cera Operculo', 'unidad': 'Kg'},
-      {'codigo': 'CR', 'descripcion': 'Cera Recupero', 'unidad': 'Kg'},
-      {'codigo': 'CE STD', 'descripcion': 'Cera Estampada STD', 'unidad': 'Uni'},
-      {'codigo': 'CE 3/4', 'descripcion': 'Cera Estampada 3/4', 'unidad': 'Uni'},
-      {'codigo': 'TE', 'descripcion': 'Techo Calden', 'unidad': 'Uni'},
-      {'codigo': 'PI', 'descripcion': 'Piso Calden', 'unidad': 'Uni'},
-      {'codigo': 'AL1 STD', 'descripcion': 'Alzas de Primera STD', 'unidad': 'Uni'},
-      {'codigo': 'AL2 STD', 'descripcion': 'Alzas de Segunda STD', 'unidad': 'Uni'},
-      {'codigo': 'TV', 'descripcion': 'Tabla de Varroa', 'unidad': 'Caja x 600 Uni'},
-      {'codigo': 'AZ', 'descripcion': 'Azucar', 'unidad': 'Bolsa x 50 Kg'},
-      {'codigo': 'GL', 'descripcion': 'Glucosa', 'unidad': 'Kg'},
-      {'codigo': 'TRM S/B', 'descripcion': 'Tambor Reacondicionado Myhura S/B', 'unidad': 'Uni'},
-      {'codigo': 'TRM C/B', 'descripcion': 'Tambor Reacondicionado Myhura C/B', 'unidad': 'Uni'},
-      {'codigo': 'AL1 3/4', 'descripcion': 'Alzas de Primera 3/4', 'unidad': 'Uni'},
-      {'codigo': 'AL2 3/4', 'descripcion': 'Alzas de Segunda 3/4', 'unidad': 'Uni'},
-      {'codigo': 'LA', 'descripcion': 'Largueros', 'unidad': 'Uni'},
-      {'codigo': 'NU', 'descripcion': 'Nucleros', 'unidad': 'Uni'},
-      {'codigo': 'CU', 'descripcion': 'Cuadros', 'unidad': 'Uni'},
-    ];
+    // Lista de productos reales cargados desde DB o Catálogo Maestro
+    final List<Map<String, dynamic>> productos = _productos.isNotEmpty ? _productos : ProductosData.masterCatalog;
 
     await showModalBottomSheet(
       context: context,
@@ -275,7 +250,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Cant. Est. (${productos.firstWhere((p) => p['codigo'] == selectedProducto, orElse: () => {'unidad': 'Kg'})['unidad']})', 
+                        Text('Cant. Est. (${productos.firstWhere((p) => (p['codigo'] ?? p['producto']) == selectedProducto, orElse: () => {'unidad': 'Kg'})['unidad']})', 
                           style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
                         const SizedBox(height: 8),
                         TextField(
@@ -307,10 +282,12 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                       String searchQuery = '';
                       return StatefulBuilder(
                         builder: (context, setDialogState) {
-                          final filteredProds = productos.where((p) => 
-                            (p['codigo']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false) || 
-                            (p['descripcion']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false)
-                          ).toList();
+                          final filteredProds = productos.where((p) {
+                            final code = (p['codigo'] ?? p['producto'] ?? '').toString().toLowerCase();
+                            final desc = (p['descripcion'] ?? '').toString().toLowerCase();
+                            final q = searchQuery.toLowerCase();
+                            return code.contains(q) || desc.contains(q);
+                          }).toList();
                           return AlertDialog(
                             title: const Text('Buscar Producto'),
                             content: SizedBox(
@@ -328,10 +305,10 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                                       shrinkWrap: true,
                                       itemCount: filteredProds.length,
                                       itemBuilder: (context, i) => ListTile(
-                                        title: Text(filteredProds[i]['codigo'] ?? ''),
+                                        title: Text((filteredProds[i]['codigo'] ?? filteredProds[i]['producto'] ?? '').toString()),
                                         subtitle: Text(filteredProds[i]['descripcion'] ?? ''),
                                         trailing: Text(filteredProds[i]['unidad'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                        onTap: () => Navigator.pop(context, filteredProds[i]['codigo']),
+                                        onTap: () => Navigator.pop(context, filteredProds[i]['codigo'] ?? filteredProds[i]['producto']),
                                       ),
                                     ),
                                   ),

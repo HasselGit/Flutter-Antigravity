@@ -47,7 +47,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       backgroundColor: DesignTokens.surfaceLow,
       body: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: LoginHoneycombPainter(color: DesignTokens.primary.withOpacity(0.03)))),
+          Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: LoginHoneycombPainter(color: DesignTokens.primary.withOpacity(0.03))))),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -62,7 +62,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                         shape: BoxShape.circle,
                         boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 8))],
                       ),
-                      child: ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', fit: BoxFit.contain)),
+                      child: ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', cacheWidth: 240, fit: BoxFit.contain)),
                     ),
                     const SizedBox(height: 40),
                     Container(

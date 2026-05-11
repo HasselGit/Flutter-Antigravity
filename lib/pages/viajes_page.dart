@@ -161,9 +161,26 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
     final id = v['id']?.toString() ?? '';
     final codigo = v['viaje_codigo']?.toString() ?? (id.length > 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase());
     final vehiculo = v['vehiculo_codigo']?.toString() ?? 'Sin vehículo';
+    final fechaPlanRaw = v['fecha_planificada'];
+    final fechaIniRaw = v['fecha_inicio'];
+    final fechaTermRaw = v['fecha_terminado'];
     final fechaRaw = v['fecha'] ?? v['created_at'];
-    final fecha = DateTime.tryParse(fechaRaw.toString());
-    final fechaStr = fecha != null ? DateFormat('dd/MM/yyyy HH:mm').format(fecha) : 'S/D';
+    
+    DateTime? fechaToShow;
+    String labelFecha = 'Fecha';
+
+    if (estado == 'Planificado' || estado == 'Pendiente') {
+      fechaToShow = DateTime.tryParse(fechaPlanRaw?.toString() ?? fechaRaw.toString());
+      labelFecha = 'Fecha Planificada';
+    } else if (estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado') {
+      fechaToShow = DateTime.tryParse(fechaIniRaw?.toString() ?? fechaRaw.toString());
+      labelFecha = 'Iniciado el';
+    } else {
+      fechaToShow = DateTime.tryParse(fechaTermRaw?.toString() ?? fechaRaw.toString());
+      labelFecha = 'Terminado el';
+    }
+
+    final fechaStr = fechaToShow != null ? DateFormat('dd/MM/yyyy HH:mm').format(fechaToShow) : 'S/D';
     final dynamic rawChofer = v['chofer'];
     Map<String, dynamic> chofer = {};
     if (rawChofer is List && rawChofer.isNotEmpty) {
@@ -246,22 +263,28 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
                               ),
                             ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
-                            child: Text(
-                              estado.toUpperCase(),
-                              style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Work Sans'),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
+                              child: Text(
+                                estado.toUpperCase(),
+                                style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Work Sans'),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                            if ((_userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
+                                (estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado'))
+                              IconButton(
+                                icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary),
+                                onPressed: () => context.push('/planificarViaje?editId=$id'),
+                              ),
+                          ],
+                        ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black45),
                           const SizedBox(width: 6),
-                          Text(fechaStr, style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter')),
+                          Text('$labelFecha: $fechaStr', style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter')),
                         ],
                       ),
                       const SizedBox(height: 4),
