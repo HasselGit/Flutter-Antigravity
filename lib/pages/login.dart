@@ -19,6 +19,7 @@ class _LoginWidgetState extends State<LoginWidget> {
   bool _isLoading = false;
 
   Future<void> _signIn() async {
+    FocusScope.of(context).unfocus(); // Cierra el teclado
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -44,20 +45,29 @@ class _LoginWidgetState extends State<LoginWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       backgroundColor: DesignTokens.surfaceLow,
       body: Stack(
         children: [
-          // Fondo plano temporal para descartar problemas de rendimiento
-          Container(color: DesignTokens.surfaceLow),
+          // Fondo de Panal Stitch Premium (Fijado al tamaño de pantalla para evitar repaints)
+          Positioned.fill(
+            child: OverflowBox(
+              maxWidth: MediaQuery.of(context).size.width,
+              maxHeight: MediaQuery.of(context).size.height,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  size: MediaQuery.of(context).size,
+                  painter: LoginHoneycombPainter(
+                    color: DesignTokens.primary.withOpacity(0.04),
+                  ),
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: EdgeInsets.only(
-                  left: 24, 
-                  right: 24, 
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 24
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -66,7 +76,13 @@ class _LoginWidgetState extends State<LoginWidget> {
                       height: 120,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 8))],
+                        boxShadow: [
+                          BoxShadow(
+                            color: DesignTokens.primary.withOpacity(0.1),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          )
+                        ],
                       ),
                       child: ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', cacheWidth: 240, fit: BoxFit.contain)),
                     ),
@@ -76,13 +92,19 @@ class _LoginWidgetState extends State<LoginWidget> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(32),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12))],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          )
+                        ],
                       ),
                       child: Column(
                         children: [
-                          const Text('¡Bienvenido!', style: TextStyle(fontFamily: 'Manrope', fontSize: 24, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
+                          Text('¡Bienvenido!', style: DesignTokens.headlineStyle()),
                           const SizedBox(height: 8),
-                          const Text('Inicia sesión para continuar', style: TextStyle(fontFamily: 'Inter', color: DesignTokens.onSurfaceVariant)),
+                          Text('Inicia sesión para continuar', style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant)),
                           const SizedBox(height: 32),
                           _buildTextField(controller: _emailController, label: 'Correo Electrónico', icon: Icons.alternate_email_rounded),
                           const SizedBox(height: 16),
@@ -105,7 +127,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                     const SizedBox(height: 24),
                     TextButton(
                       onPressed: () => context.pop(),
-                      child: const Text('VOLVER', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: DesignTokens.primary, letterSpacing: 1)),
+                      child: Text('VOLVER', style: DesignTokens.labelStyle(color: DesignTokens.primary)),
                     ),
                   ],
                 ),
@@ -121,6 +143,9 @@ class _LoginWidgetState extends State<LoginWidget> {
     return TextField(
       controller: controller,
       obscureText: isPassword,
+      autocorrect: false,
+      enableSuggestions: false,
+      keyboardType: isPassword ? TextInputType.visiblePassword : TextInputType.emailAddress,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: DesignTokens.primary.withOpacity(0.5)),
@@ -139,7 +164,7 @@ class LoginHoneycombPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.0;
-    const radius = 100.0;
+    const radius = 30.0;
     final double hexWidth = radius * 1.732;
     final double hexHeight = radius * 2;
     final double verticalSpacing = hexHeight * 0.75;

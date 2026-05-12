@@ -404,11 +404,18 @@ class SupabaseService {
   // ─── CATÁLOGOS ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getApicultores() async {
-    final List<dynamic> data = await _client
-        .from('apicultores')
-        .select('*')
-        .order('nombre', ascending: true);
-    return List<Map<String, dynamic>>.from(data);
+    try {
+      final List<dynamic> data = await _client
+          .from('apicultores')
+          .select('*')
+          .order('nombre', ascending: true)
+          .timeout(const Duration(seconds: 8));
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('SupabaseService: Error en getApicultores, usando local: $e');
+      // Importante: No devolvemos lista vacía si es posible, sino lo que tengamos o log local
+      return []; 
+    }
   }
 
   Future<List<Map<String, dynamic>>> getVehiculos() async =>
@@ -540,8 +547,7 @@ class SupabaseService {
         });
       } catch (e) { print('SupabaseService: Error en parada_item: $e'); }
       
-      await _client.from('solicitudes')
-          .update({'estado': AppStates.enCurso}).eq('id', nec['id']);
+      // Las solicitudes quedan PENDIENTES hasta que el viaje inicie.
     }
   }
 
@@ -583,8 +589,7 @@ class SupabaseService {
           'unidad': esUnidades ? 'UN' : 'KG',
         });
       } catch (e) { print('SupabaseService: Error en parada_item update: $e'); }
-      await _client.from('solicitudes')
-          .update({'estado': AppStates.enCurso}).eq('id', nec['id']);
+      // Las solicitudes quedan PENDIENTES hasta que el viaje inicie.
     }
   }
 
@@ -627,7 +632,11 @@ class SupabaseService {
       }
       await _client.from('paradas').delete().eq('viaje_id', viajeId);
       await _client.from('rutas').delete().eq('viaje_id', viajeId);
-      await _client.from('gastos').delete().eq('viaje_id', viajeId);
+      try {
+        await _client.from('gastos').delete().eq('viaje_id', viajeId);
+      } catch (e) {
+        print('SupabaseService: Tabla gastos no encontrada o inaccesible, continuando: $e');
+      }
       
       // 4. Borrar viaje
       await _client.from('viajes').delete().eq('id', viajeId);

@@ -451,6 +451,20 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
     }
   }
 
+  String _getUnidad(String? producto) {
+    if (producto == null) return 'Kg';
+    final prod = _productos.firstWhere(
+      (p) => (p['codigo'] ?? p['producto']) == producto,
+      orElse: () => ProductosData.masterCatalog.firstWhere(
+        (p) => (p['codigo'] ?? p['producto']) == producto,
+        orElse: () => {'unidad': 'Kg'},
+      ),
+    );
+    final String u = prod['unidad'] ?? 'Kg';
+    if (u.toLowerCase().contains('uni')) return 'Unidades';
+    return u;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -552,7 +566,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                 children: [
                   const SizedBox(height: 4),
                   Text('${api['nombre'] ?? 'Sin nombre'} • ${api['localidad'] ?? 'Sin loc.'}'),
-                  Text('${n['cantidad']} Kg estimados', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF08201A))),
+                  Text('${n['cantidad']} ${_getUnidad(n['producto'])} estimados', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF08201A))),
                 ],
               ),
               trailing: Row(

@@ -87,33 +87,14 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
       print('DEBUG: Buscando solicitudes para apicultor_id: $apiId o $alternateId');
 
-      // 1. Fetch Solicitudes (Filtro en memoria ultra-robusto)
-      final allSolsRes = await client.from('solicitudes').select('*');
-      final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes);
+      // 1. Fetch Solicitudes (Filtradas por ID desde la DB)
+      final allSolsRes = await client.from('solicitudes')
+          .select('*')
+          .or('apicultor_id.eq.$apiId,apicultor_id.eq.$alternateId');
       
-      final pendientes = allSols.where((s) {
-        final sid = (s['apicultor_id']?.toString() ?? '').trim().toUpperCase();
-        final cleanApiId = apiId.toString().trim().toUpperCase();
-        final cleanAltId = alternateId.toString().trim().toUpperCase();
-        
-        // Match FLEXIBLE: ID exacto, ID alternativo o si uno contiene al otro
-        // Esto cubre casos como 'A01887' matching '1887' o 'A1887'
-        bool matches = sid == cleanApiId || sid == cleanAltId;
-        
-        if (!matches && sid.isNotEmpty && cleanApiId.isNotEmpty) {
-          // Extraer solo números para comparación numérica si los strings fallan
-          final numericSid = sid.replaceAll(RegExp(r'[^0-9]'), '');
-          final numericApiId = cleanApiId.replaceAll(RegExp(r'[^0-9]'), '');
-          if (numericSid.isNotEmpty && numericApiId.isNotEmpty) {
-            matches = numericSid == numericApiId || 
-                     (numericSid.length > 3 && numericApiId.contains(numericSid)) ||
-                     (numericApiId.length > 3 && numericSid.contains(numericApiId));
-          }
-        }
-        
-        // Solo mostrar las que están realmente PENDIENTES o sin asignar a un viaje
+      final List<Map<String, dynamic>> pendientes = List<Map<String, dynamic>>.from(allSolsRes).where((s) {
         final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
-        return matches && (estado == 'pendiente' || estado == 'solicitado');
+        return estado == 'pendiente' || estado == 'solicitado';
       }).toList();
 
       _debugInfo = '';
@@ -600,7 +581,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold)),
-                Text('${tipo} • Estimado: ${s['cantidad']} kg', 
+                Text('${tipo} • Estimado: ${s['cantidad']} ${s['unidad'] ?? 'kg'}', 
                   style: DesignTokens.bodyStyle().copyWith(fontSize: 12, color: Colors.black38)
                 ),
               ],
@@ -671,7 +652,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(t.key.toUpperCase(), style: DesignTokens.labelStyle().copyWith(fontSize: 7, color: Colors.black38)),
-                      Text('${NumberFormat('#,###', 'es_AR').format(t.value)} kg', 
+                      Text('${NumberFormat('#,###', 'es_AR').format(t.value)} ${totalsByType.keys.first.toLowerCase().contains('tcm') ? 'Uni' : 'kg'}', 
                         style: DesignTokens.bodyStyle().copyWith(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF424846))
                       ),
                     ],

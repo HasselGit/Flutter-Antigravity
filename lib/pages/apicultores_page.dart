@@ -116,14 +116,6 @@ class _ApicultoresPageWidgetState extends State<ApicultoresPageWidget> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: _filtered.length,
                     itemBuilder: (context, index) {
-                      // Ordenar de nuevo por seguridad extrema antes de mostrar
-                      if (index == 0) {
-                        _filtered.sort((a, b) {
-                          final nA = (a['nombre'] ?? '').toString().trim().toLowerCase();
-                          final nB = (b['nombre'] ?? '').toString().trim().toLowerCase();
-                          return nA.compareTo(nB);
-                        });
-                      }
                       final a = _filtered[index];
                       return _buildApicultorCard(a);
                     },

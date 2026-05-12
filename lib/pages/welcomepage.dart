@@ -3,11 +3,9 @@ import '../flutter_flow/flutter_flow_util.dart';
 import '../flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
 import 'dart:math';
-import '../index.dart';
 import 'package:flutter/material.dart';
 import '../backend/design_tokens.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 
 import 'welcome_page_model.dart';
 export 'welcome_page_model.dart';
@@ -53,12 +51,12 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
         backgroundColor: theme.primaryBackground,
         body: Stack(
           children: [
-            // Honeycomb Pattern Background
+            // Honeycomb Pattern Background (Restaurado y Optimizado)
             Positioned.fill(
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: HoneycombPainter(
-                    color: theme.primary.withOpacity(0.03),
+                    color: theme.primary.withOpacity(0.04),
                   ),
                 ),
               ),
