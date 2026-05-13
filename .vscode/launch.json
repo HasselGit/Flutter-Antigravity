@@ -4,7 +4,10 @@
         {
             "name": "GeoLogística",
             "request": "launch",
-            "type": "dart"
+            "type": "dart",
+            "args": [
+                "--no-enable-impeller"
+            ]
         },
         {
             "name": "GeoLogística (Release Mode)",
