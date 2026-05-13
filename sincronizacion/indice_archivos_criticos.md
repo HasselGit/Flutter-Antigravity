@@ -16,3 +16,5 @@ Estos archivos contienen la lógica más importante y deben ser los primeros en 
 ## 🛠 Configuración de Entorno
 1.  [`pubspec.yaml`](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/pubspec.yaml): Dependencias del sistema.
 2.  [`android/gradle.properties`](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/android/gradle.properties): Configuración de Java y memoria para Android.
+3.  [`android/app/src/main/AndroidManifest.xml`](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/android/app/src/main/AndroidManifest.xml): Configuración del motor gráfico (Impeller desactivado) y teclado.
+4.  [`lib/backend/honeycomb_painter.dart`](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/backend/honeycomb_painter.dart): Motor de renderizado con caché estático global para fondos premium.
