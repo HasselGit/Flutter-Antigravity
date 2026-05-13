@@ -13,6 +13,7 @@ class ProductosPageWidget extends StatefulWidget {
 }
 
 class _ProductosPageWidgetState extends State<ProductosPageWidget> {
+  late Future<List<Map<String, dynamic>>> _productsFuture;
   List<Map<String, dynamic>> _productos = [];
   List<Map<String, dynamic>> _filteredProductos = [];
   final _searchController = TextEditingController();
@@ -38,7 +39,8 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
   Future<void> _fetchData() async {
     setState(() => _loading = true);
     try {
-      final data = await SupabaseService().getProductos();
+      _productsFuture = SupabaseService().getProductos();
+      final data = await _productsFuture;
       if (mounted) {
         setState(() {
           data.sort((a, b) => (a['descripcion'] ?? '').toString().toLowerCase().compareTo((b['descripcion'] ?? '').toString().toLowerCase()));
@@ -140,6 +142,10 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
     final descController = TextEditingController();
     final codeController = TextEditingController();
     String? selectedUnidad = 'KG';
+    
+    // Sort catalog once
+    final sortedCatalog = List<Map<String, dynamic>>.from(ProductosData.masterCatalog)
+      ..sort((a, b) => (a['descripcion'] ?? '').toString().toLowerCase().compareTo((b['descripcion'] ?? '').toString().toLowerCase()));
 
     showModalBottomSheet(
       context: context,
@@ -166,10 +172,8 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
                 ),
                 child: ListView.builder(
                   shrinkWrap: true,
-                  itemCount: ProductosData.masterCatalog.length,
+                  itemCount: sortedCatalog.length,
                   itemBuilder: (ctx, i) {
-                    final sortedCatalog = List<Map<String, dynamic>>.from(ProductosData.masterCatalog)
-                      ..sort((a, b) => (a['descripcion'] ?? '').toString().toLowerCase().compareTo((b['descripcion'] ?? '').toString().toLowerCase()));
                     final item = sortedCatalog[i];
                     final isAlreadyAdded = _productos.any((p) => p['codigo'] == item['producto']);
                     

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'productos_data.dart';
 import 'app_states.dart';
@@ -14,50 +15,47 @@ class SupabaseService {
   // ─── AUTH ─────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String email, String password) async {
-    print('SupabaseService: Iniciando login para $email');
     final cleanEmail = email.trim();
     final cleanPass = password.trim();
     try {
-      print('SupabaseService: Intentando signInWithPassword...');
-      final authRes = await _client.auth.signInWithPassword(
-        email: cleanEmail, password: cleanPass,
-      ).timeout(const Duration(seconds: 8));
+      // Usamos acceso directo a la base de datos para evitar bloqueos del SDK de Auth
+      // y porque la tabla profiles contiene la columna 'contrasena'
+      final profile = await _client.from('profiles')
+          .select()
+          .eq('email', cleanEmail)
+          .eq('contrasena', cleanPass)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
       
-      if (authRes.user != null) {
-        print('SupabaseService: Auth OK, buscando perfil...');
-        final profile = await _client.from('profiles')
-            .select('id, nombre, apellido, email, puesto')
-            .eq('id', authRes.user!.id).maybeSingle();
-        if (profile != null) {
-          print('SupabaseService: Perfil encontrado, guardando local...');
-          return await _saveLocal(profile);
-        }
+      if (profile != null) {
+        return await _saveLocal(profile);
+      } else {
+        throw Exception('Perfil no encontrado o contraseña incorrecta');
       }
-    } catch (e) { print('SupabaseService: Auth falló: $e'); }
-
-    print('SupabaseService: Intentando login manual por email...');
-    try {
-      final response = await _client.from('profiles')
-          .select('id, nombre, apellido, email, puesto')
-          .eq('email', cleanEmail).timeout(const Duration(seconds: 8));
-      if ((response as List).isNotEmpty) {
-        print('SupabaseService: Login manual OK');
-        return await _saveLocal((response as List).first);
+    } catch (e) {
+      print('SupabaseService: Error en login: $e');
+      if (e is TimeoutException) {
+        throw Exception('Tiempo de espera agotado. Revisa tu conexión.');
       }
-    } catch (e) { print('SupabaseService: Login manual falló: $e'); }
-    
-    print('SupabaseService: Todos los intentos fallaron');
-    throw Exception('Credenciales incorrectas');
+      throw Exception('Credenciales incorrectas o error de conexión');
+    }
   }
 
   Future<Map<String, dynamic>> _saveLocal(Map<String, dynamic> user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_id', user['id']?.toString() ?? '');
-    await prefs.setString('user_email', user['email'] ?? '');
-    await prefs.setString('user_nombre', user['nombre'] ?? '');
-    await prefs.setString('user_apellido', user['apellido'] ?? '');
-    await prefs.setString('user_puesto', user['puesto'] ?? '');
-    return user;
+    try {
+      print('SupabaseService: Iniciando _saveLocal...');
+      final prefs = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+      await prefs.setString('user_id', user['id']?.toString() ?? '');
+      await prefs.setString('user_email', user['email'] ?? '');
+      await prefs.setString('user_nombre', user['nombre'] ?? '');
+      await prefs.setString('user_apellido', user['apellido'] ?? '');
+      await prefs.setString('user_puesto', user['puesto'] ?? '');
+      print('SupabaseService: _saveLocal completado con éxito');
+      return user;
+    } catch (e) {
+      print('SupabaseService: Error en _saveLocal: $e');
+      return user; // Retornamos el user igualmente para no bloquear el flujo si solo falló el guardado persistente
+    }
   }
 
   // ─── VIAJES ───────────────────────────────────────────────────────────────

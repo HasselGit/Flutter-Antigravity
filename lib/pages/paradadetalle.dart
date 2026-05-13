@@ -18,14 +18,40 @@ class ParadaDetalleWidget extends StatefulWidget {
 }
 
 class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
+  late Future<Map<String, dynamic>?> _paradaFuture;
+  final Map<String, TextEditingController> _quantityControllers = {};
   String? _receptorTipo = 'Apicultor'; // 'Apicultor' o 'Tercero'
   final _receptorNombreController = TextEditingController();
   final _receptorDniController = TextEditingController();
   bool _isEditingQuantities = false;
-  Map<String, double> _editedQuantities = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _paradaFuture = _fetchParadaData();
+  }
+
+  Future<Map<String, dynamic>?> _fetchParadaData() async {
+    if (widget.paradaId == null) return null;
+    return await Supabase.instance.client
+        .from('paradas')
+        .select('*, parada_items(*), remitos(*)')
+        .eq('id', widget.paradaId!)
+        .maybeSingle();
+  }
+
+  TextEditingController _getController(String id, String initialValue) {
+    if (!_quantityControllers.containsKey(id)) {
+      _quantityControllers[id] = TextEditingController(text: initialValue);
+    }
+    return _quantityControllers[id]!;
+  }
 
   @override
   void dispose() {
+    for (var controller in _quantityControllers.values) {
+      controller.dispose();
+    }
     _receptorNombreController.dispose();
     _receptorDniController.dispose();
     super.dispose();
@@ -77,16 +103,9 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
           child: Column(
             children: [
               FutureBuilder<Map<String, dynamic>?>(
-                future: widget.paradaId != null 
-                  ? Supabase.instance.client.from('paradas').select('id, orden_secuencia, tipo, ubicacion, localidad, bruto_kg, neto_kg, viaje_id, apicultor_id').eq('id', widget.paradaId!).maybeSingle().then((data) {
-                      if (data != null) {
-                        data['apicultor_nombre'] = data['ubicacion']; // Map to legacy field name used in UI
-                      }
-                      return data;
-                    })
-                  : Future.value(<String, dynamic>{}),
+                future: _paradaFuture,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                     return const Padding(
                       padding: EdgeInsets.all(40),
                       child: Center(child: CircularProgressIndicator(color: DesignTokens.secondary)),
@@ -244,7 +263,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
             ],
           ),
           const SizedBox(height: 16),
-          Text(p['apicultor_nombre'] ?? 'Sin Nombre', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 24)),
+          Text(p['ubicacion'] ?? 'Sin Nombre', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 24)),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -354,10 +373,14 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
             SizedBox(
               width: 80,
               child: TextField(
+                controller: _getController(item['id'].toString(), item['cantidad'].toString()),
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.right,
-                decoration: const InputDecoration(isDense: true, border: UnderlineInputBorder()),
-                controller: TextEditingController(text: item['cantidad'].toString()),
+                decoration: InputDecoration(
+                  isDense: true, 
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                ),
                 onSubmitted: (val) {
                   final qty = double.tryParse(val);
                   if (qty != null) _updateItemQuantity(item['id'], qty);

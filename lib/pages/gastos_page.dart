@@ -363,7 +363,8 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                             publicUrl = Supabase.instance.client.storage.from('gastos').getPublicUrl(fileName);
                           }
 
-                          final user = Supabase.instance.client.auth.currentUser;
+                          final prefs = await SharedPreferences.getInstance();
+                          final userId = prefs.getString('user_id');
                           await Supabase.instance.client.from('gastos').insert({
                             'tipo_gasto': selectedTipo,
                             'importe': double.tryParse(amountController.text) ?? 0,
@@ -372,7 +373,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                             'forma_pago': selectedMetodo,
                             'viaje_id': selectedViaje?['id'],
                             'fecha': selectedFecha.toIso8601String(),
-                            'chofer_id': user?.id,
+                            'chofer_id': userId,
                             'comprobante_url': publicUrl,
                           });
                           if (ctx.mounted) {

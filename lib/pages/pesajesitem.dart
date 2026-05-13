@@ -33,8 +33,8 @@ class PesajesItemWidget extends StatefulWidget {
 
 class _PesajesItemWidgetState extends State<PesajesItemWidget> {
   late PesajesItemModel _model;
-
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  late Future<List<ParadaItemsRow>> _paradaItemsFuture;
 
   @override
   void initState() {
@@ -43,6 +43,15 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
 
     _model.textController ??= TextEditingController();
     _model.textFieldFocusNode ??= FocusNode();
+    _model.brutoController ??= TextEditingController();
+    _model.taraController ??= TextEditingController();
+
+    _paradaItemsFuture = ParadaItemsTable().querySingleRow(
+      queryFn: (q) => q.eqOrNull(
+        'id',
+        widget.paradaItemId,
+      ),
+    );
   }
 
   @override
@@ -83,22 +92,14 @@ class _PesajesItemWidgetState extends State<PesajesItemWidget> {
         body: SafeArea(
           top: true,
           child: FutureBuilder<List<ParadaItemsRow>>(
-            future: ParadaItemsTable().querySingleRow(
-              queryFn: (q) => q.eqOrNull(
-                'id',
-                widget.paradaItemId,
-              ),
-            ),
+            future: _paradaItemsFuture,
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                 return const Center(
                   child: CircularProgressIndicator(color: DesignTokens.secondary),
                 );
               }
-              List<ParadaItemsRow> containerParadaItemsRowList = snapshot.data!;
-
-              _model.brutoController ??= TextEditingController();
-              _model.taraController ??= TextEditingController();
+              List<ParadaItemsRow> containerParadaItemsRowList = snapshot.data ?? [];
 
               double bruto = double.tryParse(_model.brutoController!.text) ?? 0;
               double tara = double.tryParse(_model.taraController!.text) ?? 0;

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 abstract class FlutterFlowTheme {
-  static FlutterFlowTheme of(BuildContext context) => LightModeTheme();
+  static final LightModeTheme _lightTheme = LightModeTheme();
+  static FlutterFlowTheme of(BuildContext context) => _lightTheme;
 
   late Color primary;
   late Color secondary;
@@ -57,22 +58,22 @@ class LightModeTheme extends FlutterFlowTheme {
     error = const Color(0xFFBA1A1A);
     info = const Color(0xFFFFFFFF);
 
-    // Inicialización de fuentes una sola vez para rendimiento máximo
-    displayLarge = GoogleFonts.manrope(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: -0.02, color: primaryText);
-    displayMedium = GoogleFonts.manrope(fontSize: 28, fontWeight: FontWeight.bold, color: primaryText);
-    displaySmall = GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.bold, color: primaryText);
-    headlineLarge = GoogleFonts.manrope(fontSize: 32, fontWeight: FontWeight.normal, color: primaryText);
-    headlineMedium = GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w600, color: primaryText);
-    headlineSmall = GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w600, color: primaryText);
-    titleLarge = GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.normal, color: primaryText);
-    titleMedium = GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.normal, color: primaryText);
-    titleSmall = GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w600, color: primaryText);
-    bodyLarge = GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.normal, color: primaryText);
-    bodyMedium = GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.normal, color: primaryText);
-    bodySmall = GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.normal, color: primaryText);
-    labelLarge = GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.normal, color: primaryText);
-    labelMedium = GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.normal, color: primaryText);
-    labelSmall = GoogleFonts.workSans(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.05, color: secondaryText);
+    // Estas llamadas ahora solo se ejecutan UNA VEZ en toda la vida de la app
+    displayLarge = GoogleFonts.getFont('Manrope', fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: -0.02, color: primaryText);
+    displayMedium = GoogleFonts.getFont('Manrope', fontSize: 28, fontWeight: FontWeight.bold, color: primaryText);
+    displaySmall = GoogleFonts.getFont('Manrope', fontSize: 24, fontWeight: FontWeight.bold, color: primaryText);
+    headlineLarge = GoogleFonts.getFont('Manrope', fontSize: 32, fontWeight: FontWeight.normal, color: primaryText);
+    headlineMedium = GoogleFonts.getFont('Manrope', fontSize: 24, fontWeight: FontWeight.w600, color: primaryText);
+    headlineSmall = GoogleFonts.getFont('Manrope', fontSize: 20, fontWeight: FontWeight.w600, color: primaryText);
+    titleLarge = GoogleFonts.getFont('Manrope', fontSize: 22, fontWeight: FontWeight.normal, color: primaryText);
+    titleMedium = GoogleFonts.getFont('Manrope', fontSize: 18, fontWeight: FontWeight.normal, color: primaryText);
+    titleSmall = GoogleFonts.getFont('Manrope', fontSize: 18, fontWeight: FontWeight.w600, color: primaryText);
+    bodyLarge = GoogleFonts.getFont('Inter', fontSize: 16, fontWeight: FontWeight.normal, color: primaryText);
+    bodyMedium = GoogleFonts.getFont('Inter', fontSize: 14, fontWeight: FontWeight.normal, color: primaryText);
+    bodySmall = GoogleFonts.getFont('Inter', fontSize: 12, fontWeight: FontWeight.normal, color: primaryText);
+    labelLarge = GoogleFonts.getFont('Inter', fontSize: 16, fontWeight: FontWeight.normal, color: primaryText);
+    labelMedium = GoogleFonts.getFont('Inter', fontSize: 14, fontWeight: FontWeight.normal, color: primaryText);
+    labelSmall = GoogleFonts.getFont('Work Sans', fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.05, color: secondaryText);
   }
 }
 

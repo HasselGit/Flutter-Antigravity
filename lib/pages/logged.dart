@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoggedWidget extends StatefulWidget {
   const LoggedWidget({super.key});
@@ -21,8 +22,9 @@ class _LoggedWidgetState extends State<LoggedWidget> {
 
   Future<void> _redirect() async {
     // ALL roles go to /home first — role-specific content is handled inside HomePage
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id');
+    if (userId == null || userId.isEmpty) {
       if (mounted) context.go('/');
       return;
     }

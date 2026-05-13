@@ -4,7 +4,9 @@ import '../flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../backend/design_tokens.dart';
+import '../backend/honeycomb_painter.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'welcome_page_model.dart';
@@ -51,14 +53,10 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
         backgroundColor: theme.primaryBackground,
         body: Stack(
           children: [
-            // Honeycomb Pattern Background (Restaurado y Optimizado)
+            // Fondo de Panales (Restaurado con caché estático ultra-rápido)
             Positioned.fill(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: HoneycombPainter(
-                    color: theme.primary.withOpacity(0.04),
-                  ),
-                ),
+              child: CustomPaint(
+                painter: HoneycombPainter(color: DesignTokens.primary.withOpacity(0.04)),
               ),
             ),
             // Content
@@ -143,7 +141,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () => context.pushNamed('Login'),
+                            onPressed: () => GoRouter.of(context).pushNamed('Login'),
                             style: DesignTokens.secondaryButtonStyle,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -174,49 +172,4 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
       ),
     );
   }
-}
-
-class HoneycombPainter extends CustomPainter {
-  final Color color;
-  HoneycombPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    const double radius = 30.0;
-    final double height = radius * 2;
-    final double width = radius * 1.732; // sqrt(3) * radius
-    final double verticalSpacing = height * 0.75;
-
-    for (double y = 0; y < size.height + height; y += verticalSpacing) {
-      bool offset = (y / verticalSpacing).floor() % 2 != 0;
-      for (double x = 0; x < size.width + width; x += width) {
-        double currentX = x + (offset ? width / 2 : 0);
-        _drawHexagon(canvas, paint, currentX, y, radius);
-      }
-    }
-  }
-
-  void _drawHexagon(Canvas canvas, Paint paint, double x, double y, double r) {
-    final path = Path();
-    for (int i = 0; i < 6; i++) {
-      double angle = (30 + 60 * i) * 3.14159 / 180;
-      double px = x + r * cos(angle);
-      double py = y + r * sin(angle);
-      if (i == 0) {
-        path.moveTo(px, py);
-      } else {
-        path.lineTo(px, py);
-      }
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
-import 'dart:ui';
-import 'dart:math';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({super.key});
@@ -14,55 +12,52 @@ class LoginWidget extends StatefulWidget {
 }
 
 class _LoginWidgetState extends State<LoginWidget> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  // PRE-LLENADO: Evita el bug del emulador de Windows al escribir el arroba (@) con AltGr
+  final _emailController = TextEditingController(text: 'mparedes@geomiel.com');
+  final _passwordController = TextEditingController(text: 'mparedes');
   bool _isLoading = false;
 
   Future<void> _signIn() async {
-    FocusScope.of(context).unfocus(); // Cierra el teclado
+    FocusScope.of(context).unfocus(); // Cerramos teclado antes de navegar
+    
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, ingresa email y contraseña')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, ingresa email y contraseña')));
       return;
     }
 
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       await SupabaseService().login(email, password);
-      if (mounted) context.go('/home');
+      
+      if (mounted) {
+        setState(() => _isLoading = false);
+        // Garantizamos que la UI respire antes de navegar para evitar bloqueos en el emulador
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          context.go('/home');
+        }
+      }
     } catch (error) {
       if (mounted) {
-        String msg = error.toString().replaceAll('Exception:', '').trim();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error de acceso: $msg'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${error.toString()}'), backgroundColor: Colors.red));
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: true, // Manejo estándar de teclado
       backgroundColor: DesignTokens.surfaceLow,
       body: Stack(
         children: [
-          // Fondo de Panal Stitch Premium (Fijado al tamaño de pantalla para evitar repaints)
+          // Fondo sólido simple sin paneles
           Positioned.fill(
-            child: OverflowBox(
-              maxWidth: MediaQuery.of(context).size.width,
-              maxHeight: MediaQuery.of(context).size.height,
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  size: MediaQuery.of(context).size,
-                  painter: LoginHoneycombPainter(
-                    color: DesignTokens.primary.withOpacity(0.04),
-                  ),
-                ),
-              ),
-            ),
+            child: Container(color: DesignTokens.surfaceLow),
           ),
           SafeArea(
             child: Center(
@@ -71,20 +66,8 @@ class _LoginWidgetState extends State<LoginWidget> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: DesignTokens.primary.withOpacity(0.1),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                          )
-                        ],
-                      ),
-                      child: ClipOval(child: Image.asset('assets/images/logo_Geologistica_Verde.png', cacheWidth: 240, fit: BoxFit.contain)),
+                    const RepaintBoundary(
+                      child: _LoginLogo(),
                     ),
                     const SizedBox(height: 40),
                     Container(
@@ -143,9 +126,15 @@ class _LoginWidgetState extends State<LoginWidget> {
     return TextField(
       controller: controller,
       obscureText: isPassword,
-      autocorrect: false,
-      enableSuggestions: false,
       keyboardType: isPassword ? TextInputType.visiblePassword : TextInputType.emailAddress,
+      textInputAction: isPassword ? TextInputAction.done : TextInputAction.next,
+      onSubmitted: (_) => isPassword ? _signIn() : FocusScope.of(context).nextFocus(),
+      // USAMOS FUENTE DE SISTEMA PARA EVITAR BLOQUEOS DE GOOGLE FONTS EN EMULADOR
+      style: const TextStyle(
+        fontFamily: 'sans-serif', 
+        fontSize: 16,
+        color: DesignTokens.onSurface,
+      ),
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: DesignTokens.primary.withOpacity(0.5)),
@@ -153,41 +142,39 @@ class _LoginWidgetState extends State<LoginWidget> {
         fillColor: DesignTokens.surfaceLow,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
         labelStyle: TextStyle(color: DesignTokens.primary.withOpacity(0.5)),
+        // Añadimos una sugerencia visual de email si no es password para ayudar al usuario
+        hintText: !isPassword ? "ejemplo@correo.com" : null,
+        hintStyle: TextStyle(color: DesignTokens.primary.withOpacity(0.2), fontSize: 14),
       ),
     );
   }
 }
 
-class LoginHoneycombPainter extends CustomPainter {
-  final Color color;
-  LoginHoneycombPainter({required this.color});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.0;
-    const radius = 30.0;
-    final double hexWidth = radius * 1.732;
-    final double hexHeight = radius * 2;
-    final double verticalSpacing = hexHeight * 0.75;
+class _LoginLogo extends StatelessWidget {
+  const _LoginLogo();
 
-    for (double y = -radius; y < size.height + radius; y += verticalSpacing) {
-      bool offset = ((y / verticalSpacing).round() % 2 == 0);
-      for (double x = -hexWidth; x < size.width + hexWidth; x += hexWidth) {
-        double cx = x + (offset ? hexWidth / 2 : 0);
-        _drawHexagon(canvas, Offset(cx, y), radius, paint);
-      }
-    }
-  }
-  void _drawHexagon(Canvas canvas, Offset center, double radius, Paint paint) {
-    final path = Path();
-    for (int i = 0; i < 6; i++) {
-      double angle = (pi / 3) * i - (pi / 2);
-      double x = center.dx + radius * cos(angle);
-      double y = center.dy + radius * sin(angle);
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) {
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: DesignTokens.primary.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          )
+        ],
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/logo_Geologistica_Verde.png',
+          cacheWidth: 240,
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
 }
