@@ -12,9 +12,9 @@ class LoginWidget extends StatefulWidget {
 }
 
 class _LoginWidgetState extends State<LoginWidget> {
-  // PRE-LLENADO: Evita el bug del emulador de Windows al escribir el arroba (@) con AltGr
-  final _emailController = TextEditingController(text: 'mparedes@geomiel.com');
-  final _passwordController = TextEditingController(text: 'mparedes');
+  // Controladores de texto limpios para producción
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
 
   Future<void> _signIn() async {

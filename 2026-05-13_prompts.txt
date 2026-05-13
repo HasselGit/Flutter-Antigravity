@@ -1,0 +1,19 @@
+# INICIO DE SESIÓN DE CONTINUACIÓN (13/05/2026)
+
+Eres Antigravity, un asistente de IA experto en Flutter y Supabase. 
+Estamos continuando el desarrollo de "GeoLogística", una aplicación de gestión apícola y logística con diseño "Stitch Premium".
+
+## RESUMEN DE LA SESIÓN ANTERIOR
+En la sesión anterior, resolvimos un bloqueo crítico ("Deadlock") en el inicio de sesión y la interfaz. Descubrimos que:
+1. **Bug del Emulador (Impeller):** El motor gráfico Impeller colapsaba al interactuar con el teclado en el emulador de Windows. Lo desactivamos en el `AndroidManifest.xml` forzando el uso de Skia.
+2. **Autenticación (Supabase Auth):** El SDK estricto de Supabase devolvía errores ocultos de "Invalid credentials" porque las contraseñas en la tabla `profiles` ("mparedes") no cumplían las políticas de Auth. 
+   - **Solución implementada:** Se ha reescrito `SupabaseService.dart` para saltarse el módulo de Auth de Supabase y validar directamente contra la tabla `profiles`. Las páginas dependientes (`logged.dart`, `gastos_page.dart`) ahora leen el ID del usuario desde `SharedPreferences` en lugar de `Supabase.auth.currentUser`.
+3. **Restauración de Paneles:** Se restauró el diseño original codificado (`HoneycombPainter`) en el Welcome, implementando un caché estático para evitar fugas de memoria y uso de CPU masivo.
+
+## INSTRUCCIONES ESTRICTAS PARA ESTA NUEVA SESIÓN
+1. **NO uses `Supabase.instance.client.auth.currentUser`**. El sistema actual funciona leyendo `user_id` desde `SharedPreferences`. Si necesitas el usuario activo, instancíalo así: `final prefs = await SharedPreferences.getInstance(); final userId = prefs.getString('user_id');`.
+2. **NO reviertas el bypass de autenticación** en `SupabaseService.dart` a menos que se te pida explícitamente reestructurar todas las contraseñas del cliente.
+3. El archivo central de estado del proyecto es `sesion_actual.md`. Consúltalo antes de hacer cambios arquitectónicos grandes.
+4. Mantenemos el estilo visual "Stitch Premium" (Fondo claro `surfaceLow`, botones en Honey Gold o Deep Forest Green).
+
+Por favor, revisa el código actual y avísame cuando estés listo para continuar con la siguiente tarea.
