@@ -586,19 +586,19 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         children: [
           Row(
             children: [
+              Expanded(child: _buildInfoItem('DNI', a['dni']?.toString() ?? a['documento']?.toString() ?? '—')),
+              const SizedBox(width: 16),
               Expanded(child: _buildInfoItem('CUIT', a['cuit']?.toString() ?? '—')),
-              const SizedBox(width: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
               Expanded(child: _buildInfoItem('RENAPA', a['renapa'] ?? '—', highlight: true)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
-          const SizedBox(height: 16),
-          Row(
-            children: [
+              const SizedBox(width: 16),
               Expanded(child: _buildInfoItem('TELÉFONO', a['telefono'] ?? '—')),
-              const SizedBox(width: 16),
-              Expanded(child: _buildInfoItem('LOCALIDAD', a['localidad'] ?? '—', highlight: true)),
             ],
           ),
           const SizedBox(height: 16),
@@ -606,9 +606,9 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildInfoItem('PROVINCIA', a['provincia'] ?? '—')),
+              Expanded(child: _buildInfoItem('LOCALIDAD', a['localidad'] ?? '—', highlight: true)),
               const SizedBox(width: 16),
-              const Expanded(child: SizedBox()), // Espacio para mantener alineación
+              Expanded(child: _buildInfoItem('PROVINCIA', a['provincia'] ?? '—')),
             ],
           ),
         ],

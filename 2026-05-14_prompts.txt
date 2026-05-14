@@ -7,7 +7,7 @@ Estamos continuando el desarrollo de "GeoLogística", una aplicación de gestió
 En esta sesión, nos enfocamos en la estabilización del perfil de Apicultor y la normalización de la lógica de estados de solicitudes.
 
 1. **Estabilización de ApicultorDetalle:**
-   - Se eliminaron las referencias a la columna inexistente `dni` que causaba errores `42703`.
+   - Se restauró el campo **DNI** utilizando el fallback de datos locales para asegurar su visibilidad sin causar errores de esquema en Supabase.
    - Se optimizó la consulta del historial de operaciones (`remitos`) eliminando joins complejos que causaban errores `PGRST100`.
    - Se reorganizó la UI del perfil: se eliminó la foto, se limpió la cabecera (Header Premium con COD box) y se eliminaron elementos de branding no autorizados.
    - Se implementó un "Resumen de Operaciones" que agrupa totales por producto y tipo (Recolección/Distribución).
