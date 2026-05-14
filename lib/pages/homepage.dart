@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
+import '../backend/app_states.dart';
 
 class HomePageWidget extends StatefulWidget {
   const HomePageWidget({super.key});
@@ -156,7 +157,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     // ── Stats row ──
                     Row(
                       children: [
-                        _statCard('PLANIFICADOS', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
+                        _statCard('PENDIENTE', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
                         const SizedBox(width: 10),
                         _statCard('EN CURSO', _stats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC)),
                         const SizedBox(width: 10),
