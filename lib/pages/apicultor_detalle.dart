@@ -154,7 +154,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           .select('*, remitos(remito_codigo, created_at), parada_items(producto_codigo, cantidad, unidad), solicitudes!inner(apicultor_id)')
           .or('solicitudes.apicultor_id.eq.$apiId,solicitudes.apicultor_id.eq.$alternateId')
           .not('remito_id', 'is', null)
-          .order('created_at', { 'ascending': false });
+          .order('created_at', ascending: false);
       
       final List<Map<String, dynamic>> apiParadas = List<Map<String, dynamic>>.from(paradasRes as List);
       
@@ -586,19 +586,9 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         children: [
           Row(
             children: [
-              Expanded(child: _buildInfoItem('DNI', a['dni']?.toString() ?? a['documento']?.toString() ?? '—')),
-              const SizedBox(width: 16),
               Expanded(child: _buildInfoItem('CUIT', a['cuit']?.toString() ?? '—')),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
-          const SizedBox(height: 16),
-          Row(
-            children: [
+              const SizedBox(width: 16),
               Expanded(child: _buildInfoItem('RENAPA', a['renapa'] ?? '—', highlight: true)),
-              const SizedBox(width: 16),
-              Expanded(child: _buildInfoItem('TELÉFONO', a['telefono'] ?? '—')),
             ],
           ),
           const SizedBox(height: 16),
@@ -606,9 +596,19 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildInfoItem('LOCALIDAD', a['localidad'] ?? '—', highlight: true)),
+              Expanded(child: _buildInfoItem('TELÉFONO', a['telefono'] ?? '—')),
               const SizedBox(width: 16),
+              Expanded(child: _buildInfoItem('LOCALIDAD', a['localidad'] ?? '—', highlight: true)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
               Expanded(child: _buildInfoItem('PROVINCIA', a['provincia'] ?? '—')),
+              const SizedBox(width: 16),
+              const Expanded(child: SizedBox()), // Espacio para mantener alineación
             ],
           ),
         ],

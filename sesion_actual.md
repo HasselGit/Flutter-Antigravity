@@ -4,8 +4,8 @@
 ### 1. Estabilización de Perfil de Apicultor
 - **Acción:** Se corrigieron los errores de base de datos y se optimizó el historial operativo del apicultor.
 - **Detalles:**
-  - `lib/pages/apicultor_detalle.dart`: Se eliminaron las referencias a la columna inexistente `dni`. Se refactorizó la consulta de remitos para usar un join plano sobre `paradas`, eliminando el error `PGRST100`.
-  - **Limpieza UI:** Se eliminó el botón de edición superior y branding redundante, dejando un Header limpio y profesional.
+  - `lib/pages/apicultor_detalle.dart`: Se eliminaron las referencias a la columna inexistente `dni`. Se reorganizó la cuadrícula de información para ser más compacta y premium (2x3 grid). Se refactorizó la consulta de remitos para usar un join plano sobre `paradas`, eliminando el error `PGRST100`.
+  - **Limpieza UI:** Se eliminó el botón de edición superior y branding redundante, dejando un Header limpio y profesional sin fotos ni logos de "Productor".
   - **Sincronización:** Se ajustó la lógica de sincronización para priorizar datos locales seguros.
 
 ### 2. Saneamiento de Lógica de Estados (Solicitudes)
