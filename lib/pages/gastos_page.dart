@@ -64,10 +64,10 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
               },
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddGastoDialog(),
-        backgroundColor: DesignTokens.secondary,
-        icon: const Icon(Icons.add_a_photo_rounded, color: DesignTokens.primary),
-        label: const Text('NUEVO GASTO', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+        onPressed: _showAddGastoDialog,
+        backgroundColor: DesignTokens.primary,
+        icon: const Icon(Icons.payments_rounded, color: Colors.white),
+        label: const Text('NUEVO GASTO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -139,7 +139,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
     // Local list of trips for the dropdown
     List<Map<String, dynamic>> availableTrips = [];
-
+    bool _savingGasto = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -149,7 +149,13 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
         builder: (ctx, setModalState) {
           // Initialize trips if empty
           if (availableTrips.isEmpty) {
-            Supabase.instance.client.from('viajes').select('id, viaje_codigo').order('created_at', ascending: false).limit(20).then((data) {
+            Supabase.instance.client
+                .from('viajes')
+                .select('id, viaje_codigo, estado')
+                .inFilter('estado', ['En Curso', 'En Proceso', 'Cargado', 'Iniciado'])
+                .order('fecha', ascending: false)
+                .limit(20)
+                .then((data) {
               if (ctx.mounted) setModalState(() => availableTrips = data);
             });
           }
@@ -327,12 +333,11 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                              ],
                            )
                          : Column(
-                             children: [
-                               const Icon(Icons.camera_alt_rounded, size: 32, color: DesignTokens.primary),
-                               const SizedBox(height: 8),
-                               const Text('ADJUNTAR FOTO DEL TICKET', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
-                               const SizedBox(height: 4),
-                               Text('Obligatorio para rendición', style: TextStyle(fontSize: 10, color: DesignTokens.onSurfaceVariant.withOpacity(0.6))),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.add_a_photo_rounded, size: 32, color: DesignTokens.primary),
+                              const SizedBox(height: 8),
+                              Text(pickedFile == null ? 'ADJUNTAR FOTO' : 'CAMBIAR FOTO', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
                              ],
                            ),
                      ),
@@ -344,11 +349,12 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: () async {
+                      onPressed: _savingGasto ? null : () async {
                         if (amountController.text.isEmpty) {
                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
                           return;
                         }
+                        setModalState(() => _savingGasto = true);
                         try {
                           String? publicUrl;
                           if (pickedFile != null) {
@@ -380,14 +386,21 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                           if (ctx.mounted) {
                             Navigator.pop(ctx);
                             _fetchData();
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gasto registrado con éxito'), backgroundColor: Colors.green));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Gasto registrado con éxito'), backgroundColor: Colors.green));
                           }
                         } catch (e) {
-                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                          print('Error saving gasto: $e');
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                          }
+                        } finally {
+                          if (ctx.mounted) setModalState(() => _savingGasto = false);
                         }
                       },
                       style: DesignTokens.primaryButtonStyle,
-                      child: const Text('GUARDAR REGISTRO'),
+                      child: _savingGasto 
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('GUARDAR REGISTRO'),
                     ),
                   ),
                   const SizedBox(height: 24),

@@ -133,6 +133,141 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
             decoration: BoxDecoration(color: kSecContainer.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
             child: Text(p['unidad'] ?? 'UN', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: kPrimary)),
           ),
+          if (_userRole == 'CEO' || _userRole == 'Gerente' || _userRole == 'Compras') ...[
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.black26, size: 20),
+              onSelected: (val) {
+                if (val == 'edit') _editProduct(p);
+                if (val == 'delete') _confirmDelete(p);
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 18), SizedBox(width: 8), Text('Editar')])),
+                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, size: 18, color: Colors.red), SizedBox(width: 8), Text('Eliminar', style: TextStyle(color: Colors.red))])),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _editProduct(Map<String, dynamic> p) {
+    final descController = TextEditingController(text: p['descripcion']);
+    final codeController = TextEditingController(text: p['codigo']);
+    String? selectedUnidad = p['unidad'] ?? 'KG';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Editar Producto', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kPrimary)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: descController,
+                decoration: InputDecoration(
+                  labelText: 'Descripción',
+                  prefixIcon: const Icon(Icons.inventory_2_outlined, color: kPrimary),
+                  filled: true,
+                  fillColor: kSurface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: codeController,
+                      decoration: InputDecoration(
+                        labelText: 'Código',
+                        filled: true,
+                        fillColor: kSurface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: selectedUnidad,
+                      decoration: InputDecoration(
+                        labelText: 'Unidad',
+                        filled: true,
+                        fillColor: kSurface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                      items: ['KG', 'Kg', 'kg', 'UN', 'Uni', 'L', 'Lts', 'Tambor', 'Bolsa x 50 Kg', 'Caja x 600 Uni']
+                          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                          .toList(),
+                      onChanged: (v) => setModalState(() => selectedUnidad = v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (descController.text.isEmpty) return;
+                    try {
+                      await SupabaseService().updateProducto(p['id'].toString(), {
+                        'descripcion': descController.text,
+                        'codigo': codeController.text,
+                        'unidad': selectedUnidad,
+                      });
+                      if (mounted) Navigator.pop(ctx);
+                      _fetchData();
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('ACTUALIZAR PRODUCTO', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(Map<String, dynamic> p) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar producto?'),
+        content: Text('El producto "${p['descripcion']}" se ocultará pero se mantendrá en el historial.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () async {
+              try {
+                await SupabaseService().softDeleteProducto(p['id'].toString());
+                if (mounted) Navigator.pop(ctx);
+                _fetchData();
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+              }
+            }, 
+            child: const Text('ELIMINAR', style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );
@@ -235,7 +370,7 @@ class _ProductosPageWidgetState extends State<ProductosPageWidget> {
                         fillColor: kSurface,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       ),
-                      items: ['KG', 'UN', 'L', 'Tambor', 'Uni', 'Bolsa x 50 Kg', 'Caja x 600 Uni']
+                      items: ['KG', 'Kg', 'kg', 'UN', 'Uni', 'L', 'Lts', 'Tambor', 'Bolsa x 50 Kg', 'Caja x 600 Uni']
                           .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                           .toList(),
                       onChanged: (v) => setModalState(() => selectedUnidad = v),

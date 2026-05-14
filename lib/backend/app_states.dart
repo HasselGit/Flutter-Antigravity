@@ -5,12 +5,14 @@ class AppStates {
 
   // ── Estados comunes ────────────────────────────────────────────────────────
   static const String pendiente  = 'Pendiente';
+  static const String asignada   = 'Asignada';
   static const String enCurso    = 'En Curso';
   static const String terminado  = 'Terminado';
 
   // ── Estados de Solicitudes ─────────────────────────────────────────────────
   // Pendiente  → recién creada, disponible para planificar
-  // En Curso   → incluida en un viaje planificado
+  // Asignada   → incluida en un viaje que aún no ha iniciado (Pendiente/Planificado)
+  // En Curso   → el viaje asociado ha iniciado
   // Terminado  → parada completada con remito generado
 
   // ── Estados de Viajes ─────────────────────────────────────────────────────
@@ -31,48 +33,55 @@ class AppStates {
   /// Normaliza strings de estados anteriores al nuevo estándar.
   static String normalize(String? raw) {
     if (raw == null) return pendiente;
-    switch (raw.trim()) {
-      case 'Planificado':
-      case 'Planificada':
-      case 'Cargado':
-        return pendiente;
-      case 'En Proceso':
-      case 'En Curso':
-        return enCurso;
-      case 'Finalizado':
-      case 'Completado':
-      case 'Completada':
-      case 'Terminado':
-        return terminado;
-      default:
-        return raw;
+    final clean = raw.trim().toLowerCase();
+    
+    if (clean == 'planificado' || clean == 'planificada' || clean == 'cargado') {
+      return pendiente;
     }
+    if (clean == 'en proceso' || clean == 'en curso' || clean == 'enproceso' || clean == 'encurso') {
+      return enCurso;
+    }
+    if (clean == 'asignada' || clean == 'asignado') {
+      return asignada;
+    }
+    if (clean == 'finalizado' || clean == 'completado' || clean == 'completada' || clean == 'terminado' || clean == 'terminada') {
+      return terminado;
+    }
+    
+    // Si no coincide con ninguno, devolver el original capitalizado si es posible
+    if (raw.isNotEmpty) {
+      return raw[0].toUpperCase() + raw.substring(1).toLowerCase();
+    }
+    return raw;
   }
 
   /// Color de fondo del badge según estado.
   static int stateBgColor(String estado) {
     switch (estado) {
-      case enCurso:    return 0xFFFDEFCC;
-      case terminado:  return 0xFFD4F0E1;
-      default:         return 0xFFD6E4FF; // Pendiente → azul suave
+      case asignada:   return 0xFFE3F2FD; // Azul muy claro
+      case enCurso:    return 0xFFFDEFCC; // Ambar
+      case terminado:  return 0xFFD4F0E1; // Esmeralda
+      default:         return 0xFFF5F5F5; // Gris (Pendiente)
     }
   }
 
   /// Color de texto del badge según estado.
   static int stateTextColor(String estado) {
     switch (estado) {
-      case enCurso:    return 0xFF7D5700;
-      case terminado:  return 0xFF1A6B43;
-      default:         return 0xFF1565C0; // Pendiente → azul oscuro
+      case asignada:   return 0xFF1976D2; // Azul fuerte
+      case enCurso:    return 0xFF7D5700; // Marron/Ambar oscuro
+      case terminado:  return 0xFF1A6B43; // Esmeralda oscuro
+      default:         return 0xFF757575; // Gris oscuro
     }
   }
 
   /// Color del borde izquierdo de tarjeta según estado.
   static int stateBorderColor(String estado) {
     switch (estado) {
+      case asignada:   return 0xFF2196F3;
       case enCurso:    return 0xFFFDBE49;
       case terminado:  return 0xFF249689;
-      default:         return 0xFF1565C0;
+      default:         return 0xFFBDBDBD;
     }
   }
 }

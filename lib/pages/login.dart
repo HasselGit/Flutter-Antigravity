@@ -18,7 +18,11 @@ class _LoginWidgetState extends State<LoginWidget> {
   bool _isLoading = false;
 
   Future<void> _signIn() async {
-    FocusScope.of(context).unfocus(); // Cerramos teclado antes de navegar
+    // 1. Cerramos el teclado PRIMERO
+    FocusScope.of(context).unfocus();
+    
+    // 2. Esperamos a que la animación del teclado termine para que no colapse la GPU del emulador
+    await Future.delayed(const Duration(milliseconds: 400));
     
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -30,20 +34,29 @@ class _LoginWidgetState extends State<LoginWidget> {
 
     if (mounted) setState(() => _isLoading = true);
     try {
+      // 3. Login contra la DB (Bypass de Auth SDK)
       await SupabaseService().login(email, password);
       
       if (mounted) {
         setState(() => _isLoading = false);
-        // Garantizamos que la UI respire antes de navegar para evitar bloqueos en el emulador
-        await Future.delayed(const Duration(milliseconds: 300));
+        
+        // 4. Pausa extra de seguridad para que el hilo de UI respire
+        await Future.delayed(const Duration(milliseconds: 500));
+        
         if (mounted) {
+          print('Login: Navegando a /home...');
           context.go('/home');
         }
       }
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${error.toString()}'), backgroundColor: Colors.red));
+        print('Login: Error detectado: $error');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: ${error.toString()}'), 
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ));
       }
     }
   }
@@ -51,7 +64,7 @@ class _LoginWidgetState extends State<LoginWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Manejo estándar de teclado
+      resizeToAvoidBottomInset: false, // Desactivado para evitar Deadlocks en el emulador al abrir el teclado
       backgroundColor: DesignTokens.surfaceLow,
       body: Stack(
         children: [
@@ -66,9 +79,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const RepaintBoundary(
-                      child: _LoginLogo(),
-                    ),
+                    const _LoginLogo(),
                     const SizedBox(height: 40),
                     Container(
                       padding: const EdgeInsets.all(32),
@@ -109,7 +120,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                     ),
                     const SizedBox(height: 24),
                     TextButton(
-                      onPressed: () => context.pop(),
+                      onPressed: () => context.go('/'),
                       child: Text('VOLVER', style: DesignTokens.labelStyle(color: DesignTokens.primary)),
                     ),
                   ],

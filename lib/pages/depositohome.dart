@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:go_router/go_router.dart';
+import '../backend/design_tokens.dart';
+import '../backend/supabase_service.dart';
 
 class DepositoHomeWidget extends StatefulWidget {
   const DepositoHomeWidget({super.key});
@@ -25,7 +26,7 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
       final data = await Supabase.instance.client
           .from('viajes')
           .select('*, profiles(nombre, apellido), paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
-          .eq('estado', 'Planificado')
+          .or('estado.eq.Planificado,estado.eq.Pendiente')
           .order('fecha', ascending: true);
 
       if (mounted) {
@@ -75,7 +76,7 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
 
     if (confirmar == true) {
       try {
-        await Supabase.instance.client.from('viajes').update({'estado': 'Cargado'}).eq('id', viaje['id']);
+        await SupabaseService().updateViajeEstado(viaje['id'], 'Cargado');
         _fetchData();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viaje marcado como CARGADO'), backgroundColor: Colors.green));
@@ -89,12 +90,12 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFBF9F8),
+      backgroundColor: DesignTokens.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFBF9F8),
+        backgroundColor: DesignTokens.surface,
         elevation: 0,
-        title: const Text('Módulo de Depósito', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
-        iconTheme: const IconThemeData(color: Color(0xFF08201A)),
+        title: Text('Módulo de Depósito', style: DesignTokens.headlineStyle()),
+        iconTheme: IconThemeData(color: DesignTokens.primary),
       ),
       body: _loading 
         ? const Center(child: CircularProgressIndicator())
@@ -106,8 +107,8 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Viajes para Cargar', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
-                    Text('Confirme la salida física de mercadería de planta.', style: TextStyle(color: Colors.black.withOpacity(0.5))),
+                    Text('Viajes para Cargar', style: DesignTokens.headlineStyle(color: DesignTokens.primary)),
+                    Text('Confirme la salida física de mercadería de planta.', style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -149,8 +150,8 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: excede ? Colors.red.withOpacity(0.3) : const Color(0xFF08201A).withOpacity(0.05)),
-                            boxShadow: [BoxShadow(color: excede ? Colors.red.withOpacity(0.05) : Colors.black.withOpacity(0.02), blurRadius: 10)],
+                            border: Border.all(color: excede ? DesignTokens.error.withOpacity(0.3) : DesignTokens.outline.withOpacity(0.2)),
+                            boxShadow: [BoxShadow(color: excede ? DesignTokens.error.withOpacity(0.05) : Colors.black.withOpacity(0.02), blurRadius: 10)],
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -160,11 +161,11 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(v['viaje_codigo'] ?? 'S/C', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF08201A))),
+                                    Text(v['viaje_codigo'] ?? 'S/C', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 16)),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(color: const Color(0xFFFDBE49).withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                                      child: Text(v['vehiculo_codigo'] ?? 'N/A', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+                                      decoration: BoxDecoration(color: DesignTokens.accent.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                                      child: Text(v['vehiculo_codigo'] ?? 'N/A', style: DesignTokens.labelStyle(color: DesignTokens.primary)),
                                     ),
                                   ],
                                 ),
@@ -184,15 +185,15 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const Text('CARGA TOTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
-                                        Text('${totalKg.toStringAsFixed(0)} KG', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: excede ? Colors.red : const Color(0xFF08201A))),
+                                        Text('CARGA TOTAL', style: DesignTokens.labelStyle().copyWith(fontSize: 9)),
+                                        Text('${totalKg.toStringAsFixed(0)} KG', style: DesignTokens.headlineStyle(color: excede ? DesignTokens.error : DesignTokens.primary).copyWith(fontSize: 16)),
                                       ],
                                     ),
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
-                                        const Text('TAMBORES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black45)),
-                                        Text('$totalTambores un.', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF08201A))),
+                                        Text('TAMBORES', style: DesignTokens.labelStyle().copyWith(fontSize: 9)),
+                                        Text('$totalTambores un.', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 16)),
                                       ],
                                     ),
                                   ],
@@ -202,21 +203,16 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                                   Text('⚠️ Excede capacidad (${capKg.toStringAsFixed(0)} Kg)', style: const TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ],
                                 const SizedBox(height: 16),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _confirmarCarga(v, totalKg, totalTambores),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF08201A),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      elevation: 0,
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 52,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => _confirmarCarga(v, totalKg, totalTambores),
+                                      style: DesignTokens.primaryButtonStyle,
+                                      icon: Icon(Icons.check_circle_outline, color: DesignTokens.accent),
+                                      label: const Text('CONFIRMAR CARGA Y SALIDA'),
                                     ),
-                                    icon: const Icon(Icons.check_circle_outline, color: Color(0xFFFDBE49)),
-                                    label: const Text('CONFIRMAR CARGA Y SALIDA', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                                   ),
-                                ),
                               ],
                             ),
                           ),
@@ -228,8 +224,8 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
           ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddCargaDialog,
-        backgroundColor: const Color(0xFF08201A),
-        icon: const Icon(Icons.add_box_rounded, color: Color(0xFFFDBE49)),
+        backgroundColor: DesignTokens.primary,
+        icon: Icon(Icons.add_box_rounded, color: DesignTokens.accent),
         label: const Text('AGREGAR CARGA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
@@ -261,7 +257,7 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Asignar Carga a Viaje', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF08201A))),
+                  Text('Asignar Carga a Viaje', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
                   const SizedBox(height: 20),
                   DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedViaje,

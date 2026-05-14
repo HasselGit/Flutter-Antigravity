@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 import 'productos_data.dart';
 import 'app_states.dart';
+import 'apicultores_data.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -133,6 +134,14 @@ class SupabaseService {
             .eq('viaje_id', viajeId).order('fecha');
         viaje['gastos'] = gastos;
       } catch (_) { viaje['gastos'] = []; }
+
+      try {
+        final cargas = await _client.from('cargas')
+            .select('*, carga_items(*)')
+            .eq('viaje_id', viajeId).order('created_at');
+        viaje['cargas'] = cargas;
+      } catch (_) { viaje['cargas'] = []; }
+
       return viaje;
     } catch (e) {
       print('SupabaseService: Error en getViajeDetalle: $e');
@@ -148,6 +157,44 @@ class SupabaseService {
       updates['fecha_terminado'] = DateTime.now().toIso8601String();
     }
     await _client.from('viajes').update(updates).eq('id', viajeId);
+
+    // Propagar estado a las solicitudes asociadas
+    try {
+      final paradas = await _client.from('paradas')
+          .select('solicitud_id, parada_items(solicitud_id)')
+          .eq('viaje_id', viajeId);
+      
+      final List<String> solicitudIds = [];
+      for (var p in (paradas as List)) {
+        if (p['solicitud_id'] != null) solicitudIds.add(p['solicitud_id'].toString());
+        final items = p['parada_items'] as List?;
+        if (items != null) {
+          for (var it in items) {
+            if (it['solicitud_id'] != null) solicitudIds.add(it['solicitud_id'].toString());
+          }
+        }
+      }
+
+      if (solicitudIds.isNotEmpty) {
+        String solicitudEstado;
+        final normalizedNuevo = AppStates.normalize(nuevoEstado);
+
+        if (normalizedNuevo == AppStates.enCurso) {
+          solicitudEstado = AppStates.enCurso;
+        } else if (normalizedNuevo == AppStates.terminado) {
+          solicitudEstado = AppStates.terminado;
+        } else {
+          // Si el viaje vuelve a Pendiente/Planificado, las solicitudes vuelven a Asignada
+          solicitudEstado = AppStates.asignada;
+        }
+
+        await _client.from('solicitudes')
+            .update({'estado': solicitudEstado})
+            .filter('id', 'in', solicitudIds);
+      }
+    } catch (e) {
+      print('SupabaseService: Error propagando estado a solicitudes: $e');
+    }
   }
 
   // ─── RUTAS ────────────────────────────────────────────────────────────────
@@ -181,10 +228,14 @@ class SupabaseService {
   Future<Map<String, int>> getStats({String? userId, String? role}) async {
     try {
       dynamic query = _client.from('viajes').select('estado');
-      if (role == 'Chofer' && userId != null) query = query.eq('chofer_id', userId);
-      final data = await query.timeout(const Duration(seconds: 10));
+      if (role == 'Chofer' && userId != null) {
+        query = query.eq('chofer_id', userId);
+      }
+      
+      final data = await query.timeout(const Duration(seconds: 15));
       int pendientes = 0, enCurso = 0, terminados = 0;
-      for (final v in data) {
+      
+      for (final v in (data as List)) {
         final e = AppStates.normalize(v['estado']);
         if (e == AppStates.pendiente) pendientes++;
         else if (e == AppStates.enCurso) enCurso++;
@@ -192,6 +243,7 @@ class SupabaseService {
       }
       return {'planificados': pendientes, 'en_curso': enCurso, 'terminados': terminados};
     } catch (e) {
+      print('SupabaseService: Error en getStats: $e');
       return {'planificados': 0, 'en_curso': 0, 'terminados': 0};
     }
   }
@@ -408,11 +460,58 @@ class SupabaseService {
           .select('*')
           .order('nombre', ascending: true)
           .timeout(const Duration(seconds: 8));
-      return List<Map<String, dynamic>>.from(data);
+      final list = List<Map<String, dynamic>>.from(data);
+      _auditAndFixApicultores(list);
+      return list;
     } catch (e) {
       print('SupabaseService: Error en getApicultores, usando local: $e');
       // Importante: No devolvemos lista vacía si es posible, sino lo que tengamos o log local
       return []; 
+    }
+  }
+
+  Future<void> _auditAndFixApicultores(List<Map<String, dynamic>> dbList) async {
+    // Solo auditamos una muestra o lo hacemos de forma asíncrona controlada
+    // para no sobrecargar el cliente en cada fetch.
+    for (var dbApi in dbList) {
+      final id = dbApi['id']?.toString() ?? '';
+      final localApi = ApicultoresData.fallbackApicultores.firstWhere(
+        (a) => a['apicultor_codigo'] == id,
+        orElse: () => {},
+      );
+
+      if (localApi.isNotEmpty) {
+        Map<String, dynamic> toUpdate = {};
+        final fields = ['cuit', 'renapa', 'localidad', 'provincia', 'telefono'];
+        
+        for (var f in fields) {
+          final dbVal = dbApi[f]?.toString() ?? '';
+          final localVal = localApi[f]?.toString() ?? '';
+          
+          if (localVal.isNotEmpty && dbVal.isEmpty) {
+            toUpdate[f] = localVal;
+          }
+        }
+
+        // Fix para swaps y truncamientos
+        final dbName = dbApi['nombre']?.toString() ?? '';
+        final localName = localApi['nombre']?.toString() ?? '';
+        if (localName.isNotEmpty && localName.length > dbName.length + 5) {
+          toUpdate['nombre'] = localName;
+        }
+        
+        if (toUpdate.isNotEmpty) {
+          updateApicultorBasicData(id, toUpdate);
+        }
+      }
+    }
+  }
+
+  Future<void> updateApicultorBasicData(String id, Map<String, dynamic> data) async {
+    try {
+      await _client.from('apicultores').update(data).eq('id', id);
+    } catch (e) {
+      print('SupabaseService: Error actualizando apicultor $id: $e');
     }
   }
 
@@ -431,9 +530,13 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getProductos() async {
     try {
       final list = await _fetchList('productos',
-          select: 'id, descripcion, codigo, unidad',
+          select: 'id, descripcion, codigo, unidad, activo',
           order: 'descripcion');
-      if (list.isNotEmpty) return list;
+      
+      // Filtramos solo los activos si la columna existe (si no, asumimos todos activos)
+      final filteredList = list.where((p) => p['activo'] != false).toList();
+      
+      if (filteredList.isNotEmpty) return filteredList;
       return ProductosData.masterCatalog;
     } catch (e) {
       return ProductosData.masterCatalog;
@@ -441,19 +544,16 @@ class SupabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getGastos() async {
-    final gastos = await _fetchList('gastos',
-        select: 'id, categoria, monto, fecha, chofer_id, viaje_id, comprobante_url',
-        order: 'fecha');
-    for (var g in gastos) {
-      if (g['chofer_id'] != null) {
-        try {
-          final profile = await _client.from('profiles')
-              .select('nombre, apellido').eq('id', g['chofer_id']).maybeSingle();
-          g['profiles'] = profile;
-        } catch (_) {}
-      }
+    try {
+      final List<dynamic> data = await _client.from('gastos')
+          .select('*, profiles(nombre, apellido), viajes(viaje_codigo)')
+          .order('fecha', ascending: false)
+          .timeout(const Duration(seconds: 10));
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('SupabaseService: Error en getGastos: $e');
+      return [];
     }
-    return gastos;
   }
 
   Future<List<Map<String, dynamic>>> getRemitos() async {
@@ -545,7 +645,20 @@ class SupabaseService {
         });
       } catch (e) { print('SupabaseService: Error en parada_item: $e'); }
       
-      // Las solicitudes quedan PENDIENTES hasta que el viaje inicie.
+      // Actualizar estado de las solicitudes a 'Asignada'
+      try {
+        final List<String> solicitudIds = necesidades
+            .where((n) => n['id'] != null)
+            .map((n) => n['id'].toString())
+            .toList();
+        if (solicitudIds.isNotEmpty) {
+          await _client.from('solicitudes')
+              .update({'estado': AppStates.asignada})
+              .filter('id', 'in', solicitudIds);
+        }
+      } catch (e) {
+        print('SupabaseService: Error marcando solicitudes como asignadas: $e');
+      }
     }
   }
 
@@ -587,7 +700,20 @@ class SupabaseService {
           'unidad': esUnidades ? 'UN' : 'KG',
         });
       } catch (e) { print('SupabaseService: Error en parada_item update: $e'); }
-      // Las solicitudes quedan PENDIENTES hasta que el viaje inicie.
+    }
+    // Actualizar estado de las solicitudes a 'Asignada'
+    try {
+      final List<String> solicitudIds = necesidades
+          .where((n) => n['id'] != null)
+          .map((n) => n['id'].toString())
+          .toList();
+      if (solicitudIds.isNotEmpty) {
+        await _client.from('solicitudes')
+            .update({'estado': AppStates.asignada})
+            .filter('id', 'in', solicitudIds);
+      }
+    } catch (e) {
+      print('SupabaseService: Error marcando solicitudes como asignadas en update: $e');
     }
   }
 
@@ -600,8 +726,19 @@ class SupabaseService {
   Future<void> createGasto(Map<String, dynamic> data) async =>
       await _client.from('gastos').insert(data);
 
-  Future<void> createProducto(Map<String, dynamic> data) async =>
-      await _client.from('productos').insert(data);
+  Future<void> createProducto(Map<String, dynamic> data) async {
+    final Map<String, dynamic> payload = Map.from(data);
+    payload['activo'] = true;
+    await _client.from('productos').insert(payload);
+  }
+
+  Future<void> updateProducto(String id, Map<String, dynamic> data) async {
+    await _client.from('productos').update(data).eq('id', id);
+  }
+
+  Future<void> softDeleteProducto(String id) async {
+    await _client.from('productos').update({'activo': false}).eq('id', id);
+  }
 
   Future<void> createParadaItem(Map<String, dynamic> data) async =>
       await _client.from('parada_items').insert(data);
@@ -609,13 +746,22 @@ class SupabaseService {
   Future<void> deleteViaje(String viajeId) async {
     try {
       // 1. Obtener las paradas para saber qué solicitudes liberar y qué items borrar
-      final paradasRes = await _client.from('paradas').select('id, solicitud_id').eq('viaje_id', viajeId);
+      final paradasRes = await _client.from('paradas')
+          .select('id, solicitud_id, parada_items(solicitud_id)')
+          .eq('viaje_id', viajeId);
+      
       final List<Map<String, dynamic>> paradas = List<Map<String, dynamic>>.from(paradasRes as List);
       
-      final List<String> solicitudIds = paradas
-          .where((p) => p['solicitud_id'] != null)
-          .map((p) => p['solicitud_id'].toString())
-          .toList();
+      final List<String> solicitudIds = [];
+      for (var p in paradas) {
+        if (p['solicitud_id'] != null) solicitudIds.add(p['solicitud_id'].toString());
+        final items = p['parada_items'] as List?;
+        if (items != null) {
+          for (var it in items) {
+            if (it['solicitud_id'] != null) solicitudIds.add(it['solicitud_id'].toString());
+          }
+        }
+      }
 
       // 2. Liberar solicitudes
       if (solicitudIds.isNotEmpty) {

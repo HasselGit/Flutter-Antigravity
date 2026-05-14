@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
+import '../backend/app_states.dart';
 import 'package:intl/intl.dart';
 
 class ViajesPageWidget extends StatefulWidget {
@@ -64,15 +65,9 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
 
   List<Map<String, dynamic>> _filtered(String status) {
     return _viajes.where((v) {
-      final vEstado = (v['estado'] ?? '').toString();
-      if (status == 'Pendiente') return vEstado == 'Pendiente' || vEstado == 'Planificado';
-      if (status == 'En Proceso') {
-        return vEstado == 'En Proceso' || vEstado == 'En Curso' || vEstado == 'Cargado';
-      }
-      if (status == 'Terminado') {
-        return vEstado == 'Terminado' || vEstado == 'Finalizado' || vEstado == 'Entregado';
-      }
-      return vEstado == status;
+      final vEstado = AppStates.normalize(v['estado']);
+      final filterEstado = AppStates.normalize(status);
+      return vEstado == filterEstado;
     }).toList();
   }
 

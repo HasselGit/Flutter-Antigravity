@@ -253,7 +253,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                             child: ListView.builder(
                               padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                               itemCount: _filtered.length,
-                              itemBuilder: (ctx, i) => RepaintBoundary(child: _buildTripCard(_filtered[i], theme)),
+                              itemBuilder: (ctx, i) => _buildTripCard(_filtered[i], theme),
                             ),
                           ),
           ),

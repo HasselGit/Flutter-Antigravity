@@ -84,11 +84,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         ? '${chofer['nombre']} ${chofer['apellido']}' 
         : 'ID: ${_viaje!['chofer_id'] ?? 'S/D'}';
 
-    final bool esPendiente = _viaje!['estado'] == AppStates.pendiente;
-    final bool esEnCurso = _viaje!['estado'] == AppStates.enCurso;
+    final bool esPendiente = AppStates.normalize(_viaje!['estado']) == AppStates.pendiente;
+    final bool esEnCurso = AppStates.normalize(_viaje!['estado']) == AppStates.enCurso;
     final bool tieneRuta = paradas.isNotEmpty;
     final bool todasTerminadas = tieneRuta &&
         paradas.every((p) => AppStates.normalize(p['estado']) == AppStates.terminado);
+
+    final cargas = List<Map<String, dynamic>>.from(_viaje!['cargas'] ?? []);
+    final bool tieneCargaPendiente = cargas.any((c) => AppStates.normalize(c['estado']) == AppStates.pendiente);
+    final bool puedeIniciar = esPendiente && tieneRuta && !tieneCargaPendiente;
 
     final rutasRaw = List<Map<String, dynamic>>.from(_viaje!['rutas_data'] ?? []);
 
@@ -129,20 +133,37 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               if (esPendiente && tieneRuta)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 24),
-                  child: SizedBox(
-                    width: double.infinity, height: 56,
-                    child: ElevatedButton.icon(
-                      icon: _saving
-                          ? const SizedBox(width: 18, height: 18,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.play_circle_outline_rounded),
-                      label: const Text('INICIAR VIAJE'),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1565C0),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                      onPressed: _saving ? null : () => _cambiarEstado(AppStates.enCurso),
-                    ),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity, height: 56,
+                        child: ElevatedButton.icon(
+                          icon: _saving
+                              ? const SizedBox(width: 18, height: 18,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.play_circle_outline_rounded),
+                          label: const Text('INICIAR VIAJE'),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: puedeIniciar ? const Color(0xFF1565C0) : Colors.grey,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                          onPressed: (_saving || !puedeIniciar) ? null : () => _cambiarEstado(AppStates.enCurso),
+                        ),
+                      ),
+                      if (tieneCargaPendiente)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 14),
+                              const SizedBox(width: 6),
+                              Text('Carga pendiente de confirmación en depósito',
+                                  style: TextStyle(fontSize: 10, color: Colors.orange[800], fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               if (esEnCurso && todasTerminadas)
@@ -223,6 +244,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 ...paradas.map((p) => _buildParadaItem(p, theme)).toList(),
             ],
             
+            const SizedBox(height: 24),
+            
+            // SECCIÓN: CARGAS ASOCIADAS
+            _buildSectionTitle(theme, 'Cargas del Vehículo', Icons.inventory_2_outlined),
+            if (cargas.isEmpty)
+              const Text('Sin cargas asignadas a este viaje.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey))
+            else
+              ...cargas.map((c) => _buildCargaItem(c, theme)).toList(),
+
             const SizedBox(height: 24),
 
             // SECCIÓN: GASTOS ASOCIADOS
@@ -411,6 +441,30 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     );
   }
 
+  Widget _buildCargaItem(Map<String, dynamic> c, FlutterFlowTheme theme) {
+    final estado = AppStates.normalize(c['estado']);
+    final items = List<Map<String, dynamic>>.from(c['carga_items'] ?? []);
+    final isTerminada = estado == AppStates.terminado;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isTerminada ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2)),
+      ),
+      child: ListTile(
+        leading: Icon(Icons.inventory_2_outlined, color: isTerminada ? Colors.green : Colors.orange),
+        title: Text(c['carga_codigo'] ?? 'CARGA', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text('Items: ${items.length} • Estado: $estado', style: const TextStyle(fontSize: 12)),
+        trailing: isTerminada 
+            ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+            : const Icon(Icons.pending_actions_rounded, color: Colors.orange, size: 20),
+        onTap: () => context.push('/cargaDetalle?id=${c['id']}'),
+      ),
+    );
+  }
+
   Widget _buildRutaGroup(Map<String, dynamic> ruta, FlutterFlowTheme theme) {
     final paradasRuta = List<Map<String, dynamic>>.from(ruta['paradas'] ?? []);
     final bool cambioPendiente = ruta['cambio_solicitado'] == true;
@@ -469,7 +523,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
           children: [
             const Text('¿A partir de qué nodo desea solicitar el cambio de recorrido?'),
             const SizedBox(height: 20),
-            ...paradas.where((p) => AppStates.normalize(p['estado']) != AppStates.terminado).map((p) => ListTile(
+            ...paradas.where((p) => AppStates.normalize(p['estado']) != AppStates.normalize(AppStates.terminado)).map((p) => ListTile(
               title: Text('${p['orden_secuencia']}. ${p['ubicacion']}'),
               onTap: () {
                 Navigator.pop(ctx);

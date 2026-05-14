@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/apicultores_data.dart';
+import '../backend/app_states.dart';
 
 class ApicultorDetalleWidget extends StatefulWidget {
   final Map<String, dynamic> apicultor;
@@ -42,32 +43,78 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       final code = widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id'];
       if (code == null) return;
       
-      // 1. Obtener datos de la DB
-      final fullData = await Supabase.instance.client
-          .from('apicultores')
-          .select('id, nombre, localidad, apicultor_codigo, provincia, cuit, telefono')
-          .eq('apicultor_codigo', code)
-          .maybeSingle();
-          
-      // 2. Obtener datos del fallback local (que contiene DNI y RENAPA)
+      // 1. Obtener datos del fallback local (Nuestra fuente de verdad para estos campos)
       final localData = ApicultoresData.fallbackApicultores.firstWhere(
         (a) => a['apicultor_codigo'] == code,
         orElse: () => {},
       );
 
+      // 2. Obtener datos de la DB
+      final fullData = await Supabase.instance.client
+          .from('apicultores')
+          .select('id, nombre, localidad, provincia, cuit, telefono, renapa')
+          .eq('id', code)
+          .maybeSingle();
+
       if (mounted) {
         setState(() {
-          // Unir datos: Prioridad DB > Local
+          // Estrategia de mezcla: 
+          // 1. Empezamos con lo que ya tenemos
+          // 2. Aplicamos fallback local (prioridad alta para integridad)
           if (localData.isNotEmpty) {
             widget.apicultor.addAll(localData);
           }
+          
+          // 3. Aplicamos DB solo si los campos no están vacíos y parecen correctos
           if (fullData != null) {
-            widget.apicultor.addAll(fullData);
+            fullData.forEach((key, value) {
+              if (value != null && value.toString().isNotEmpty) {
+                // Validación especial para evitar swaps de nombre/localidad detectados
+                if (key == 'localidad' && value.toString().contains(',') && localData['localidad'] != null) {
+                   // Si la localidad de la DB tiene comas y la local no, sospechamos error de swap
+                   return;
+                }
+                widget.apicultor[key] = value;
+              }
+            });
           }
+
+          // 4. Si la DB no tiene datos críticos que sí están en el local, intentar subirlos (Sanitización)
+          _syncToSupabaseIfNeeded(code, localData, fullData);
         });
       }
     } catch (e) {
       print('Error refreshing apicultor data: $e');
+    }
+  }
+
+  Future<void> _syncToSupabaseIfNeeded(String id, Map<String, dynamic> local, Map<String, dynamic>? db) async {
+    if (db == null) return;
+    
+    Map<String, dynamic> toUpdate = {};
+    
+    // Lista de campos críticos para integridad (dni es solo local por ahora)
+    final fields = ['cuit', 'renapa', 'localidad', 'provincia', 'telefono'];
+    
+    for (var f in fields) {
+      final localVal = local[f]?.toString() ?? '';
+      final dbVal = db[f]?.toString() ?? '';
+      
+      if (localVal.isNotEmpty && dbVal.isEmpty) {
+        toUpdate[f] = localVal;
+      }
+    }
+
+    // Caso especial: Nombre mal cargado o truncado en DB
+    final localName = local['nombre']?.toString() ?? '';
+    final dbName = db['nombre']?.toString() ?? '';
+    if (localName.isNotEmpty && localName.length > dbName.length + 5 && localName.contains(dbName)) {
+      toUpdate['nombre'] = localName;
+    }
+
+    if (toUpdate.isNotEmpty) {
+      print('DEBUG: Sincronizando datos faltantes a Supabase para $id: $toUpdate');
+      await SupabaseService().updateApicultorBasicData(id, toUpdate);
     }
   }
 
@@ -94,36 +141,49 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       
       final List<Map<String, dynamic>> pendientes = List<Map<String, dynamic>>.from(allSolsRes).where((s) {
         final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
-        return estado == 'pendiente' || estado == 'solicitado';
+        return estado == 'pendiente' || estado == 'solicitado' || estado == 'asignada' || estado == 'en curso';
       }).toList();
 
       _debugInfo = '';
       
-      // 2. Fetch Remitos and their related Parada/Items for Historial
-      final remitosRes = await client
-          .from('remitos')
-          .select('*, paradas(tipo, localidad, parada_items(producto_codigo, cantidad, unidad))')
-          .or('apicultor_id.eq.$apiId,apicultor_id.eq.$alternateId')
-          .order('created_at', ascending: false);
+      // 2. Fetch completed operations through Paradas
+      // paradas -> solicitudes -> apicultor_id
+      // Joining remitos and parada_items for full history
+      final paradasRes = await client
+          .from('paradas')
+          .select('*, remitos(remito_codigo, created_at), parada_items(producto_codigo, cantidad, unidad), solicitudes!inner(apicultor_id)')
+          .or('solicitudes.apicultor_id.eq.$apiId,solicitudes.apicultor_id.eq.$alternateId')
+          .not('remito_id', 'is', null)
+          .order('created_at', { 'ascending': false });
       
-      final remitos = List<Map<String, dynamic>>.from(remitosRes);
+      final List<Map<String, dynamic>> apiParadas = List<Map<String, dynamic>>.from(paradasRes as List);
       
-      // 3. Process Historial and Resumen
+      // 4. Process Historial and Resumen
       List<Map<String, dynamic>> historial = [];
       Map<String, Map<String, double>> resumen = {};
       double maxT = 0;
 
-      for (var rem in remitos) {
-        final parada = rem['paradas'] ?? {};
-        final items = List<Map<String, dynamic>>.from(parada['parada_items'] ?? []);
-        final tipo = parada['tipo'] ?? 'Operación';
+      // Incluir solicitudes pendientes en el resumen
+      for (var s in pendientes) {
+        final prod = s['producto'] ?? 'S/D';
+        final cant = double.tryParse(s['cantidad']?.toString() ?? '0') ?? 0;
+        final tipo = s['tipo'] ?? 'Operación';
+        
+        resumen.putIfAbsent(prod, () => {});
+        resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
+      }
+
+      for (var p in apiParadas) {
+        final rem = p['remitos'] ?? {};
+        final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
+        final tipo = p['tipo'] ?? 'Operación';
         
         for (var item in items) {
           final prod = item['producto_codigo'] ?? 'S/D';
           final cant = double.tryParse(item['cantidad']?.toString() ?? '0') ?? 0;
           
           historial.add({
-            'fecha': rem['created_at'],
+            'fecha': rem['created_at'] ?? p['created_at'],
             'tipo': tipo,
             'producto': prod,
             'cantidad': cant,
@@ -133,10 +193,13 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
           resumen.putIfAbsent(prod, () => {});
           resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
-          
-          double prodTotal = resumen[prod]!.values.reduce((a, b) => a + b);
-          if (prodTotal > maxT) maxT = prodTotal;
         }
+      }
+
+      // Calcular maxTotal para barras de progreso
+      for (var prodResumen in resumen.values) {
+        double prodTotal = prodResumen.values.fold(0.0, (a, b) => a + b);
+        if (prodTotal > maxT) maxT = prodTotal;
       }
 
       if (mounted) {
@@ -179,33 +242,19 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
     final a = widget.apicultor;
     return Scaffold(
-      backgroundColor: const Color(0xFFFBFBFB),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: DesignTokens.primary, size: 20),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.menu_rounded, color: DesignTokens.primary),
-            onPressed: () {},
+      backgroundColor: DesignTokens.surface,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 20),
+            onPressed: () => context.pop(),
           ),
-          const SizedBox(width: 8),
-        ],
-        centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.hive_outlined, size: 24, color: DesignTokens.primary),
-            const SizedBox(width: 8),
-            Text('Perfil de Apicultor', 
-              style: DesignTokens.headlineStyle().copyWith(fontSize: 16, fontWeight: FontWeight.bold)
-            ),
-          ],
+          centerTitle: false,
+          title: Text('Perfil de Apicultor', 
+            style: DesignTokens.headlineStyle().copyWith(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5, color: DesignTokens.primary)
+          ),
         ),
-      ),
       body: _loading 
         ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
         : RefreshIndicator(
@@ -219,8 +268,6 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                   const SizedBox(height: 20),
                   _buildProfileHeader(a),
                   const SizedBox(height: 24),
-                  _buildEditProfileButton(),
-                  const SizedBox(height: 24),
                   _buildInfoGrid(a),
                   
                   const SizedBox(height: 40),
@@ -231,10 +278,10 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                   else
                     ..._pendientes.map((s) => _buildPendienteCard(s)).toList(),
 
-                  // Sección: Resumen de Operaciones (Solo si hay remitos)
+                  // Sección: Resumen de Operaciones (Totales por Producto y Tipo)
                   if (_resumenDetallado.isNotEmpty) ...[
                     const SizedBox(height: 40),
-                    _buildSectionHeader('Resumen de Operaciones', 'VER REPORTE DETALLADO'),
+                    _buildSectionHeader('Resumen de Operaciones', 'VER INFORME COMPLETO'),
                     const SizedBox(height: 16),
                     _buildProductSummary(),
                   ],
@@ -297,203 +344,216 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Nueva Solicitud', style: DesignTokens.headlineStyle().copyWith(fontSize: 20)),
-              const SizedBox(height: 8),
-              Text('Para: ${apicultor['nombre']} - ${apicultor['localidad'] ?? 'S/D'}', style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 24),
-              
-              const Text('Tipo de Operación', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Center(child: Text('Recolección')),
-                      selected: selectedTipo == 'Recolección',
-                      onSelected: (val) => setModalState(() => selectedTipo = 'Recolección'),
+      builder: (context) {
+        bool _savingSolicitud = false;
+        return StatefulBuilder(
+          builder: (context, setModalState) => Container(
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+            padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Nueva Solicitud', style: DesignTokens.headlineStyle().copyWith(fontSize: 20)),
+                const SizedBox(height: 8),
+                Text('Para: ${apicultor['nombre']} - ${apicultor['localidad'] ?? 'S/D'}', style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 24),
+                
+                const Text('Tipo de Operación', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Recolección')),
+                        selected: selectedTipo == 'Recolección',
+                        onSelected: (val) => setModalState(() => selectedTipo = 'Recolección'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Center(child: Text('Distribución')),
-                      selected: selectedTipo == 'Distribución',
-                      onSelected: (val) => setModalState(() => selectedTipo = 'Distribución'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Distribución')),
+                        selected: selectedTipo == 'Distribución',
+                        onSelected: (val) => setModalState(() => selectedTipo = 'Distribución'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+                  ],
+                ),
+                const SizedBox(height: 20),
 
-              const Text('Producto', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () async {
-                  final result = await showDialog<String>(
-                    context: context,
-                    builder: (context) {
-                      String searchQuery = '';
-                      return StatefulBuilder(
-                        builder: (context, setDialogState) {
-                          final filteredProds = productos.where((p) => 
-                            (p['codigo']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false) || 
-                            (p['descripcion']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false)
-                          ).toList();
-                          return AlertDialog(
-                            title: const Text('Buscar Producto'),
-                            content: SizedBox(
-                              width: double.maxFinite,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  TextField(
-                                    decoration: const InputDecoration(hintText: 'Nombre del producto...', prefixIcon: Icon(Icons.inventory_2_rounded)),
-                                    onChanged: (v) => setDialogState(() => searchQuery = v),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Expanded(
-                                    child: ListView.builder(
-                                      shrinkWrap: true,
-                                      itemCount: filteredProds.length,
-                                      itemBuilder: (context, i) => ListTile(
-                                        title: Text(filteredProds[i]['codigo'] ?? ''),
-                                        subtitle: Text(filteredProds[i]['descripcion'] ?? ''),
-                                        trailing: Text(filteredProds[i]['unidad'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                        onTap: () => Navigator.pop(context, filteredProds[i]['codigo']),
+                const Text('Producto', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final result = await showDialog<String>(
+                      context: context,
+                      builder: (context) {
+                        String searchQuery = '';
+                        return StatefulBuilder(
+                          builder: (context, setDialogState) {
+                            final filteredProds = productos.where((p) => 
+                              (p['codigo']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false) || 
+                              (p['descripcion']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false)
+                            ).toList();
+                            return AlertDialog(
+                              title: const Text('Buscar Producto'),
+                              content: SizedBox(
+                                width: double.maxFinite,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    TextField(
+                                      decoration: const InputDecoration(hintText: 'Nombre del producto...', prefixIcon: Icon(Icons.inventory_2_rounded)),
+                                      onChanged: (v) => setDialogState(() => searchQuery = v),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Expanded(
+                                      child: ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: filteredProds.length,
+                                        itemBuilder: (context, i) => ListTile(
+                                          title: Text(filteredProds[i]['codigo'] ?? ''),
+                                          subtitle: Text(filteredProds[i]['descripcion'] ?? ''),
+                                          trailing: Text(filteredProds[i]['unidad'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                          onTap: () => Navigator.pop(context, filteredProds[i]['codigo']),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  );
-                  if (result != null) {
-                    setModalState(() {
-                      selectedProducto = result;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: DesignTokens.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search_rounded, size: 20, color: DesignTokens.primary.withOpacity(0.5)),
-                      const SizedBox(width: 12),
-                      Text(selectedProducto ?? 'Seleccionar producto...', 
-                        style: TextStyle(color: selectedProducto != null ? DesignTokens.primary : Colors.black38)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              const Text('Cantidad Estimada', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: cantidadController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: 'Ej: 15',
-                  filled: true,
-                  fillColor: DesignTokens.surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    if (selectedProducto == null || cantidadController.text.isEmpty) return;
-                    
-                    try {
-                      final service = SupabaseService();
-                      await service.createNecesidad({
-                        'solicitud_codigo': 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
-                        'apicultor_id': apicultor['apicultor_codigo'] ?? apicultor['id'],
-                        'producto': selectedProducto,
-                        'cantidad': double.tryParse(cantidadController.text) ?? 0,
-                        'tipo': selectedTipo,
-                        'localidad': apicultor['localidad'],
-                        'estado': 'Pendiente',
+                            );
+                          },
+                        );
+                      },
+                    );
+                    if (result != null) {
+                      setModalState(() {
+                        selectedProducto = result;
                       });
-                      
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        _fetchDetailedData();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud guardada con éxito'), backgroundColor: Colors.green));
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-                      }
                     }
                   },
-                  style: DesignTokens.primaryButtonStyle,
-                  child: const Text('GUARDAR SOLICITUD'),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: DesignTokens.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search_rounded, size: 20, color: DesignTokens.primary.withOpacity(0.5)),
+                        const SizedBox(width: 12),
+                        Text(selectedProducto ?? 'Seleccionar producto...', 
+                          style: TextStyle(color: selectedProducto != null ? DesignTokens.primary : Colors.black38)),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+
+                const Text('Cantidad Estimada', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: cantidadController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Ej: 15',
+                    filled: true,
+                    fillColor: DesignTokens.surface,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: _savingSolicitud ? null : () async {
+                      if (selectedProducto == null || cantidadController.text.isEmpty) return;
+                      
+                      setModalState(() => _savingSolicitud = true);
+                      try {
+                        final service = SupabaseService();
+                        await service.createNecesidad({
+                          'solicitud_codigo': 'SOL-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
+                          'apicultor_id': apicultor['apicultor_codigo'] ?? apicultor['id'],
+                          'producto': selectedProducto,
+                          'cantidad': double.tryParse(cantidadController.text) ?? 0,
+                          'tipo': selectedTipo,
+                          'localidad': apicultor['localidad'],
+                          'estado': 'Pendiente',
+                        });
+                        
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          _fetchDetailedData();
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud guardada con éxito'), backgroundColor: Colors.green));
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                        }
+                      } finally {
+                        if (context.mounted) setModalState(() => _savingSolicitud = false);
+                      }
+                    },
+                    style: DesignTokens.primaryButtonStyle,
+                    child: _savingSolicitud 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('GUARDAR SOLICITUD'),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildProfileHeader(Map<String, dynamic> a) {
     return Column(
       children: [
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: DesignTokens.secondary.withOpacity(0.2), width: 1.5)),
-              child: const CircleAvatar(radius: 54, backgroundImage: NetworkImage('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1974&auto=format&fit=crop')),
-            ),
-          ],
+        const SizedBox(height: 10),
+        
+        // Name
+        Text(
+          a['nombre'] ?? 'Sin Nombre',
+          textAlign: TextAlign.center,
+          style: DesignTokens.headlineStyle().copyWith(
+            fontSize: 24, 
+            fontWeight: FontWeight.w900, 
+            color: DesignTokens.primary,
+            letterSpacing: -0.8,
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
+        
+        // COD box
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: BoxDecoration(color: DesignTokens.secondary.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-          child: const Text('Apicultor', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 1.5)),
-        ),
-        const SizedBox(height: 12),
-        Text(a['nombre'] ?? 'Sin Nombre', textAlign: TextAlign.center, style: DesignTokens.headlineStyle().copyWith(fontSize: 26, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(color: DesignTokens.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: DesignTokens.primary.withOpacity(0.05))),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            color: DesignTokens.primary.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Cod', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary.withOpacity(0.4))),
-              const SizedBox(width: 6),
-              Text(a['apicultor_codigo'] ?? a['id']?.toString().substring(0, 8) ?? 'S/C', style: const TextStyle(fontWeight: FontWeight.w900, color: DesignTokens.secondary, fontSize: 16, letterSpacing: 0.5)),
+              Text('CÓDIGO DE APICULTOR:', style: DesignTokens.labelStyle().copyWith(fontSize: 9, fontWeight: FontWeight.bold, color: DesignTokens.primary.withOpacity(0.5))),
+              const SizedBox(width: 8),
+              Text(
+                a['apicultor_codigo'] ?? a['id'] ?? 'S/C',
+                style: TextStyle(fontWeight: FontWeight.w900, color: DesignTokens.primary, fontSize: 16, letterSpacing: 1.0),
+              ),
             ],
           ),
         ),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -501,50 +561,76 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   Widget _buildEditProfileButton() {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      height: 56,
       child: ElevatedButton.icon(
         onPressed: () {},
-        icon: const Icon(Icons.edit_note_rounded, color: Colors.white),
-        label: const Text('Editar', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.white)),
-        style: DesignTokens.primaryButtonStyle,
+        icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
+        label: const Text('Editar Perfil', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15)),
+        style: DesignTokens.secondaryButtonStyle.copyWith(
+          backgroundColor: WidgetStateProperty.all(DesignTokens.primary),
+        ),
       ),
     );
   }
 
   Widget _buildInfoGrid(Map<String, dynamic> a) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      alignment: WrapAlignment.spaceBetween,
-      children: [
-        _buildInfoItem('DNI', a['dni']?.toString() ?? 'S/D'),
-        _buildInfoItem('CUIT', a['cuit']?.toString() ?? 'S/D'),
-        _buildInfoItem('RENAPA', a['renapa'] ?? 'S/D', highlight: true),
-        _buildInfoItem('TELÉFONO', a['telefono'] ?? 'S/D'),
-        _buildInfoItem('LOCALIDAD', a['localidad'] ?? 'S/D'),
-      ],
-    );
-  }
-
-
-
-  Widget _buildInfoItem(String label, String value, {bool highlight = false}) {
-    return SizedBox(
-      width: (MediaQuery.of(context).size.width - 60) / 2,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: DesignTokens.outline.withOpacity(0.2)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: Colors.black38)),
-          const SizedBox(height: 4),
-          Text(value, 
-            style: DesignTokens.bodyStyle().copyWith(
-              fontWeight: FontWeight.bold, 
-              fontSize: 13,
-              color: highlight ? DesignTokens.secondary : const Color(0xFF424846)
-            )
+          Row(
+            children: [
+              Expanded(child: _buildInfoItem('DNI', a['dni']?.toString() ?? a['documento']?.toString() ?? '—')),
+              const SizedBox(width: 16),
+              Expanded(child: _buildInfoItem('CUIT', a['cuit']?.toString() ?? '—')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildInfoItem('RENAPA', a['renapa'] ?? '—', highlight: true)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildInfoItem('TELÉFONO', a['telefono'] ?? '—')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: DesignTokens.outline.withOpacity(0.05), height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildInfoItem('LOCALIDAD', a['localidad'] ?? '—', highlight: true)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildInfoItem('PROVINCIA', a['provincia'] ?? '—')),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value, {bool highlight = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: DesignTokens.labelStyle().copyWith(fontSize: 9, color: DesignTokens.onSurfaceVariant.withOpacity(0.5))),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: DesignTokens.bodyStyle().copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: highlight ? DesignTokens.secondary : DesignTokens.primary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -566,12 +652,12 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isRecoleccion ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
+              color: isRecoleccion ? DesignTokens.success.withOpacity(0.1) : DesignTokens.accent.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isRecoleccion ? Icons.download_rounded : Icons.upload_rounded,
-              color: isRecoleccion ? const Color(0xFF1A6B43) : const Color(0xFFC68E17),
+              color: isRecoleccion ? DesignTokens.success : DesignTokens.secondary,
               size: 20,
             ),
           ),
@@ -590,11 +676,11 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: DesignTokens.secondary.withOpacity(0.1),
+              color: _getStatusColor(s['estado']).withOpacity(0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(s['estado']?.toUpperCase() ?? 'PENDIENTE', 
-              style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: DesignTokens.secondary, fontWeight: FontWeight.w900)
+              style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: _getStatusColor(s['estado']), fontWeight: FontWeight.w900)
             ),
           ),
         ],
@@ -602,18 +688,22 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     );
   }
 
-  Widget _buildProductSummary() {
-    if (_resumenDetallado.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-        child: const Center(child: Text('No hay operaciones finalizadas')),
-      );
-    }
+  Color _getStatusColor(dynamic estado) {
+    final e = estado?.toString().toLowerCase() ?? '';
+    if (e.contains('pendiente')) return DesignTokens.secondary;
+    if (e.contains('asignada')) return Colors.blue;
+    if (e.contains('en curso')) return Colors.orange;
+    if (e.contains('terminada') || e.contains('finalizada')) return DesignTokens.success;
+    return DesignTokens.secondary;
+  }
 
+  Widget _buildProductSummary() {
     return Column(
-      children: _resumenDetallado.entries.map((e) => _buildProductCardDetailed(e.key, e.value)).toList(),
+      children: _resumenDetallado.entries.map((entry) {
+        final product = entry.key;
+        final totalsByType = entry.value;
+        return _buildProductCardDetailed(product, totalsByType);
+      }).toList(),
     );
   }
 
@@ -627,12 +717,13 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     else if (product.toLowerCase().contains('cera')) icon = Icons.layers_rounded;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(color: DesignTokens.outline.withOpacity(0.1)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -641,40 +732,57 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: const Color(0xFFFDF7E7), borderRadius: BorderRadius.circular(10)),
-                child: Icon(icon, size: 20, color: iconColor),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: iconColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, size: 22, color: iconColor),
               ),
+              // Totales por tipo en chips compactos
               Row(
-                children: totalsByType.entries.map((t) => Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(t.key.toUpperCase(), style: DesignTokens.labelStyle().copyWith(fontSize: 7, color: Colors.black38)),
-                      Text('${NumberFormat('#,###', 'es_AR').format(t.value)} ${totalsByType.keys.first.toLowerCase().contains('tcm') ? 'Uni' : 'kg'}', 
-                        style: DesignTokens.bodyStyle().copyWith(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF424846))
-                      ),
-                    ],
+                children: totalsByType.entries.map((t) => Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: t.key.toLowerCase().contains('recolección') || t.key.toLowerCase().contains('entrega') 
+                        ? DesignTokens.success.withOpacity(0.1) 
+                        : DesignTokens.secondary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${t.key}: ${NumberFormat('#,###', 'es_AR').format(t.value)}',
+                    style: TextStyle(
+                      fontSize: 10, 
+                      fontWeight: FontWeight.bold, 
+                      color: t.key.toLowerCase().contains('recolección') || t.key.toLowerCase().contains('entrega') 
+                          ? DesignTokens.success 
+                          : DesignTokens.secondary
+                    ),
                   ),
                 )).toList(),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(product.toUpperCase(), style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: Colors.black38)),
+          const SizedBox(height: 20),
+          Text(product.toUpperCase(), style: DesignTokens.labelStyle().copyWith(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text('TOTAL: ${NumberFormat('#,###', 'es_AR').format(total)} kg', 
-            style: DesignTokens.headlineStyle().copyWith(fontSize: 20, fontWeight: FontWeight.w400, color: const Color(0xFF424846))
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(NumberFormat('#,###', 'es_AR').format(total), 
+                style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900, color: DesignTokens.primary)
+              ),
+              const SizedBox(width: 8),
+              Text('kg totales', style: DesignTokens.bodyStyle().copyWith(fontSize: 14, color: Colors.black26)),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: total / _maxTotal,
-              backgroundColor: const Color(0xFFEEEEEE),
+              backgroundColor: DesignTokens.surfaceVariant,
               valueColor: AlwaysStoppedAnimation<Color>(iconColor),
-              minHeight: 4,
+              minHeight: 6,
             ),
           ),
         ],
@@ -840,27 +948,31 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavItem(Icons.local_shipping_outlined, 'FLEET'),
-          _buildNavItem(Icons.location_on_outlined, 'DRIVERS', active: true),
-          _buildNavItem(Icons.map_outlined, 'ROUTES'),
-          _buildNavItem(Icons.notifications_none_rounded, 'ALERTS'),
+          _buildNavItem(Icons.home_filled, 'HOME', onTap: () => context.go('/home')),
+          _buildNavItem(Icons.assignment_rounded, 'OPERAR', onTap: () => context.go('/rutas')),
+          _buildNavItem(Icons.analytics_rounded, 'MÉTRICAS', onTap: () => context.go('/gerenteHome')),
+          _buildNavItem(Icons.person_rounded, 'MI PERFIL', active: true),
         ],
       ),
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, {bool active = false}) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: active ? DesignTokens.secondary : Colors.black26, size: 24),
-        const SizedBox(height: 4),
-        Text(label, style: DesignTokens.labelStyle().copyWith(
-          fontSize: 8, 
-          fontWeight: FontWeight.w900,
-          color: active ? DesignTokens.secondary : Colors.black26
-        )),
-      ],
+  Widget _buildNavItem(IconData icon, String label, {bool active = false, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: active ? DesignTokens.secondary : Colors.black26, size: 24),
+          const SizedBox(height: 4),
+          Text(label, style: DesignTokens.labelStyle().copyWith(
+            fontSize: 8, 
+            fontWeight: FontWeight.w900,
+            color: active ? DesignTokens.secondary : Colors.black26
+          )),
+        ],
+      ),
     );
   }
 

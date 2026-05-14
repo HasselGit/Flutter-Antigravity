@@ -141,7 +141,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () => GoRouter.of(context).pushNamed('Login'),
+                            onPressed: () => GoRouter.of(context).go('/login'),
                             style: DesignTokens.secondaryButtonStyle,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,

@@ -54,7 +54,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     try {
       final parada = await Supabase.instance.client
           .from('paradas')
-          .select('id, viaje_id, orden_secuencia, tipo, ubicacion, localidad, estado, bruto_kg, neto_kg')
+          .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, bruto_kg, neto_kg')
           .eq('id', widget.paradaId)
           .maybeSingle();
 
@@ -232,8 +232,17 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
         'estado': 'Emitido',
       });
 
-      // Update parada status
+      // Update parada and solicitud status
       await Supabase.instance.client.from('paradas').update({'estado': 'Terminado'}).eq('id', widget.paradaId);
+      
+      try {
+        final solId = _paradaData?['solicitud_id'];
+        if (solId != null) {
+          await Supabase.instance.client.from('solicitudes').update({'estado': 'Terminada'}).eq('id', solId);
+        }
+      } catch (e) {
+        print('Error updating solicitud state in RemitoPage: $e');
+      }
 
       if (mounted) {
         setState(() => _loading = false);

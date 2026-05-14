@@ -51,7 +51,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       final service = SupabaseService();
       _viajes = await service.getViajes();
       // Solo viajes en Pendiente
-      _viajes = _viajes.where((v) => v['estado'] == AppStates.pendiente).toList();
+      _viajes = _viajes.where((v) => AppStates.normalize(v['estado']) == AppStates.pendiente).toList();
       _productos = await service.getProductos();
     } catch (e) { print('CargaDetalle: Error cargando catálogos: $e'); }
   }

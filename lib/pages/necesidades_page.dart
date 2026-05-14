@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
 import '../backend/productos_data.dart';
 import '../backend/design_tokens.dart';
@@ -585,15 +584,15 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: estado == AppStates.pendiente ? const Color(0xFFFDEFCC) : const Color(0xFFD4F0E1),
+                      color: Color(AppStates.stateBgColor(AppStates.normalize(estado))),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      estado.toUpperCase(),
+                      AppStates.normalize(estado).toUpperCase(),
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: estado == AppStates.pendiente ? const Color(0xFF7D5700) : const Color(0xFF1A6B43),
+                        color: Color(AppStates.stateTextColor(AppStates.normalize(estado))),
                       ),
                     ),
                   ),
