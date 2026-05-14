@@ -16,4 +16,13 @@ En la sesión anterior, resolvimos un bloqueo crítico ("Deadlock") en el inicio
 3. El archivo central de estado del proyecto es `sesion_actual.md`. Consúltalo antes de hacer cambios arquitectónicos grandes.
 4. Mantenemos el estilo visual "Stitch Premium" (Fondo claro `surfaceLow`, botones en Honey Gold o Deep Forest Green).
 
-Por favor, revisa el código actual y avísame cuando estés listo para continuar con la siguiente tarea.
+## CIERRE DE SESIÓN: RESTAURACIÓN TOTAL (13/05/2026 - 23:30)
+En esta etapa final de la sesión del 13 de mayo, hemos realizado una **reversión total de la UI** para cumplir con la exigencia de fidelidad absoluta al diseño original:
+1. **Restauración de Home:** Se recuperó el `HomePageWidget` con Drawer y BottomNav.
+2. **Restauración de Welcome/Login:** Se eliminaron las simplificaciones y se volvió al diseño de panales original.
+3. **Mantenimiento de Lógica:** Es CRÍTICO notar que **NO se perdieron los avances funcionales**. El `SupabaseService` sigue teniendo las nuevas funciones de borrado de viajes y lógica de paradas, y las páginas de stock/viajes conservan sus mejoras de rendimiento.
+
+**Estado para la próxima IA:**
+- La Home es ahora el centro de navegación total.
+- El bypass de Auth sigue activo y es fundamental para la estabilidad en el emulador.
+- Se debe priorizar la consistencia visual en los nuevos formularios que se creen.
