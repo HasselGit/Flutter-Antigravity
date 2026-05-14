@@ -1,28 +1,22 @@
 # Estado Actual de la Sesión - GeoLogística
 
-## Últimas Modificaciones (13 de Mayo de 2026)
-### 1. Desactivación del Motor Impeller (Android)
-- **Problema:** El emulador de Android en Windows experimentaba bloqueos catastróficos (Deadlocks) y caída de frames masivos al interactuar con el teclado o redibujar componentes visuales complejos.
-- **Solución:** Se ha modificado `android/app/src/main/AndroidManifest.xml` añadiendo la flag `<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />`. Esto fuerza a Flutter a usar el motor clásico Skia, eliminando los congelamientos de interfaz generados por el teclado y el redibujado de la vista.
+## Últimas Modificaciones (13 de Mayo de 2026 - Sesión Nocturna)
+### 1. Restauración de Interfaz Original (HomePage, Welcome, Login)
+- **Acción:** Se revirtió totalmente el layout de la aplicación a su estado "Premium" original tras una fase de experimentación con dashboards alternativos.
+- **Detalles:**
+  - `lib/pages/homepage.dart`: Recuperación del sistema de **Drawer** lateral y **Bottom Navigation**. Se restauró el acceso a todos los módulos operativos (Viajes, Rutas, Apicultores, Gastos, Productos).
+  - `lib/pages/welcomepage.dart` y `lib/pages/login.dart`: Vuelta al diseño estético validado con el fondo de panales y estilos de `DesignTokens`.
+  - `lib/main.dart`: Se restauró la inicialización centralizada de Supabase y Locale en el `main()`, manteniendo el soporte para localizaciones (`es_AR`).
 
-### 2. Bypass Completo de Supabase Auth
-- **Problema:** El inicio de sesión se quedaba bloqueado en una rueda infinita debido a que el SDK nativo de Supabase Auth devolvía `AuthApiException(message: Invalid login credentials)`. Esto creaba un desfase silencioso en la interfaz.
-- **Solución:** 
-  - Se reescribió el método `login` en `lib/backend/supabase_service.dart`. Ahora la aplicación **ignora** la capa de autenticación restrictiva de Supabase y consulta de forma directa la tabla pública `profiles` verificando el correo y la columna `contrasena` (que contiene las claves en texto plano).
-  - Esta consulta directa es instantánea y evita deadlocks de `SharedPreferences` asociados al SDK de Auth.
-
-### 3. Desacople del `currentUser` de Supabase
-- **Problema:** Al no usar Supabase Auth, la variable `Supabase.instance.client.auth.currentUser` queda como nula, lo que rompía módulos que dependían de la ID del usuario activo.
-- **Solución:**
-  - En `lib/pages/logged.dart`, se cambió la lógica de redirección para leer el `user_id` desde `SharedPreferences`.
-  - En `lib/pages/gastos_page.dart`, se reemplazó la inyección de `chofer_id` por la lectura asíncrona del `user_id` desde `SharedPreferences`, garantizando que todos los registros se vinculen correctamente al operario sin depender de Supabase Auth.
-
-### 4. Restauración de Paneles Nativos (Honeycomb)
-- **Solución:** Se restauró el código original de `HoneycombPainter` para la pantalla de bienvenida (`welcomepage.dart`), pero inyectándole una **Caché Estática** global (`_cachedPicture` estática). Ahora los hexágonos matemáticos se calculan exactamente una sola vez durante toda la vida útil de la app, permitiendo usar el diseño Premium sin ningún costo de CPU.
+### 2. Preservación de Avances Funcionales
+- **Estado:** A pesar de la reversión visual, se mantuvieron todos los avances lógicos recientes en el backend y páginas secundarias:
+  - **Eliminación de Viajes:** Nueva lógica en `SupabaseService` para borrar viajes, rutas y paradas asociadas, liberando las solicitudes vinculadas.
+  - **Gestión de Stock:** Mejoras de ordenamiento y filtrado en `productos_page.dart`.
+  - **Estabilidad de Gastos:** Se mantiene el uso de `SharedPreferences` para el `user_id` en el registro de gastos.
 
 ## Tareas Pendientes para el Desarrollador (Próxima Sesión)
-1. **Limpieza del Login:** Actualmente los campos de correo y contraseña en `login.dart` están pre-llenados con `mparedes@geomiel.com` por comodidad para las pruebas. Deberán vaciarse antes de compilar para producción.
-2. **Migración de Contraseñas (Opcional):** A largo plazo, se sugiere no usar contraseñas en texto plano (`contrasena`) en la tabla `profiles`. Se recomienda sincronizar a los usuarios con el módulo real de `Auth` de Supabase si se desea mayor seguridad.
+1. **Validación de Roles:** Confirmar que todos los botones de la `HomePage` redirigen correctamente según el puesto del usuario (Gerente, Chofer, Depósito).
+2. **Revisión de Formularios:** Asegurar que los formularios de "Planificar Viaje" y "Carga Detalle" mantienen la consistencia visual con la Home restaurada.
 
 ## Instrucciones de Reinicio Rápido
 - Ejecutar `flutter clean` y `flutter run` para garantizar que los cambios en el `AndroidManifest.xml` (desactivación de Impeller) surtan efecto en el emulador.

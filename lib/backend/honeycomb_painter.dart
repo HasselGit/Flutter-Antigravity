@@ -1,57 +1,43 @@
-
 import 'package:flutter/material.dart';
 import 'dart:math';
-import 'dart:ui';
 
 class HoneycombPainter extends CustomPainter {
   final Color color;
-  static Picture? _cachedPicture;
-  static Color? _cachedColor;
-
-  HoneycombPainter({required this.color});
+  const HoneycombPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (_cachedPicture != null && _cachedColor == color) {
-      canvas.drawPicture(_cachedPicture!);
-      return;
-    }
+    if (size.width <= 0 || size.height <= 0) return;
 
-    _cachedColor = color;
-
-    final recorder = PictureRecorder();
-    final recordingCanvas = Canvas(recorder);
     final paint = Paint()
-      ..color = color
+      ..color = color.withOpacity(0.08) // Aumentamos visibilidad
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+      ..strokeWidth = 1.2
+      ..isAntiAlias = true; 
 
     const radius = 30.0;
     final double hexWidth = radius * 1.732;
     final double hexHeight = radius * 2;
     final double verticalSpacing = hexHeight * 0.75;
 
-    for (double y = -radius; y < 2000; y += verticalSpacing) {
+    // Usamos un solo Path para optimizar el dibujado en una sola llamada de GPU
+    final path = Path();
+
+    for (double y = -radius; y < size.height + radius; y += verticalSpacing) {
       bool offset = ((y / verticalSpacing).round() % 2 == 0);
-      for (double x = -hexWidth; x < 1500; x += hexWidth) {
+      for (double x = -hexWidth; x < size.width + hexWidth; x += hexWidth) {
         double cx = x + (offset ? hexWidth / 2 : 0);
-        _drawHexagon(recordingCanvas, Offset(cx, y), radius, paint);
+        
+        for (int i = 0; i < 6; i++) {
+          double angle = (pi / 3) * i - (pi / 2);
+          double px = cx + radius * cos(angle);
+          double py = y + radius * sin(angle);
+          if (i == 0) path.moveTo(px, py); else path.lineTo(px, py);
+        }
+        path.close();
       }
     }
 
-    _cachedPicture = recorder.endRecording();
-    canvas.drawPicture(_cachedPicture!);
-  }
-
-  void _drawHexagon(Canvas canvas, Offset center, double radius, Paint paint) {
-    final path = Path();
-    for (int i = 0; i < 6; i++) {
-      double angle = (pi / 3) * i - (pi / 2);
-      double x = center.dx + radius * cos(angle);
-      double y = center.dy + radius * sin(angle);
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-    }
-    path.close();
     canvas.drawPath(path, paint);
   }
 

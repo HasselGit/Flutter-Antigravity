@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
-import '../backend/app_states.dart';
 
 class HomePageWidget extends StatefulWidget {
   const HomePageWidget({super.key});
@@ -33,10 +32,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   }
 
   Future<void> _fetchData() async {
-    print('HomePage: Iniciando fetch de datos...');
     try {
       final prefs = await SharedPreferences.getInstance();
-      print('HomePage: SharedPreferences OK');
       final nombre = prefs.getString('user_nombre') ?? '';
       final apellido = prefs.getString('user_apellido') ?? '';
       
@@ -49,10 +46,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
       }
 
       final userId = prefs.getString('user_id');
-      print('HomePage: Obteniendo stats reales...');
+      print('HomePage: Obteniendo stats para $_userRole ($userId)');
       
       final stats = await SupabaseService().getStats(userId: userId, role: _userRole);
-      print('HomePage: Stats OK');
 
       if (mounted) {
         setState(() {
@@ -96,7 +92,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 'assets/images/logo_Geologistica_Verde.png',
                 width: 32,
                 height: 32,
-                cacheWidth: 64,
                 fit: BoxFit.cover,
               ),
             ),
@@ -107,6 +102,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 Text(
                   'GeoLogística',
                   style: DesignTokens.headlineStyle().copyWith(fontSize: 16),
+                ),
+                Text(
+                  'APIARY LOGISTICS',
+                  style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: DesignTokens.primary.withOpacity(0.4), letterSpacing: 1),
                 ),
               ],
             ),
@@ -157,7 +156,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     // ── Stats row ──
                     Row(
                       children: [
-                        _statCard('PENDIENTE', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
+                        _statCard('PLANIFICADOS', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
                         const SizedBox(width: 10),
                         _statCard('EN CURSO', _stats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC)),
                         const SizedBox(width: 10),
@@ -189,10 +188,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             subtitle: 'Rutas asignadas\ny operaciones',
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
-                            onTap: () async {
-                              await context.push('/choferHome');
-                              _fetchData();
-                            },
+                            onTap: () => context.push('/choferHome'),
                           ),
                         if (_userRole == 'Encargado de Deposito')
                           _moduleCard(
@@ -201,22 +197,16 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             subtitle: 'Cargas y depósito\ncirculante',
                             bgColor: const Color(0xFF1A4B3A),
                             accentColor: DesignTokens.secondary,
-                            onTap: () async {
-                              await context.push('/depositoHome');
-                              _fetchData();
-                            },
+                            onTap: () => context.push('/depositoHome'),
                           ),
                         if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
-                            title: 'Logística',
-                            subtitle: 'Control de viajes,\nrutas y despacho',
+                            title: 'Gestión de Viajes',
+                            subtitle: 'Lista completa\nde rutas y viajes',
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
-                            onTap: () async {
-                              await context.push('/viajes');
-                              _fetchData();
-                            },
+                            onTap: () => context.push('/viajes'),
                           ),
                           _moduleCard(
                             icon: Icons.dashboard_customize_rounded,
@@ -224,13 +214,18 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             subtitle: 'Estadísticas y\nKPIs de gestión',
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
-                            onTap: () async {
-                              await context.push('/gerenteHome');
-                              _fetchData();
-                            },
+                            onTap: () => context.push('/gerenteHome'),
                           ),
                         ],
                         if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
+                          _moduleCard(
+                            icon: Icons.assignment_ind_rounded,
+                            title: 'Planificador',
+                            subtitle: 'Crear rutas y\nasignar choferes',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/planificarViaje'),
+                          ),
                           _moduleCard(
                             icon: Icons.list_alt_rounded,
                             title: 'Solicitudes',
@@ -240,40 +235,48 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
-                        _moduleCard(
-                          icon: Icons.scale_rounded,
-                          title: 'Control Pesajes',
-                          subtitle: 'Listado de pesajes\ny control de carga',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/pesajes'),
-                        ),
-                        _moduleCard(
-                          icon: Icons.inventory_2_rounded,
-                          title: 'Distribuciones',
-                          subtitle: 'Insumos y\nentregas',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/distribuciones'),
-                        ),
-                        _moduleCard(
-                          icon: Icons.inventory_2_rounded,
-                          title: 'Productos',
-                          subtitle: 'Gestión de stock\ne insumos',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/productos'),
-                        ),
-                        _moduleCard(
-                          icon: Icons.payments_rounded,
-                          title: 'Gastos',
-                          subtitle: 'Peajes, comida\ny combustible',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/gastos'),
-                        ),
-                      ],
-                    ),
+                          _moduleCard(
+                            icon: Icons.scale_rounded,
+                            title: 'Control Pesajes',
+                            subtitle: 'Listado de pesajes\ny control de carga',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/pesajes'),
+                          ),
+                          _moduleCard(
+                            icon: Icons.inventory_2_rounded,
+                            title: 'Distribuciones',
+                            subtitle: 'Insumos y\nentregas',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/distribuciones'),
+                          ),
+                          _moduleCard(
+                            icon: Icons.inventory_2_rounded,
+                            title: 'Productos',
+                            subtitle: 'Gestión de stock\ne insumos',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/productos'),
+                          ),
+                          _moduleCard(
+                            icon: Icons.payments_rounded,
+                            title: 'Gastos',
+                            subtitle: 'Peajes, comida\ny combustible',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/gastos'),
+                          ),
+                          _moduleCard(
+                            icon: Icons.alt_route_rounded,
+                            title: 'Control de Ruta',
+                            subtitle: 'Trayectos activos\nen tiempo real',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/rutas'),
+                          ),
+                        ],
+                      ),
 
                     const SizedBox(height: 28),
 
@@ -484,10 +487,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
           ),
           const Divider(),
           _drawerItem(Icons.logout_rounded, 'Cerrar Sesión', () async {
-            // Limpiamos las credenciales locales del bypass
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.clear();
-            await Supabase.instance.client.auth.signOut(); // Por si quedó sesión en caché
+            await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/');
           }, color: Colors.redAccent),
           const SizedBox(height: 20),
