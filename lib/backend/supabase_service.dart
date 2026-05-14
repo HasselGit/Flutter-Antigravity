@@ -18,14 +18,13 @@ class SupabaseService {
     final cleanEmail = email.trim();
     final cleanPass = password.trim();
     try {
-      // Usamos acceso directo a la base de datos para evitar bloqueos del SDK de Auth
-      // y porque la tabla profiles contiene la columna 'contrasena'
+      // Usamos acceso directo con timeout reducido y select de columnas específicas para mayor velocidad
       final profile = await _client.from('profiles')
-          .select()
+          .select('id, email, nombre, apellido, puesto, contrasena')
           .eq('email', cleanEmail)
           .eq('contrasena', cleanPass)
           .maybeSingle()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 5));
       
       if (profile != null) {
         return await _saveLocal(profile);
@@ -35,9 +34,9 @@ class SupabaseService {
     } catch (e) {
       print('SupabaseService: Error en login: $e');
       if (e is TimeoutException) {
-        throw Exception('Tiempo de espera agotado. Revisa tu conexión.');
+        throw Exception('Sin respuesta del servidor. Revisa tu conexión.');
       }
-      throw Exception('Credenciales incorrectas o error de conexión');
+      rethrow;
     }
   }
 
@@ -95,8 +94,9 @@ class SupabaseService {
   Future<Map<String, dynamic>?> getViajeDetalle(dynamic viajeId) async {
     try {
       final viaje = await _client.from('viajes')
-          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, fecha_planificada, fecha_inicio, fecha_terminado, descripcion')
-          .eq('id', viajeId).maybeSingle();
+          .select('*, paradas(*, paradas_solicitudes(*, solicitudes(*)))')
+          .eq('id', viajeId).maybeSingle()
+          .timeout(const Duration(seconds: 15));
       if (viaje == null) return null;
       viaje['estado'] = AppStates.normalize(viaje['estado']);
       if (viaje['chofer_id'] != null) {
@@ -418,12 +418,12 @@ class SupabaseService {
 
   Future<List<Map<String, dynamic>>> getVehiculos() async =>
       _fetchList('vehiculos',
-          select: 'id, vehiculo_codigo, patente, modelo, capacidad_kg, capacidad_tambores, carga_actual_kg, carga_actual_tambores',
+          select: '*',
           order: 'vehiculo_codigo');
 
   Future<List<Map<String, dynamic>>> getChoferes() async =>
       _fetchList('profiles',
-          select: 'id, nombre, apellido, puesto',
+          select: '*',
           filter: {'puesto': 'Chofer'});
 
 
@@ -431,7 +431,7 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getProductos() async {
     try {
       final list = await _fetchList('productos',
-          select: 'id, descripcion, codigo, unidad',
+          select: '*',
           order: 'descripcion');
       if (list.isNotEmpty) return list;
       return ProductosData.masterCatalog;
@@ -442,7 +442,7 @@ class SupabaseService {
 
   Future<List<Map<String, dynamic>>> getGastos() async {
     final gastos = await _fetchList('gastos',
-        select: 'id, categoria, monto, fecha, chofer_id, viaje_id, comprobante_url',
+        select: '*',
         order: 'fecha');
     for (var g in gastos) {
       if (g['chofer_id'] != null) {
