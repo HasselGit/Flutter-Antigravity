@@ -32,6 +32,7 @@ import 'pages/remitos_lista_page.dart';
 import 'pages/agregar_pesaje.dart';
 import 'pages/cargas_page.dart';
 import 'pages/carga_detalle.dart';
+import 'pages/remito_carga_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -119,7 +120,7 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/depositoHome',
       name: 'depositoHome',
-      builder: (context, state) => const DepositoHomeWidget(),
+      builder: (context, state) => const DepositohomeWidget(),
     ),
     GoRoute(
       path: '/necesidades',
@@ -267,6 +268,14 @@ final GoRouter _router = GoRouter(
         final id = state.uri.queryParameters['id'];
         final isNew = state.uri.queryParameters['new'] == 'true';
         return CargaDetalleWidget(cargaId: id, isNew: isNew);
+      },
+    ),
+    GoRoute(
+      path: '/remito_carga',
+      name: 'RemitoCargaPage',
+      builder: (context, state) {
+        final cargaId = state.uri.queryParameters['cargaId'] ?? '';
+        return RemitoCargaPageWidget(cargaId: cargaId);
       },
     ),
   ],

@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 void main() async {
-  print('--- INICIANDO SINCRONIZACIÓN GOOGLE SHEET -> SUPABASE (V2) ---');
+  print('--- SINCRONIZACIÓN APICULTORES (V7 - SEGURA) ---');
 
   final client = SupabaseClient(
     'https://suwcqdlxnmfcvmlnzizl.supabase.co',
@@ -11,98 +11,98 @@ void main() async {
   );
 
   final gSheetId = '1vcg7nmkTfp_AyTTkTOGuGu7k-B2eAAUA_V8P24wa1Es';
+  final gidApicultores = '1388406787';
 
-  // 1. Sincronizar Vehículos
-  print('\nSincronizando Vehículos...');
-  final vehiculosCsv = await _fetchCsv(gSheetId, '1803032168');
-  for (var i = 1; i < vehiculosCsv.length; i++) {
-    final row = vehiculosCsv[i];
-    if (row.length < 4) continue;
-    try {
-      await client.from('vehiculos').upsert({
-        'vehiculo_codigo': row[0], // Corregido: vehiculo_codigo en lugar de codigo
-        'marca': row[1],
-        'modelo': row[2],
-        'patente': row[3],
-        'capacidad_kg': 15000,
-        'capacidad_tambores': 48,
-      });
-      print('  OK: ${row[0]}');
-    } catch (e) { print('  Error en ${row[0]}: $e'); }
+  final apicultoresCsv = await _fetchCsv(gSheetId, gidApicultores);
+  if (apicultoresCsv.isEmpty) return;
+
+  // Detectar columnas reales en la DB para no fallar el upsert
+  print('Verificando esquema en Supabase...');
+  List<String> dbColumns = [];
+  try {
+    final sample = await client.from('apicultores').select().limit(1);
+    if (sample.isNotEmpty) {
+      dbColumns = sample[0].keys.toList();
+    }
+  } catch (e) {
+    print('Error detectando columnas: $e');
+    return;
   }
+  print('Columnas detectadas en Supabase: $dbColumns');
 
-  // 2. Sincronizar Apicultores
-  print('\nSincronizando Apicultores desde GSheet...');
-  // GID actualizado según la pestaña 'Apicultores'
-  final apicultoresCsv = await _fetchCsv(gSheetId, '2037142436');
+  int successCount = 0;
   for (var i = 1; i < apicultoresCsv.length; i++) {
     final row = apicultoresCsv[i];
     if (row.length < 2) continue;
     
-    String codigo = row[0].toString().trim(); // Cod Api
-    String nombre = row[1].toString().trim(); // Apicultor
+    String id = row[0].toString().trim();
+    String nombre = row[1].toString().trim();
+    if (nombre.isEmpty || id.isEmpty) continue;
+
+    Map<String, dynamic> data = {
+      'id': id,
+      'nombre': nombre,
+    };
+
+    if (dbColumns.contains('localidad') && row.length > 2) data['localidad'] = row[2].trim();
+    if (dbColumns.contains('provincia') && row.length > 3) data['provincia'] = row[3].trim();
+    if (dbColumns.contains('cuit') && row.length > 5) data['cuit'] = row[5].trim();
+    if (dbColumns.contains('telefono') && row.length > 7) data['telefono'] = row[7].trim();
     
-    if (nombre.isEmpty) continue;
+    // Si existieran estas columnas las llenaríamos:
+    if (dbColumns.contains('dni') && row.length > 4) data['dni'] = row[4].toString().split('.')[0].trim();
+    if (dbColumns.contains('renapa') && row.length > 6) data['renapa'] = row[6].trim();
 
     try {
-      await client.from('apicultores').upsert({
-        'apicultor_codigo': codigo,
-        'nombre': nombre,
-        'localidad': row.length > 2 ? row[2] : '',
-        'provincia': row.length > 3 ? row[3] : '',
-        'dni': row.length > 4 ? row[4] : '',
-        'cuit': row.length > 5 ? row[5] : '',
-        'renapa': row.length > 6 ? row[6] : '',
-        'telefono': row.length > 7 ? row[7] : '',
-      }, onConflict: 'apicultor_codigo'); // Usar el código como clave de conflicto
-      
-      if (i % 10 == 0) print('  Procesados $i apicultores...');
-    } catch (e) { 
-      print('  Error en apicultor $nombre: $e'); 
+      await client.from('apicultores').upsert(data);
+      successCount++;
+      if (i % 25 == 0) print('  Procesados $i apicultores...');
+    } catch (e) {
+      print('  Error en $nombre ($id): $e');
     }
   }
-
-  // 3. Sincronizar Solicitudes (Necesidades)
-  print('\nSincronizando Solicitudes...');
-  final solicitudesCsv = await _fetchCsv(gSheetId, '999329721');
-  for (var i = 1; i < solicitudesCsv.length; i++) {
-    final row = solicitudesCsv[i];
-    if (row.length < 5) continue;
-    
-    // Normalizar ID del apicultor para que coincida con la tabla apicultores
-    String rawApiId = row[2].toString().replaceAll('A', '').trim();
-    String apiIdNormalizado = 'A${rawApiId.padLeft(5, '0')}';
-
-    try {
-      await client.from('solicitudes').upsert({
-        'solicitud_codigo': row[1], 
-        'apicultor_id': apiIdNormalizado, // Usar ID normalizado
-        'producto': row[3],
-        'cantidad': double.tryParse(row[4].toString()) ?? 0,
-        'tipo': row[5],
-        'localidad': row[6],
-        'estado': 'Pendiente',
-      });
-      print('  OK: ${row[1]}');
-    } catch (e) { print('  Error en ${row[1]}: $e'); }
+  
+  print('\n--- RESULTADOS ---');
+  print('Total sincronizados: $successCount / ${apicultoresCsv.length - 1}');
+  if (!dbColumns.contains('dni')) {
+    print('AVISO: La columna "dni" NO existe en la tabla "apicultores".');
   }
-
-  print('\n--- SINCRONIZACIÓN FINALIZADA ---');
+  if (!dbColumns.contains('renapa')) {
+    print('AVISO: La columna "renapa" NO existe en la tabla "apicultores".');
+  }
 }
 
 Future<List<List<String>>> _fetchCsv(String id, String gid) async {
   final url = 'https://docs.google.com/spreadsheets/d/$id/export?format=csv&gid=$gid';
   final response = await http.get(Uri.parse(url));
-  final lines = CsvToListConverter().convert(response.body);
-  return lines.map((l) => l.map((e) => e.toString()).toList()).toList();
+  if (response.statusCode != 200) return [];
+  return CsvToListConverter().convert(response.body);
 }
 
 class CsvToListConverter {
-  List<List<dynamic>> convert(String input) {
-    return input.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
-      // Manejo básico de comas dentro de comillas si fuera necesario, 
-      // pero para este caso el split simple suele bastar
-      return line.split(',');
-    }).toList();
+  List<List<String>> convert(String input) {
+    List<List<String>> rows = [];
+    List<String> lines = input.split(RegExp(r'\r?\n'));
+    for (String line in lines) {
+      if (line.trim().isEmpty) continue;
+      List<String> result = [];
+      bool inQuotes = false;
+      StringBuffer currentField = StringBuffer();
+      for (int i = 0; i < line.length; i++) {
+        String char = line[i];
+        if (char == '"') {
+          if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+            currentField.write('"');
+            i++;
+          } else { inQuotes = !inQuotes; }
+        } else if (char == ',' && !inQuotes) {
+          result.add(currentField.toString());
+          currentField.clear();
+        } else { currentField.write(char); }
+      }
+      result.add(currentField.toString());
+      rows.add(result);
+    }
+    return rows;
   }
 }

@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/apicultores_data.dart';
-import '../backend/app_states.dart';
 
 class ApicultorDetalleWidget extends StatefulWidget {
   final Map<String, dynamic> apicultor;
@@ -17,11 +16,11 @@ class ApicultorDetalleWidget extends StatefulWidget {
 }
 
 class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
-  bool _loading = true;
-  String _debugInfo = 'Cargando debug...';
   List<Map<String, dynamic>> _pendientes = [];
-  List<Map<String, dynamic>> _historial = [];
-  Map<String, Map<String, double>> _resumenDetallado = {}; // Product -> {Tipo: Total}
+  List<Map<String, dynamic>> _recientes = [];
+  Map<String, Map<String, double>> _resumenDetallado = {}; 
+  Map<String, int> _statusCounts = {};
+  bool _isLoading = true;
   double _maxTotal = 1.0;
   String? _userRole;
 
@@ -43,35 +42,27 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       final code = widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id'];
       if (code == null) return;
       
-      // 1. Obtener datos del fallback local (Nuestra fuente de verdad para estos campos)
       final localData = ApicultoresData.fallbackApicultores.firstWhere(
         (a) => a['apicultor_codigo'] == code,
         orElse: () => {},
       );
 
-      // 2. Obtener datos de la DB
       final fullData = await Supabase.instance.client
           .from('apicultores')
-          .select('id, nombre, localidad, provincia, cuit, telefono, renapa')
+          .select('id, nombre, localidad, provincia, cuit, telefono, renapa, dni')
           .eq('id', code)
           .maybeSingle();
 
       if (mounted) {
         setState(() {
-          // Estrategia de mezcla: 
-          // 1. Empezamos con lo que ya tenemos
-          // 2. Aplicamos fallback local (prioridad alta para integridad)
           if (localData.isNotEmpty) {
             widget.apicultor.addAll(localData);
           }
           
-          // 3. Aplicamos DB solo si los campos no están vacíos y parecen correctos
           if (fullData != null) {
             fullData.forEach((key, value) {
               if (value != null && value.toString().isNotEmpty) {
-                // Validación especial para evitar swaps de nombre/localidad detectados
                 if (key == 'localidad' && value.toString().contains(',') && localData['localidad'] != null) {
-                   // Si la localidad de la DB tiene comas y la local no, sospechamos error de swap
                    return;
                 }
                 widget.apicultor[key] = value;
@@ -79,7 +70,6 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
             });
           }
 
-          // 4. Si la DB no tiene datos críticos que sí están en el local, intentar subirlos (Sanitización)
           _syncToSupabaseIfNeeded(code, localData, fullData);
         });
       }
@@ -93,7 +83,6 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     
     Map<String, dynamic> toUpdate = {};
     
-    // Lista de campos críticos para integridad (dni es solo local por ahora)
     final fields = ['cuit', 'renapa', 'localidad', 'provincia', 'telefono'];
     
     for (var f in fields) {
@@ -105,7 +94,6 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       }
     }
 
-    // Caso especial: Nombre mal cargado o truncado en DB
     final localName = local['nombre']?.toString() ?? '';
     final dbName = db['nombre']?.toString() ?? '';
     if (localName.isNotEmpty && localName.length > dbName.length + 5 && localName.contains(dbName)) {
@@ -119,84 +107,80 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   }
 
   Future<void> _fetchDetailedData() async {
-    setState(() => _loading = true);
+    setState(() => _isLoading = true);
     try {
       final client = Supabase.instance.client;
-      final apiId = widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id'];
+      final apiId = (widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id']).toString();
       
-      // Manejar diferentes formatos de ID (ej: A01887 vs 1887)
-      String alternateId = apiId;
+      List<String> idCandidates = [apiId];
       if (apiId.startsWith('A')) {
-        alternateId = apiId.replaceAll(RegExp(r'^A0*'), '');
+        idCandidates.add(apiId.replaceAll(RegExp(r'^A0*'), ''));
       } else {
-        alternateId = 'A${apiId.padLeft(5, '0')}';
+        idCandidates.add('A${apiId.padLeft(5, '0')}');
       }
 
-      print('DEBUG: Buscando solicitudes para apicultor_id: $apiId o $alternateId');
+      String orFilter = idCandidates.map((id) => 'apicultor_id.eq.$id').join(',');
 
-      // 1. Fetch Solicitudes (Filtradas por ID desde la DB)
       final allSolsRes = await client.from('solicitudes')
-          .select('*')
-          .or('apicultor_id.eq.$apiId,apicultor_id.eq.$alternateId');
-      
-      final List<Map<String, dynamic>> pendientes = List<Map<String, dynamic>>.from(allSolsRes).where((s) {
-        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
-        return estado == 'pendiente' || estado == 'solicitado' || estado == 'asignada' || estado == 'en curso';
-      }).toList();
-
-      _debugInfo = '';
-      
-      // 2. Fetch completed operations through Paradas
-      // paradas -> solicitudes -> apicultor_id
-      // Joining remitos and parada_items for full history
-      final paradasRes = await client
-          .from('paradas')
-          .select('*, remitos(remito_codigo, created_at), parada_items(producto_codigo, cantidad, unidad), solicitudes!inner(apicultor_id)')
-          .or('solicitudes.apicultor_id.eq.$apiId,solicitudes.apicultor_id.eq.$alternateId')
-          .not('remito_id', 'is', null)
+          .select('*, remitos(remito_codigo)')
+          .or(orFilter)
           .order('created_at', ascending: false);
       
-      final List<Map<String, dynamic>> apiParadas = List<Map<String, dynamic>>.from(paradasRes as List);
-      
-      // 4. Process Historial and Resumen
-      List<Map<String, dynamic>> historial = [];
-      Map<String, Map<String, double>> resumen = {};
-      double maxT = 0;
+      final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes as List);
 
-      // Incluir solicitudes pendientes en el resumen
-      for (var s in pendientes) {
-        final prod = s['producto'] ?? 'S/D';
-        final cant = double.tryParse(s['cantidad']?.toString() ?? '0') ?? 0;
-        final tipo = s['tipo'] ?? 'Operación';
-        
-        resumen.putIfAbsent(prod, () => {});
-        resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
-      }
-
-      for (var p in apiParadas) {
-        final rem = p['remitos'] ?? {};
-        final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
-        final tipo = p['tipo'] ?? 'Operación';
-        
-        for (var item in items) {
-          final prod = item['producto_codigo'] ?? 'S/D';
-          final cant = double.tryParse(item['cantidad']?.toString() ?? '0') ?? 0;
-          
-          historial.add({
-            'fecha': rem['created_at'] ?? p['created_at'],
-            'tipo': tipo,
-            'producto': prod,
-            'cantidad': cant,
-            'unidad': item['unidad'] ?? 'kg',
-            'remito': rem['remito_codigo'],
-          });
-
-          resumen.putIfAbsent(prod, () => {});
-          resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
+      // Enriquecer con remitos desde paradas si no están directos
+      for (var s in allSols) {
+        if (s['remitos'] == null) {
+          try {
+            final paradaRem = await client.from('paradas')
+                .select('remitos(remito_codigo)')
+                .eq('solicitud_id', s['id'])
+                .maybeSingle();
+            if (paradaRem != null && paradaRem['remitos'] != null) {
+              s['remito_codigo'] = paradaRem['remitos']['remito_codigo'];
+            }
+          } catch (_) {}
+        } else {
+          s['remito_codigo'] = s['remitos']['remito_codigo'];
         }
       }
 
+      final List<Map<String, dynamic>> activas = allSols.where((s) {
+        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
+        return estado != 'terminada' && estado != 'finalizada' && estado != 'cancelada';
+      }).toList();
+
+      final List<Map<String, dynamic>> recientes = allSols.where((s) {
+        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
+        return estado == 'terminada' || estado == 'finalizada';
+      }).take(10).toList();
+
+      final Map<String, Map<String, double>> resumen = {};
+      final Map<String, int> estadoCounts = {
+        'PENDIENTES': 0,
+        'ASIGNADAS': 0,
+        'EN CURSO': 0,
+        'TERMINADAS': 0,
+      };
+
+      for (var s in allSols) {
+        final prod = s['producto'] ?? 'S/D';
+        final cant = double.tryParse(s['cantidad']?.toString() ?? '0') ?? 0;
+        final tipoRaw = (s['tipo'] ?? 'Operación').toString();
+        final String tipo = tipoRaw.toLowerCase().contains('recolecci') ? 'Recolección' : 'Distribución';
+        final estado = (s['estado'] ?? 'Pendiente').toString().toUpperCase();
+        
+        resumen.putIfAbsent(prod, () => {});
+        resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
+
+        if (estado.contains('PENDIENTE')) estadoCounts['PENDIENTES'] = (estadoCounts['PENDIENTES'] ?? 0) + 1;
+        else if (estado.contains('ASIGNADA')) estadoCounts['ASIGNADAS'] = (estadoCounts['ASIGNADAS'] ?? 0) + 1;
+        else if (estado.contains('CURSO')) estadoCounts['EN CURSO'] = (estadoCounts['EN CURSO'] ?? 0) + 1;
+        else if (estado.contains('TERMINADA') || estado.contains('FINALIZADA')) estadoCounts['TERMINADAS'] = (estadoCounts['TERMINADAS'] ?? 0) + 1;
+      }
+
       // Calcular maxTotal para barras de progreso
+      double maxT = 1.0;
       for (var prodResumen in resumen.values) {
         double prodTotal = prodResumen.values.fold(0.0, (a, b) => a + b);
         if (prodTotal > maxT) maxT = prodTotal;
@@ -204,17 +188,17 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
       if (mounted) {
         setState(() {
-          _pendientes = List<Map<String, dynamic>>.from(pendientes);
-          _historial = historial.take(10).toList();
+          _pendientes = activas;
+          _recientes = recientes;
           _resumenDetallado = resumen;
-          _maxTotal = maxT > 0 ? maxT : 1.0;
-          _loading = false;
+          _statusCounts = estadoCounts;
+          _maxTotal = maxT;
+          _isLoading = false;
         });
-        print('UI UPDATE: _pendientes has ${_pendientes.length} items');
       }
     } catch (e) {
       print('ApicultorDetalle: Error fetching detailed data: $e');
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -255,7 +239,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
             style: DesignTokens.headlineStyle().copyWith(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5, color: DesignTokens.primary)
           ),
         ),
-      body: _loading 
+      body: _isLoading 
         ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
         : RefreshIndicator(
             onRefresh: _fetchDetailedData,
@@ -271,29 +255,32 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                   _buildInfoGrid(a),
                   
                   const SizedBox(height: 40),
-                  _buildSectionHeader('Operaciones Pendientes', null),
+                  _buildSectionHeader('Solicitudes Activas', null),
                   const SizedBox(height: 16),
                   if (_pendientes.isEmpty)
-                    _buildEmptyState()
+                    _buildEmptyState('No hay solicitudes activas')
                   else
                     ..._pendientes.map((s) => _buildPendienteCard(s)).toList(),
 
-                  // Sección: Resumen de Operaciones (Totales por Producto y Tipo)
-                  if (_resumenDetallado.isNotEmpty) ...[
-                    const SizedBox(height: 40),
-                    _buildSectionHeader('Resumen de Operaciones', 'VER INFORME COMPLETO'),
-                    const SizedBox(height: 16),
+                  const SizedBox(height: 40),
+                  _buildStatusOverview(),
+                  const SizedBox(height: 24),
+                  _buildSectionHeader('Resumen por Producto', null),
+                  const SizedBox(height: 16),
+                  if (_resumenDetallado.isEmpty)
+                    _buildEmptyState('Sin operaciones registradas')
+                  else
                     _buildProductSummary(),
-                  ],
 
-                  // Sección: Historial Reciente (Solo si hay remitos)
-                  if (_historial.isNotEmpty) ...[
-                    const SizedBox(height: 40),
-                    _buildSectionHeader('Historial Reciente', null, showIcons: true),
-                    const SizedBox(height: 16),
-                    _buildRecentHistoryTable(),
-                  ],
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 40),
+                  _buildSectionHeader('Operaciones Recientes', null, showIcons: true),
+                  const SizedBox(height: 16),
+                  if (_recientes.isEmpty)
+                    _buildEmptyState('No hay operaciones terminadas recientemente')
+                  else
+                    ..._recientes.map((s) => _buildRecienteCard(s)).toList(),
+                  
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
@@ -548,7 +535,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
               const SizedBox(width: 8),
               Text(
                 a['apicultor_codigo'] ?? a['id'] ?? 'S/C',
-                style: TextStyle(fontWeight: FontWeight.w900, color: DesignTokens.primary, fontSize: 16, letterSpacing: 1.0),
+                style: const TextStyle(fontWeight: FontWeight.w900, color: DesignTokens.primary, fontSize: 16, letterSpacing: 1.0),
               ),
             ],
           ),
@@ -558,20 +545,6 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     );
   }
 
-  Widget _buildEditProfileButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: () {},
-        icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
-        label: const Text('Editar Perfil', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15)),
-        style: DesignTokens.secondaryButtonStyle.copyWith(
-          backgroundColor: WidgetStateProperty.all(DesignTokens.primary),
-        ),
-      ),
-    );
-  }
 
   Widget _buildInfoGrid(Map<String, dynamic> a) {
     return Container(
@@ -635,8 +608,9 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   }
 
   Widget _buildPendienteCard(Map<String, dynamic> s) {
-    final tipo = s['tipo'] ?? 'Operación';
-    final isRecoleccion = tipo.toLowerCase().contains('recolección');
+    final tipoRaw = s['tipo'] ?? 'Operación';
+    final String tipo = tipoRaw.toString().toLowerCase().contains('recolecci') ? 'Recolección' : 'Distribución';
+    final isRecoleccion = tipo == 'Recolección';
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -688,6 +662,59 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     );
   }
 
+  Widget _buildRecienteCard(Map<String, dynamic> s) {
+    final tipoRaw = s['tipo'] ?? 'Operación';
+    final String tipo = tipoRaw.toString().toLowerCase().contains('recolecci') ? 'Recolección' : 'Distribución';
+    final isRecoleccion = tipo == 'Recolección';
+    final remito = s['remito_codigo'];
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isRecoleccion ? Icons.download_done_rounded : Icons.upload_file_rounded,
+              color: Colors.black26,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('${tipo} • ${s['cantidad']} ${s['unidad'] ?? 'kg'}', 
+                  style: DesignTokens.bodyStyle().copyWith(fontSize: 11, color: Colors.black38)
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (remito != null)
+                Text('REMITO: $remito', style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: DesignTokens.secondary, fontWeight: FontWeight.w900)),
+              Text('TERMINADA', style: DesignTokens.labelStyle().copyWith(fontSize: 8, color: DesignTokens.success, fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _getStatusColor(dynamic estado) {
     final e = estado?.toString().toLowerCase() ?? '';
     if (e.contains('pendiente')) return DesignTokens.secondary;
@@ -695,6 +722,58 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     if (e.contains('en curso')) return Colors.orange;
     if (e.contains('terminada') || e.contains('finalizada')) return DesignTokens.success;
     return DesignTokens.secondary;
+  }
+
+  Widget _buildStatusOverview() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: DesignTokens.primary,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Operaciones Totales', style: DesignTokens.labelStyle().copyWith(color: Colors.white70, fontSize: 12)),
+              Icon(Icons.query_stats_rounded, color: Colors.white30, size: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              _buildStatusItem('PENDIENTES', _statusCounts['PENDIENTES'] ?? 0, DesignTokens.secondary),
+              _buildStatusDivider(),
+              _buildStatusItem('ASIGNADAS', _statusCounts['ASIGNADAS'] ?? 0, Colors.blue),
+              _buildStatusDivider(),
+              _buildStatusItem('EN CURSO', _statusCounts['EN CURSO'] ?? 0, Colors.orange),
+              _buildStatusDivider(),
+              _buildStatusItem('TERMINADAS', _statusCounts['TERMINADAS'] ?? 0, DesignTokens.success),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusItem(String label, int count, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(count.toString(), style: DesignTokens.headlineStyle().copyWith(fontSize: 22, color: Colors.white)),
+          const SizedBox(height: 4),
+          Text(label, style: DesignTokens.labelStyle().copyWith(fontSize: 7, color: Colors.white54, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Container(height: 3, width: 20, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusDivider() {
+    return Container(height: 30, width: 1, color: Colors.white10);
   }
 
   Widget _buildProductSummary() {
@@ -790,102 +869,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     );
   }
 
-  Widget _buildRecentHistoryTable() {
-    if (_historial.isEmpty) {
-       return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-        child: const Center(child: Text('No hay historial de remitos')),
-      );
-    }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E302C),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Row(
-              children: [
-                _buildTableHeader('FECHA', 2),
-                _buildTableHeader('TIPO DE OPERACIÓN', 3),
-                _buildTableHeader('PRODUCTO', 3),
-                _buildTableHeader('CANT.', 2, alignRight: true),
-              ],
-            ),
-          ),
-          ..._historial.map((op) => _buildHistoryRow(op)).toList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTableHeader(String text, int flex, {bool alignRight = false}) {
-    return Expanded(
-      flex: flex,
-      child: Text(text, 
-        textAlign: alignRight ? TextAlign.right : TextAlign.left,
-        style: DesignTokens.labelStyle().copyWith(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 0.5)
-      ),
-    );
-  }
-
-  Widget _buildHistoryRow(Map<String, dynamic> op) {
-    final dateStr = op['fecha'] != null 
-        ? DateFormat('dd/MM/yyyy').format(DateTime.parse(op['fecha']))
-        : '--/--/----';
-    
-    final tipo = op['tipo'] ?? 'Entrega';
-    final isEntrega = tipo.toLowerCase().contains('entrega') || tipo.toLowerCase().contains('recolección');
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5))),
-      ),
-      child: Row(
-        children: [
-          Expanded(flex: 2, child: Text(dateStr, style: DesignTokens.bodyStyle().copyWith(fontSize: 10, color: Colors.black54))),
-          Expanded(flex: 3, child: Row(
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isEntrega ? const Color(0xFF1A6B43) : const Color(0xFFC68E17),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(tipo, style: DesignTokens.bodyStyle().copyWith(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF424846))),
-            ],
-          )),
-          Expanded(flex: 3, child: Text(op['producto'] ?? 'S/D', 
-            style: DesignTokens.bodyStyle().copyWith(fontSize: 11, color: Colors.black54),
-            overflow: TextOverflow.ellipsis,
-          )),
-          Expanded(flex: 2, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('${NumberFormat('#,###', 'es_AR').format(op['cantidad'] ?? 0)}', 
-                style: DesignTokens.bodyStyle().copyWith(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF424846))
-              ),
-              Text(op['unidad'] ?? 'kg', style: DesignTokens.bodyStyle().copyWith(fontSize: 10, color: Colors.black38)),
-            ],
-          )),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSectionHeader(String title, String? actionText, {bool showIcons = false}) {
     return Row(
@@ -938,58 +922,23 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return Container(
-      height: 70,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildNavItem(Icons.home_filled, 'HOME', onTap: () => context.go('/home')),
-          _buildNavItem(Icons.assignment_rounded, 'OPERAR', onTap: () => context.go('/rutas')),
-          _buildNavItem(Icons.analytics_rounded, 'MÉTRICAS', onTap: () => context.go('/gerenteHome')),
-          _buildNavItem(Icons.person_rounded, 'MI PERFIL', active: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, String label, {bool active = false, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: active ? DesignTokens.secondary : Colors.black26, size: 24),
-          const SizedBox(height: 4),
-          Text(label, style: DesignTokens.labelStyle().copyWith(
-            fontSize: 8, 
-            fontWeight: FontWeight.w900,
-            color: active ? DesignTokens.secondary : Colors.black26
-          )),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String message) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: DesignTokens.outline.withOpacity(0.1)),
       ),
       child: Column(
         children: [
-          const Icon(Icons.assignment_outlined, size: 32, color: Colors.black12),
-          const SizedBox(height: 12),
-          Text('No hay solicitudes pendientes', style: DesignTokens.bodyStyle().copyWith(color: Colors.black26, fontSize: 13)),
+          Icon(Icons.assignment_outlined, size: 48, color: DesignTokens.primary.withOpacity(0.1)),
+          const SizedBox(height: 16),
+          Text(message, 
+            textAlign: TextAlign.center,
+            style: DesignTokens.bodyStyle().copyWith(color: Colors.black26, fontSize: 14)
+          ),
         ],
       ),
     );

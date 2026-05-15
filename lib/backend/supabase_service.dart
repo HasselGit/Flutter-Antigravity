@@ -150,51 +150,70 @@ class SupabaseService {
   }
 
   Future<void> updateViajeEstado(String viajeId, String nuevoEstado) async {
-    final Map<String, dynamic> updates = {'estado': nuevoEstado};
-    if (nuevoEstado == AppStates.enCurso) {
+    // Normalizar el estado antes de guardar
+    final normalizedNuevo = AppStates.normalize(nuevoEstado);
+    final Map<String, dynamic> updates = {'estado': normalizedNuevo};
+    
+    if (normalizedNuevo == AppStates.enCurso) {
       updates['fecha_inicio'] = DateTime.now().toIso8601String();
-    } else if (nuevoEstado == AppStates.terminado) {
+    } else if (normalizedNuevo == AppStates.terminado) {
       updates['fecha_terminado'] = DateTime.now().toIso8601String();
     }
+    
     await _client.from('viajes').update(updates).eq('id', viajeId);
 
-    // Propagar estado a las solicitudes asociadas
+    // Propagar estado a las solicitudes asociadas de forma selectiva
     try {
       final paradas = await _client.from('paradas')
-          .select('solicitud_id, parada_items(solicitud_id)')
+          .select('solicitud_id')
           .eq('viaje_id', viajeId);
       
-      final List<String> solicitudIds = [];
+      final Set<String> solicitudIds = {};
       for (var p in (paradas as List)) {
         if (p['solicitud_id'] != null) solicitudIds.add(p['solicitud_id'].toString());
-        final items = p['parada_items'] as List?;
-        if (items != null) {
-          for (var it in items) {
-            if (it['solicitud_id'] != null) solicitudIds.add(it['solicitud_id'].toString());
-          }
-        }
       }
 
       if (solicitudIds.isNotEmpty) {
-        String solicitudEstado;
-        final normalizedNuevo = AppStates.normalize(nuevoEstado);
-
         if (normalizedNuevo == AppStates.enCurso) {
-          solicitudEstado = AppStates.enCurso;
-        } else if (normalizedNuevo == AppStates.terminado) {
-          solicitudEstado = AppStates.terminado;
-        } else {
-          // Si el viaje vuelve a Pendiente/Planificado, las solicitudes vuelven a Asignada
-          solicitudEstado = AppStates.asignada;
+          // Solo pasar a 'En Curso' las que están 'Asignada'
+          await _client.from('solicitudes')
+              .update({'estado': AppStates.enCurso})
+              .filter('id', 'in', solicitudIds.toList())
+              .eq('estado', AppStates.asignada);
+        } else if (normalizedNuevo == AppStates.pendiente) {
+          // Si el viaje se resetea a Pendiente, las que estaban 'En Curso' vuelven a 'Asignada'
+          // Las 'Terminada' se quedan como están.
+          await _client.from('solicitudes')
+              .update({'estado': AppStates.asignada})
+              .filter('id', 'in', solicitudIds.toList())
+              .eq('estado', AppStates.enCurso);
         }
-
-        await _client.from('solicitudes')
-            .update({'estado': solicitudEstado})
-            .filter('id', 'in', solicitudIds);
+        // Nota: El estado 'Terminado' del viaje no debería forzar 'Terminado' en las solicitudes
+        // ya que estas se terminan individualmente al generar el remito.
       }
     } catch (e) {
       print('SupabaseService: Error propagando estado a solicitudes: $e');
     }
+  }
+
+  /// Marca todas las cargas de un viaje como 'Terminado' (Cargado físicamente)
+  Future<void> confirmarCargaViaje(String viajeId) async {
+    final List<dynamic> cargas = await _client.from('cargas')
+        .select('id')
+        .eq('viaje_id', viajeId)
+        .eq('estado', AppStates.pendiente);
+    
+    for (var c in cargas) {
+      await updateCargaEstado(c['id'].toString(), AppStates.terminado);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getTerminatedCargas() async {
+    final res = await _client.from('cargas')
+        .select('*, viaje:viaje_id(*, profiles(nombre, apellido), vehiculo:vehiculo_codigo(*)), carga_items(*)')
+        .eq('estado', AppStates.terminado)
+        .order('updated_at', ascending: false);
+    return List<Map<String, dynamic>>.from(res);
   }
 
   // ─── RUTAS ────────────────────────────────────────────────────────────────
@@ -482,7 +501,7 @@ class SupabaseService {
 
       if (localApi.isNotEmpty) {
         Map<String, dynamic> toUpdate = {};
-        final fields = ['cuit', 'renapa', 'localidad', 'provincia', 'telefono'];
+        final fields = ['cuit', 'renapa', 'localidad', 'provincia', 'telefono', 'dni'];
         
         for (var f in fields) {
           final dbVal = dbApi[f]?.toString() ?? '';
@@ -747,7 +766,7 @@ class SupabaseService {
     try {
       // 1. Obtener las paradas para saber qué solicitudes liberar y qué items borrar
       final paradasRes = await _client.from('paradas')
-          .select('id, solicitud_id, parada_items(solicitud_id)')
+          .select('id, solicitud_id')
           .eq('viaje_id', viajeId);
       
       final List<Map<String, dynamic>> paradas = List<Map<String, dynamic>>.from(paradasRes as List);
@@ -755,12 +774,6 @@ class SupabaseService {
       final List<String> solicitudIds = [];
       for (var p in paradas) {
         if (p['solicitud_id'] != null) solicitudIds.add(p['solicitud_id'].toString());
-        final items = p['parada_items'] as List?;
-        if (items != null) {
-          for (var it in items) {
-            if (it['solicitud_id'] != null) solicitudIds.add(it['solicitud_id'].toString());
-          }
-        }
       }
 
       // 2. Liberar solicitudes
@@ -772,17 +785,29 @@ class SupabaseService {
 
       // 3. Borrar paradas e items
       for (var p in paradas) {
-         await _client.from('parada_items').delete().eq('parada_id', p['id']);
+         try {
+           await _client.from('parada_items').delete().eq('parada_id', p['id']);
+         } catch (_) {}
       }
       await _client.from('paradas').delete().eq('viaje_id', viajeId);
+      
+      // 4. Borrar cargas e items
+      try {
+        final cargasRes = await _client.from('cargas').select('id').eq('viaje_id', viajeId);
+        final List<dynamic> cargasList = cargasRes as List;
+        for (var c in cargasList) {
+          await _client.from('carga_items').delete().eq('carga_id', c['id']);
+        }
+        await _client.from('cargas').delete().eq('viaje_id', viajeId);
+      } catch (_) {}
+
+      // 5. Borrar rutas y gastos
       await _client.from('rutas').delete().eq('viaje_id', viajeId);
       try {
         await _client.from('gastos').delete().eq('viaje_id', viajeId);
-      } catch (e) {
-        print('SupabaseService: Tabla gastos no encontrada o inaccesible, continuando: $e');
-      }
+      } catch (_) {}
       
-      // 4. Borrar viaje
+      // 6. Borrar viaje
       await _client.from('viajes').delete().eq('id', viajeId);
     } catch (e) {
       print('SupabaseService: Error eliminando viaje: $e');

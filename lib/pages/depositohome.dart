@@ -1,37 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../backend/design_tokens.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
+import '../backend/app_states.dart';
+import '../backend/design_tokens.dart';
 
-class DepositoHomeWidget extends StatefulWidget {
-  const DepositoHomeWidget({super.key});
+class DepositohomeWidget extends StatefulWidget {
+  const DepositohomeWidget({super.key});
 
   @override
-  State<DepositoHomeWidget> createState() => _DepositoHomeWidgetState();
+  State<DepositohomeWidget> createState() => _DepositohomeWidgetState();
 }
 
-class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
+class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<Map<String, dynamic>> _viajesPlanificados = [];
+  List<Map<String, dynamic>> _cargasTerminadas = [];
+  List<Map<String, dynamic>> _filteredHistory = [];
   bool _loading = true;
+  String _searchQuery = '';
+  DateTime? _selectedDate;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _fetchData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchData() async {
     setState(() => _loading = true);
     try {
-      final data = await Supabase.instance.client
+      // Fetch Pending Voyages for first tab
+      final pendingViajes = await Supabase.instance.client
           .from('viajes')
           .select('*, profiles(nombre, apellido), paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
           .or('estado.eq.Planificado,estado.eq.Pendiente')
           .order('fecha', ascending: true);
 
+      // Fetch Terminated Cargas for second tab
+      final history = await SupabaseService().getTerminatedCargas();
+
       if (mounted) {
         setState(() {
-          _viajesPlanificados = List<Map<String, dynamic>>.from(data);
+          _viajesPlanificados = List<Map<String, dynamic>>.from(pendingViajes);
+          _cargasTerminadas = history;
+          _applyFilters();
           _loading = false;
         });
       }
@@ -40,46 +61,45 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
     }
   }
 
+  void _applyFilters() {
+    setState(() {
+      _filteredHistory = _cargasTerminadas.where((c) {
+        final codeMatch = (c['carga_codigo'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                          (c['viaje']?['viaje_codigo'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase());
+        
+        bool dateMatch = true;
+        if (_selectedDate != null) {
+          final updated = DateTime.tryParse(c['updated_at'] ?? '');
+          dateMatch = updated != null && 
+                      updated.year == _selectedDate!.year && 
+                      updated.month == _selectedDate!.month && 
+                      updated.day == _selectedDate!.day;
+        }
+        return codeMatch && dateMatch;
+      }).toList();
+    });
+  }
+
   Future<void> _confirmarCarga(Map<String, dynamic> viaje, double totalKg, int totalTambores) async {
-    final vehiculo = viaje['vehiculos'] ?? {};
-    final capKg = (vehiculo['capacidad_kg'] ?? 0).toDouble();
-    final capTambores = (vehiculo['capacidad_tambores'] ?? 0);
-
-    final excede = (capKg > 0 && totalKg > capKg) || (capTambores > 0 && totalTambores > capTambores);
-
-    if (excede) {
-      final continuar = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('⚠️ ALERTA DE SOBRECARGA', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          content: Text('La carga actual (${totalKg.toStringAsFixed(0)}kg / $totalTambores tamb.) EXCEDE la capacidad del vehículo (${capKg.toStringAsFixed(0)}kg / $capTambores tamb.).\n\n¿Desea confirmar la salida de todas formas?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('CONFIRMAR SOBRECARGA', style: TextStyle(color: Colors.red))),
-          ],
-        ),
-      );
-      if (continuar != true) return;
-    }
-
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmar Carga'),
-        content: Text('¿Confirma que el vehículo ${viaje['vehiculo_codigo']} ha sido cargado según lo planificado para el viaje ${viaje['viaje_codigo']}?'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Salida', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('¿Confirma que el viaje ${viaje['viaje_codigo']} ha sido cargado físicamente y está listo para salir?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('CONFIRMAR')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('CONFIRMAR')),
         ],
       ),
     );
 
     if (confirmar == true) {
       try {
-        await SupabaseService().updateViajeEstado(viaje['id'], 'Cargado');
-        _fetchData();
+        await SupabaseService().confirmarCargaViaje(viaje['id']);
+        await _fetchData();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viaje marcado como CARGADO'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga del viaje confirmada exitosamente'), backgroundColor: Colors.green));
+          _tabController.animateTo(1);
         }
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -90,136 +110,36 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DesignTokens.surface,
+      backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
         backgroundColor: DesignTokens.surface,
         elevation: 0,
-        title: Text('Módulo de Depósito', style: DesignTokens.headlineStyle()),
-        iconTheme: IconThemeData(color: DesignTokens.primary),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('GeoLogística Depósito', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 18)),
+            Text('Gestión de Cargas y Salidas', style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant).copyWith(fontSize: 12)),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: DesignTokens.primary,
+          unselectedLabelColor: DesignTokens.onSurfaceVariant,
+          indicatorColor: DesignTokens.secondary,
+          indicatorWeight: 3,
+          tabs: const [
+            Tab(text: 'PENDIENTES'),
+            Tab(text: 'TERMINADAS'),
+          ],
+        ),
       ),
       body: _loading 
         ? const Center(child: CircularProgressIndicator())
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        : TabBarView(
+            controller: _tabController,
             children: [
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Viajes para Cargar', style: DesignTokens.headlineStyle(color: DesignTokens.primary)),
-                    Text('Confirme la salida física de mercadería de planta.', style: DesignTokens.bodyStyle(color: DesignTokens.onSurfaceVariant)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _viajesPlanificados.isEmpty 
-                  ? const Center(child: Text('No hay viajes planificados pendientes de carga.'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _viajesPlanificados.length,
-                      itemBuilder: (context, index) {
-                        final v = _viajesPlanificados[index];
-                        final chofer = v['profiles'] ?? {};
-                        final vehiculo = v['vehiculos'] ?? {};
-                        
-                        double totalKg = 0;
-                        int totalTambores = 0;
-                        for (var p in (v['paradas'] as List? ?? [])) {
-                          for (var item in (p['parada_items'] as List? ?? [])) {
-                            final double cant = (item['cantidad'] ?? 0).toDouble();
-                            final String prod = (item['producto_codigo'] ?? '').toString().toLowerCase();
-                            
-                            if (prod.contains('tcm')) {
-                              totalKg += cant * 300;
-                              totalTambores += cant.toInt();
-                            } else if (prod.contains('vacio') || prod.contains('vacío') || prod.contains('tv')) {
-                              totalKg += cant * 20;
-                              totalTambores += cant.toInt();
-                            } else {
-                              totalKg += cant;
-                            }
-                          }
-                        }
-
-                        final capKg = (vehiculo['capacidad_kg'] ?? 0).toDouble();
-                        final excede = capKg > 0 && totalKg > capKg;
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: excede ? DesignTokens.error.withOpacity(0.3) : DesignTokens.outline.withOpacity(0.2)),
-                            boxShadow: [BoxShadow(color: excede ? DesignTokens.error.withOpacity(0.05) : Colors.black.withOpacity(0.02), blurRadius: 10)],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(v['viaje_codigo'] ?? 'S/C', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 16)),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(color: DesignTokens.accent.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                                      child: Text(v['vehiculo_codigo'] ?? 'N/A', style: DesignTokens.labelStyle(color: DesignTokens.primary)),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.person_pin_circle_rounded, size: 16, color: Colors.black45),
-                                    const SizedBox(width: 8),
-                                    Text('Chofer: ${chofer['nombre']} ${chofer['apellido']}', style: const TextStyle(fontSize: 13, color: Colors.black54)),
-                                  ],
-                                ),
-                                const Divider(height: 24),
-                                // Resumen de Carga
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('CARGA TOTAL', style: DesignTokens.labelStyle().copyWith(fontSize: 9)),
-                                        Text('${totalKg.toStringAsFixed(0)} KG', style: DesignTokens.headlineStyle(color: excede ? DesignTokens.error : DesignTokens.primary).copyWith(fontSize: 16)),
-                                      ],
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text('TAMBORES', style: DesignTokens.labelStyle().copyWith(fontSize: 9)),
-                                        Text('$totalTambores un.', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 16)),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                if (excede) ...[
-                                  const SizedBox(height: 8),
-                                  Text('⚠️ Excede capacidad (${capKg.toStringAsFixed(0)} Kg)', style: const TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
-                                ],
-                                const SizedBox(height: 16),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 52,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () => _confirmarCarga(v, totalKg, totalTambores),
-                                      style: DesignTokens.primaryButtonStyle,
-                                      icon: Icon(Icons.check_circle_outline, color: DesignTokens.accent),
-                                      label: const Text('CONFIRMAR CARGA Y SALIDA'),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-              ),
+              _buildPendientesTab(),
+              _buildTerminadasTab(),
             ],
           ),
       floatingActionButton: FloatingActionButton.extended(
@@ -228,6 +148,209 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
         icon: Icon(Icons.add_box_rounded, color: DesignTokens.accent),
         label: const Text('AGREGAR CARGA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
+    );
+  }
+
+  Widget _buildPendientesTab() {
+    if (_viajesPlanificados.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.local_shipping_outlined, size: 64, color: DesignTokens.primary.withOpacity(0.1)),
+            const SizedBox(height: 16),
+            const Text('No hay viajes pendientes de carga.'),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: _viajesPlanificados.length,
+      itemBuilder: (context, index) {
+        final v = _viajesPlanificados[index];
+        final chofer = v['profiles'] ?? {};
+        final vehiculo = v['vehiculos'] ?? {};
+        
+        double totalKg = 0;
+        int totalTambores = 0;
+        for (var p in (v['paradas'] as List? ?? [])) {
+          for (var item in (p['parada_items'] as List? ?? [])) {
+            final double cant = (item['cantidad'] ?? 0).toDouble();
+            final String prod = (item['producto_codigo'] ?? '').toString().toLowerCase();
+            if (prod.contains('tcm')) { totalKg += cant * 300; totalTambores += cant.toInt(); }
+            else if (prod.contains('vacio') || prod.contains('vacío') || prod.contains('tv')) { totalKg += cant * 20; totalTambores += cant.toInt(); }
+            else { totalKg += cant; }
+          }
+        }
+
+        final capKg = (vehiculo['capacidad_kg'] ?? 0).toDouble();
+        final excede = capKg > 0 && totalKg > capKg;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: DesignTokens.primary.withOpacity(0.06)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(v['viaje_codigo'] ?? 'S/C', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: DesignTokens.primary)),
+                        Text('Chofer: ${chofer['nombre'] ?? 'S/N'} ${chofer['apellido'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                    Icon(Icons.inventory_2_outlined, color: DesignTokens.secondary),
+                  ],
+                ),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _metricCol('PESO TOTAL', '${totalKg.round()} Kg', Icons.scale),
+                    _metricCol('TAMBORES', '$totalTambores un.', Icons.inventory_2),
+                    _metricCol('UNIDAD', v['vehiculo_codigo'] ?? 'S/D', Icons.local_shipping),
+                  ],
+                ),
+                if (excede) ...[
+                  const SizedBox(height: 8),
+                  const Text('⚠️ Excede capacidad del vehículo', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _confirmarCarga(v, totalKg, totalTambores),
+                    style: DesignTokens.primaryButtonStyle,
+                    icon: const Icon(Icons.check_circle_outline, color: DesignTokens.accent),
+                    label: const Text('CONFIRMAR CARGA Y SALIDA'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTerminadasTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por código...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                  onChanged: (val) {
+                    _searchQuery = val;
+                    _applyFilters();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              IconButton.filled(
+                onPressed: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedDate ?? DateTime.now(),
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setState(() => _selectedDate = date);
+                    _applyFilters();
+                  }
+                },
+                icon: Icon(Icons.calendar_month, color: _selectedDate != null ? DesignTokens.accent : Colors.white),
+                style: IconButton.styleFrom(backgroundColor: DesignTokens.primary),
+              ),
+              if (_selectedDate != null)
+                IconButton(onPressed: () { setState(() => _selectedDate = null); _applyFilters(); }, icon: const Icon(Icons.clear, color: Colors.red)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _filteredHistory.isEmpty
+            ? const Center(child: Text('No se encontraron cargas terminadas.'))
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: _filteredHistory.length,
+                itemBuilder: (ctx, i) => _buildHistoryCard(_filteredHistory[i]),
+              ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHistoryCard(Map<String, dynamic> c) {
+    final updated = DateTime.tryParse(c['updated_at'] ?? '');
+    final dateStr = updated != null ? DateFormat('dd/MM/yyyy HH:mm').format(updated) : 'S/F';
+    final items = List<Map<String, dynamic>>.from(c['carga_items'] ?? []);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.withOpacity(0.1)),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+          child: const Icon(Icons.check_circle, color: Colors.green),
+        ),
+        title: Text(c['carga_codigo'] ?? 'CARGA', style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Viaje: ${c['viaje']?['viaje_codigo'] ?? 'S/V'}', style: const TextStyle(fontSize: 12)),
+            Text('Fecha: $dateStr', style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        trailing: ElevatedButton(
+          onPressed: () => context.push('/remito_carga?cargaId=${c['id']}'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: DesignTokens.secondary,
+            foregroundColor: DesignTokens.primary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          child: const Text('REMITO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+        ),
+      ),
+    );
+  }
+
+  Widget _metricCol(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 16, color: DesignTokens.primary.withOpacity(0.4)),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: DesignTokens.primary.withOpacity(0.4))),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: DesignTokens.primary)),
+      ],
     );
   }
 
@@ -292,35 +415,31 @@ class _DepositoHomeWidgetState extends State<DepositoHomeWidget> {
                       onPressed: () async {
                         if (selectedViaje == null || selectedProducto == null || qtyController.text.isEmpty) return;
                         try {
-                          // Create a 'Distribución' stop/item for the trip
-                          // This logic depends on your schema, but usually we add a parada or link item
-                          // For now, let's assume we insert into 'paradas' or similar
-                          final res = await Supabase.instance.client.from('paradas').insert({
+                          // Simplified: creating a carga for the trip
+                          final humanId = 'CAR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                          final cargaResp = await Supabase.instance.client.from('cargas').insert({
                             'viaje_id': selectedViaje!['id'],
-                            'tipo': 'Distribución',
-                            'estado': 'Planificada',
-                            'orden': 1,
-                            'localidad': 'General Pico', // Default to plant for distributions from plant
-                            'nombre_sitio': 'Depósito Central',
-                          }).select().single();
-
-                          await Supabase.instance.client.from('parada_items').insert({
-                            'parada_id': res['id'],
-                            'producto': selectedProducto!['descripcion'],
-                            'cantidad_planificada': double.tryParse(qtyController.text) ?? 0,
-                            'unidad': selectedProducto!['unidad'] ?? 'u',
+                            'carga_codigo': humanId,
+                            'estado': AppStates.pendiente,
+                          }).select('id').single();
+                          
+                          await Supabase.instance.client.from('carga_items').insert({
+                            'carga_id': cargaResp['id'],
+                            'producto_codigo': selectedProducto!['descripcion'],
+                            'cantidad': double.tryParse(qtyController.text) ?? 0,
+                            'unidad': selectedProducto!['unidad'] ?? 'UN',
                           });
 
                           if (ctx.mounted) {
                             Navigator.pop(ctx);
                             _fetchData();
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga asignada correctamente'), backgroundColor: Colors.green));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga asignada correctamente')));
                           }
                         } catch (e) {
-                          if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e')));
+                          if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
                         }
                       },
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF08201A), foregroundColor: Colors.white),
+                      style: DesignTokens.primaryButtonStyle,
                       child: const Text('ASIGNAR CARGA'),
                     ),
                   ),
