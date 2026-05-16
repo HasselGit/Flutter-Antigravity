@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../components/agregaritem.dart';
 import '../backend/design_tokens.dart';
 import '../backend/app_states.dart';
+import '../backend/supabase_service.dart';
+import 'remito_registro.dart';
 
 class ParadaDetalleWidget extends StatefulWidget {
   const ParadaDetalleWidget({super.key, required this.paradaId});
@@ -24,6 +26,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   final _receptorNombreController = TextEditingController();
   final _receptorDniController = TextEditingController();
   bool _isEditingQuantities = false;
+  bool _isFinishing = false;
 
   @override
   void initState() {
@@ -33,11 +36,36 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
 
   Future<Map<String, dynamic>?> _fetchParadaData() async {
     if (widget.paradaId == null) return null;
-    return await Supabase.instance.client
+    final data = await Supabase.instance.client
         .from('paradas')
-        .select('*, parada_items(*), remitos(*)')
+        .select('*, parada_items(*), remitos(*), pesajes(*)')
         .eq('id', widget.paradaId!)
         .maybeSingle();
+    
+    if (data != null) {
+      final items = List<Map<String, dynamic>>.from(data['parada_items'] ?? []);
+      final pesajes = List<Map<String, dynamic>>.from(data['pesajes'] ?? []);
+      
+      // Corrección de unidades TCM y Reconciliación
+      for (var item in items) {
+        if (item['producto_codigo'] == 'TCM') {
+          // 1. Corregir unidad si está mal (kg -> uni)
+          if (item['unidad']?.toString().toLowerCase() != 'uni') {
+            await Supabase.instance.client.from('parada_items').update({'unidad': 'uni'}).eq('id', item['id']);
+            item['unidad'] = 'uni';
+          }
+          // 2. Reconciliación con pesajes
+          if (pesajes.isNotEmpty) {
+            final realQty = pesajes.length.toDouble();
+            if ((item['cantidad'] as num).toDouble() != realQty) {
+              await Supabase.instance.client.from('parada_items').update({'cantidad': realQty}).eq('id', item['id']);
+              item['cantidad'] = realQty;
+            }
+          }
+        }
+      }
+    }
+    return data;
   }
 
   TextEditingController _getController(String id, String initialValue) {
@@ -66,6 +94,20 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteItem(String itemId) async {
+    try {
+      await SupabaseService().deleteParadaItem(itemId);
+      setState(() { _paradaFuture = _fetchParadaData(); });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item eliminado')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
       }
     }
   }
@@ -122,8 +164,8 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         _buildHeader(p),
                         const SizedBox(height: 32),
                         _buildItemsSection(),
-                        // Sección de pesaje — opcional para Recoleccion
-                        if ((p['tipo'] ?? '').toString().toLowerCase().contains('recolec')) ...
+                        // Sección de pesaje — visible si hay algún item TCM
+                        if ((p['parada_items'] as List? ?? []).any((it) => it['producto_codigo'] == 'TCM')) ...
                           [const SizedBox(height: 32), _buildPesajeSection(p)],
                         const SizedBox(height: 32),
                         _buildDigitalRemitoForm(p),
@@ -293,7 +335,9 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                   backgroundColor: Colors.transparent,
                   builder: (context) => AgregarItemWidget(paradaId: widget.paradaId!),
                 );
-                setState(() {});
+                setState(() {
+                  _paradaFuture = _fetchParadaData();
+                });
               },
               icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
               label: const Text('Agregar'),
@@ -369,13 +413,14 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               ],
             ),
           ),
-          if (_isEditingQuantities)
+          if (_isEditingQuantities) ...[
             SizedBox(
-              width: 80,
+              width: 70,
               child: TextField(
                 controller: _getController(item['id'].toString(), item['cantidad'].toString()),
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
                   isDense: true, 
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -386,8 +431,12 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                   if (qty != null) _updateItemQuantity(item['id'], qty);
                 },
               ),
-            )
-          else
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+              onPressed: () => _deleteItem(item['id']),
+            ),
+          ] else
             Text(
               item['cantidad'].toString(),
               style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, fontSize: 18, color: DesignTokens.primary),
@@ -398,38 +447,81 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   }
 
   Widget _buildDigitalRemitoForm(Map<String, dynamic> p) {
+    final remitos = p['remitos'] as List? ?? [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('REGISTRO DE ENTREGA (REMITO)', style: DesignTokens.labelStyle()),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
-          ),
-          child: Column(
-            children: [
-              _buildDropdownField('Tipo de Receptor', _receptorTipo, ['Apicultor', 'Tercero'], (val) => setState(() => _receptorTipo = val)),
-              const SizedBox(height: 16),
-              _buildInputField('Nombre Completo', _receptorNombreController, Icons.person_rounded),
-              const SizedBox(height: 16),
-              _buildInputField('DNI / CUIT', _receptorDniController, Icons.badge_rounded),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: () => _generarRemito(p),
-                  style: DesignTokens.secondaryButtonStyle,
-                  child: const Text('GENERAR REMITO DIGITAL'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('REMITOS DE ESTA PARADA', style: DesignTokens.labelStyle()),
+            if (remitos.isNotEmpty)
+              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (remitos.isEmpty)
+          const Text('No hay remitos generados para esta parada.', style: TextStyle(fontSize: 13, color: Colors.grey))
+        else
+          ...remitos.map((r) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const Icon(Icons.description_rounded, color: DesignTokens.primary),
+              title: Text('Remito #${r['id'].toString().substring(0, 6).toUpperCase()}'),
+              subtitle: Text('Firmado por: ${r['firmante_nombre'] ?? 'S/D'}'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                 // TODO: Ver PDF del remito guardado
+              },
+            ),
+          )),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RemitoRegistroPage(
+                  paradaId: widget.paradaId!,
+                  apicultorId: p['apicultor_id'],
+                  apicultorNombre: p['persona_nombre'] ?? p['ubicacion'],
+                  apicultorDni: p['persona_dni'],
+                  tipoOperacion: p['tipo'] ?? 'Recolección',
                 ),
               ),
-            ],
+            ).then((success) {
+              if (success == true) setState(() { _paradaFuture = _fetchParadaData(); });
+            }),
+            icon: const Icon(Icons.add_task_rounded, color: Colors.white),
+            label: const Text('GENERAR NUEVO REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1A6B43),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
           ),
         ),
+        if (remitos.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton(
+              onPressed: () async {
+                setState(() => _isFinishing = true);
+                await SupabaseService().finalizarParada(widget.paradaId!, 'CAMION-01');
+                if (mounted) context.pop();
+              },
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: DesignTokens.primary),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('FINALIZAR PARADA COMPLETA', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -461,17 +553,42 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     );
   }
 
-  Future<void> _generarRemito(Map<String, dynamic> p) async {
+  Future<void> _finalizarYGenerarRemito(Map<String, dynamic> p) async {
     final nombre = _receptorNombreController.text.trim();
     final dni = _receptorDniController.text.trim();
+    
     if (nombre.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ingrese el nombre del responsable')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingrese el nombre del responsable')));
       return;
     }
-    // Navegar a RemitoPage con todos los parámetros
-    context.push(
-      '/remito?paradaId=${widget.paradaId}&receptorTipo=${Uri.encodeComponent(_receptorTipo ?? 'Apicultor')}&receptorNombre=${Uri.encodeComponent(nombre)}&receptorDni=${Uri.encodeComponent(dni)}',
-    );
+
+    setState(() => _isFinishing = true);
+
+    try {
+      // 1. Sincronizar Stock y Cambiar Estados
+      final vehiculoCodigo = p['viaje_id_codigo'] ?? p['vehiculo_codigo'] ?? 'CAMION-01'; // Fallback if not available
+      // Note: We need the actual vehiculo_codigo. Let's try to fetch it if not in p.
+      String vCode = vehiculoCodigo;
+      if (vCode == 'CAMION-01') {
+        final v = await Supabase.instance.client.from('viajes').select('vehiculo_codigo').eq('id', p['viaje_id']).maybeSingle();
+        if (v != null) vCode = v['vehiculo_codigo'];
+      }
+
+      await SupabaseService().finalizarParada(p['id'], vCode);
+
+      // 2. Navegar a RemitoPage
+      if (mounted) {
+        context.push(
+          '/remito?paradaId=${widget.paradaId}&receptorTipo=${Uri.encodeComponent(_receptorTipo ?? 'Apicultor')}&receptorNombre=${Uri.encodeComponent(nombre)}&receptorDni=${Uri.encodeComponent(dni)}',
+        ).then((_) {
+          if (mounted) setState(() => _isFinishing = false);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isFinishing = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al finalizar: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 }

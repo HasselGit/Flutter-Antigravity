@@ -188,7 +188,7 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
         : (item['localidad'] ?? 'Sin localidad');
     final detail = isSolicitud
         ? '${item['cantidad']} KG - ${item['producto'] ?? 'Miel'}'
-        : '${item['bruto_kg'] ?? 'S/D'} KG - ${item['producto_codigo'] ?? 'Miel'}';
+        : '${item['carga_kg'] ?? 'S/D'} KG - ${item['producto_codigo'] ?? 'Miel'}';
 
     return GestureDetector(
       onTap: () {

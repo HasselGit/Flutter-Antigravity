@@ -54,7 +54,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     try {
       final parada = await Supabase.instance.client
           .from('paradas')
-          .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, bruto_kg, neto_kg')
+          .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, carga_kg')
           .eq('id', widget.paradaId)
           .maybeSingle();
 
@@ -134,7 +134,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       final receptorNombre = widget.receptorTipo == 'Tercero' ? widget.receptorNombre : apicultorNombre;
       final receptorDni = widget.receptorTipo == 'Tercero' ? widget.receptorDni : '';
 
-      double totalBruto = tryParseDouble(_paradaData?['bruto_kg']);
+      double totalBruto = tryParseDouble(_paradaData?['carga_kg']);
       double totalNeto = tryParseDouble(_paradaData?['neto_kg']);
 
       pdf.addPage(
@@ -237,7 +237,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       
       try {
         final solId = _paradaData?['solicitud_id'];
-        if (solId != null) {
+        if (_paradaData?['carga_kg'] != null) {
           await Supabase.instance.client.from('solicitudes').update({'estado': 'Terminada'}).eq('id', solId);
         }
       } catch (e) {

@@ -1,29 +1,27 @@
-# Estado Actual de la Sesión - GeoLogística
+# Sesión Actual - 16 de Mayo, 2026
 
-## Últimas Modificaciones (15 de Mayo de 2026)
-### 1. Estabilización Operativa del Chofer
-- **Acción:** Se corrigió la asignación de viajes para el rol Chofer.
-- **Detalles:**
-  - `viajes`: Se actualizó el viaje **V-1105-925** para usar el UUID correcto (`dc92ea39-a60e-49ef-9ed5-d7d97ba7995a`) en lugar de un correo electrónico. Esto permite al chofer `cmuse@geomiel.com` ver y gestionar sus viajes asignados.
-  - **Estado Operativo:** El chofer ahora puede realizar la transición de estados (Iniciar Viaje, Agregar Paradas, Pesajes) de manera fluida.
+## Objetivos Alcanzados: Optimización del Flujo Logístico Avanzado
 
-### 2. Dashboard Premium del Apicultor
-- **Acción:** Refactorización completa del perfil de apicultor (`apicultor_detalle.dart`) para máxima visibilidad.
-- **Mejoras:**
-  - **Resumen de Operaciones:** Se implementó una cuadrícula de estados en tiempo real (Pendientes, Asignadas, En Curso, Terminadas) con contadores precisos.
-  - **Operaciones Recientes:** Nueva sección que lista el historial de operaciones finalizadas, vinculando directamente el **Número de Remito** y los pesos netos correspondientes.
-  - **Visibilidad de Solicitudes:** Se mejoró la lógica de búsqueda para incluir todas las variantes de ID de apicultor (prefijos, ceros a la izquierda), asegurando que ninguna solicitud (ej: Vidal, Spinozzi, Fenoglio) se oculte.
-  - **Corrección de Tipos:** Se estandarizó el manejo de "Recolección" (con y sin acento) para consistencia visual.
+### 1. Sistema Multi-Remito (Split Remitos)
+- **Independencia Documental**: Implementación de la pantalla `RemitoRegistroPage` que permite generar múltiples remitos por cada parada. Esto habilita el escenario donde un apicultor entrega carga a su nombre y a nombre de terceros en un mismo punto.
+- **Validación Anti-Error**: Integración de lógica que compara la cantidad de TCM declarada en el remito con la cantidad de registros físicos en el módulo de pesaje.
+- **Firma de Terceros**: Capacidad para capturar datos (DNI/Nombre) y firma digital de personas autorizadas por el apicultor.
 
-### 3. Saneamiento y Robustez de Backend
-- **Eliminación de Viajes:** Se optimizó `SupabaseService.deleteViaje` para manejar la eliminación en cascada de `cargas` y `carga_items`, evitando errores de integridad referencial.
-- **Corrección de Sintaxis:** Se resolvieron errores críticos en el código (llaves extra, variables no definidas) que impedían la compilación, logrando un estado de **cero errores** en `dart analyze`.
+### 2. Flexibilidad en Campo (Paradas Mixtas)
+- **Selector Dinámico**: El formulario de "Agregar Item" permite ahora elegir explícitamente el tipo de movimiento (Recolección vs Distribución).
+- **Habilitación Universal de Pesaje**: Se eliminó la restricción por "tipo de parada". El módulo de balanza se habilita automáticamente siempre que exista un item TCM en la lista, permitiendo reaccionar a pedidos imprevistos del apicultor.
+- **Auto-corrección de Unidades**: Se implementó una lógica de reconciliación que fuerza la unidad `uni` para TCM, asegurando la compatibilidad con el sistema de pesaje individual.
 
-## Tareas Pendientes
-1. **Prueba E2E Completa**: Realizar el ciclo completo con el chofer Muse desde el inicio del viaje hasta la generación del remito final.
-2. **Validación de Stock**: Verificar que la descarga en Depósito actualiza correctamente las cantidades asignadas en las cargas.
+### 3. Mejoras Técnicas y UI
+- **Refresco Automático**: Implementación de re-fetch de datos al cerrar diálogos para asegurar que los cambios en la base de datos (como la conversión a parada MIXTA) se reflejen instantáneamente.
+- **Restauración de Funciones**: Se habilitó nuevamente la edición y eliminación de items de parada para otorgar total control al chofer.
+- **Generación de APK**: Compilación de la versión estable con soporte para arquitecturas modernas (ARM64).
 
-## Instrucciones de Reinicio Rápido
-- `flutter clean`
-- `flutter pub get`
-- `flutter run`
+## Archivos Clave Modificados:
+- `lib/pages/paradadetalle.dart`: Lógica de visibilidad, refresco y reconciliación de TCM.
+- `lib/components/agregaritem.dart`: Selector de operación y corrección de unidades.
+- `lib/pages/remito_registro.dart`: Implementación de la firma y validación de pesaje.
+- `lib/backend/supabase_service.dart`: Ajustes en mapeo de columnas (`carga_kg`).
+
+---
+*Sesión finalizada con éxito. Código sincronizado y APK generado.*

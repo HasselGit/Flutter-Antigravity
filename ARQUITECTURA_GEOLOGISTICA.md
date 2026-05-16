@@ -47,3 +47,17 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Impeller:** Desactivado en Android para estabilidad gráfica.
 - **Java:** JDK 17+ requerido.
 - **Variables Supabase:** URL y Key Anon deben estar configuradas en `supabase_service.dart`.
+## 7. Logística de Campo Avanzada (Multi-Remito)
+### A. Sistema de Remitos Múltiples
+- **Escenario:** Un apicultor puede entregar carga propia y de terceros en un mismo punto.
+- **Implementación:** La parada no es el fin del proceso; es un contenedor de remitos. Se pueden generar N remitos por parada antes de finalizarla.
+- **Flujo:** `ParadaDetalle` -> `RemitoRegistroPage` (Firma) -> `Supabase (remitos table)`.
+
+### B. Pesaje y Reconciliación "En Caliente"
+- **Habilitación:** El módulo de pesaje se activa si existe un item con código `TCM` en la parada, sin importar la planificación original.
+- **Reconciliación:** El sistema prioriza el conteo físico (registros en tabla `pesajes`) sobre la cantidad planificada en `parada_items`. Al cargar la parada, se sincroniza la cantidad del item `TCM` con el conteo de pesajes.
+- **Unidades:** Los items `TCM` deben usar siempre la unidad `uni` para el conteo individual de tambores.
+
+### C. Digital Signatures
+- **Lógica:** Se capturan firmas en formato `base64` y se guardan directamente en la tabla `remitos`.
+- **Validación:** Se debe alertar al chofer si la cantidad de tambores pesados no coincide con la cantidad declarada en el remito antes de la firma.

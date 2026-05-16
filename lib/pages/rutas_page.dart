@@ -154,8 +154,8 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       final tipo = (p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase();
       if (tipo.contains('recolec')) nRecoleccion++;
       // ... kg logic
-      if (p['bruto_kg'] != null) {
-        totalKg += (p['bruto_kg'] as num).toDouble();
+      if (p['carga_kg'] != null) {
+        totalKg += (p['carga_kg'] as num).toDouble();
       } else {
         final items = p['parada_items'] as List? ?? [];
         for (final item in items) {

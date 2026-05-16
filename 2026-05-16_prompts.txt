@@ -1,0 +1,9 @@
+[2026-05-16 00:15] USER: corrije (import error)
+[2026-05-16 00:20] USER: no veo ningun cambio
+[2026-05-16 00:25] USER: Escenario Hugo Alberto Vidal (Distribución planeada, pero quiere entregar TCM). Analiza e implementa.
+[2026-05-16 00:30] USER: procede pero enfoca al reves (Entrega/Recibe desde perspectiva apicultor).
+[2026-05-16 00:45] USER: TCM muestra KG y debe ser UNI. No se habilita pesaje. La tarjeta dice Distribución y debe ser MIXTA.
+[2026-05-16 01:05] USER: Sigo sin ver el botón. Debería ser universal si hay TCM.
+[2026-05-16 01:15] USER: Crea APK y dame la dirección.
+[2026-05-16 01:25] USER: No encuentro el archivo. (Abierto explorer en build\app\outputs\flutter-apk).
+[2026-05-16 01:28] USER: Guarda todo, actualiza archivos, arquitecturas, prompts y GitHub.

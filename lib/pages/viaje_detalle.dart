@@ -355,74 +355,106 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
   Widget _buildParadaItem(Map<String, dynamic> p, FlutterFlowTheme theme) {
     final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
-    final remito = p['remito_id'] != null ? 'REMITO ASOCIADO: #${p['remito_id']}' : 'PENDIENTE DE REMITO';
     
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.primary.withOpacity(0.08)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: theme.primary.withOpacity(0.05), shape: BoxShape.circle),
-                child: Center(child: Text('${p['orden_secuencia']}', style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900))),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(p['ubicacion'] ?? 'Sin Apicultor', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF08201A))),
-                    Text(p['localidad'] ?? 'Sin Localidad', style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
-                  ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => context.push('/paradaDetalle?paradaId=${p['id']}'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.primary.withOpacity(0.08)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: theme.primary.withOpacity(0.05), shape: BoxShape.circle),
+                  child: Center(child: Text('${p['orden_secuencia']}', style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900))),
                 ),
-              ),
-              Container(
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p['ubicacion'] ?? 'Sin Apicultor', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF08201A))),
+                      Text(p['localidad'] ?? 'Sin Localidad', style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+                Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: theme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
                 child: Text((p['tipo'] ?? 'Operación').toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
               ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, color: DesignTokens.primary, size: 20),
             ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(height: 1, thickness: 0.5),
-          ),
-          if (items.isNotEmpty) ...[
-            ...items.map((it) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Divider(height: 1, thickness: 0.5),
+            ),
+            if (items.isNotEmpty) ...[
+              ...items.map((it) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.inventory_2_rounded, size: 16, color: Color(0xFFC68E17)),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(it['producto_codigo'] ?? 'Producto', style: const TextStyle(fontSize: 14, color: Color(0xFF1E352F), fontWeight: FontWeight.w500))),
+                    Text('${it['cantidad'] ?? 0} ${it['unidad'] ?? 'KG'}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF08201A))),
+                  ],
+                ),
+              )).toList(),
+              const SizedBox(height: 8),
+            ],
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: p['remito_id'] != null ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
               child: Row(
                 children: [
-                  const Icon(Icons.inventory_2_rounded, size: 16, color: Color(0xFFC68E17)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(it['producto_codigo'] ?? 'Producto', style: const TextStyle(fontSize: 14, color: Color(0xFF1E352F), fontWeight: FontWeight.w500))),
-                  Text('${it['cantidad'] ?? 0} ${it['unidad'] ?? 'KG'}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF08201A))),
+                  Icon(Icons.description_outlined, size: 16, color: p['remito_id'] != null ? Colors.green[700] : Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(
+                    p['remito_id'] != null ? 'REMITO: EMITIDO' : 'REMITO: PENDIENTE', 
+                    style: TextStyle(
+                      fontSize: 11, 
+                      fontWeight: FontWeight.w900, 
+                      color: p['remito_id'] != null ? Colors.green[700] : Colors.orange,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  if (p['remito_id'] != null) ...[
+                    const Spacer(),
+                    const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                  ],
                 ],
               ),
-            )).toList(),
-            const SizedBox(height: 8),
-          ],
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: p['remito_id'] != null ? Colors.green.withOpacity(0.05) : Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
-            child: Row(
-              children: [
-                Icon(Icons.description_outlined, size: 16, color: p['remito_id'] != null ? Colors.green : Colors.orange),
-                const SizedBox(width: 8),
-                Text(remito, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: p['remito_id'] != null ? Colors.green : Colors.orange)),
-              ],
             ),
-          ),
-        ],
+            if (p['remito_id'] == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.touch_app_outlined, size: 14, color: theme.primary.withOpacity(0.5)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'TOCA PARA GESTIONAR ESTA PARADA',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.primary.withOpacity(0.5), letterSpacing: 0.5),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

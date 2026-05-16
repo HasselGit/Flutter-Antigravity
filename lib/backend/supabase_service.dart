@@ -270,8 +270,8 @@ class SupabaseService {
   Future<Map<String, dynamic>> getGerenteStats() async {
     try {
       final paradasData = await _client.from('paradas')
-          .select('bruto_kg').not('bruto_kg', 'is', null).timeout(const Duration(seconds: 10));
-      double totalKg = (paradasData as List).fold(0.0, (sum, p) => sum + ((p['bruto_kg'] as num?)?.toDouble() ?? 0));
+          .select('carga_kg').not('carga_kg', 'is', null).timeout(const Duration(seconds: 10));
+      double totalKg = (paradasData as List).fold(0.0, (sum, p) => sum + ((p['carga_kg'] as num?)?.toDouble() ?? 0));
       final viajesDataRaw = await _client.from('viajes')
           .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion')
           .eq('estado', AppStates.enCurso).timeout(const Duration(seconds: 10));
@@ -851,6 +851,80 @@ class SupabaseService {
     } catch (e) {
       print('SupabaseService: Error listando $table: $e');
       return [];
+    }
+  }
+
+  Future<void> deleteParadaItem(String itemId) async {
+    await _client.from('parada_items').delete().eq('id', itemId);
+  }
+
+  Future<void> finalizarParada(String paradaId, String vehiculoCodigo) async {
+    try {
+      // 1. Obtener datos de la parada y sus items actuales
+      final parada = await _client.from('paradas')
+          .select('id, tipo, solicitud_id, parada_items(producto_codigo, cantidad)')
+          .eq('id', paradaId)
+          .maybeSingle();
+      
+      if (parada == null) throw Exception('Parada no encontrada');
+      
+      final String tipo = (parada['tipo'] ?? 'Recoleccion').toString();
+      final bool esRecoleccion = tipo.toLowerCase().contains('recolec');
+      final items = List<Map<String, dynamic>>.from(parada['parada_items'] ?? []);
+      
+      // 2. Calcular impacto en el peso y tambores
+      double deltaKg = 0;
+      int deltaTambores = 0;
+      
+      for (final item in items) {
+        final double qty = (item['cantidad'] as num?)?.toDouble() ?? 0;
+        final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+        
+        // Lógica de pesos (Constantes de negocio)
+        if (prod == 'TCM') {
+          deltaKg += qty * 300;
+          deltaTambores += qty.round();
+        } else if (prod.startsWith('T') && (prod.contains('V') || prod.contains('N') || prod.contains('R'))) {
+          // Tambores vacíos o nuevos
+          deltaKg += qty * 20;
+          deltaTambores += qty.round();
+        } else if (prod == 'AZ') {
+          deltaKg += qty * 50; // Bolsa x 50kg
+        } else {
+          deltaKg += qty; // Por defecto 1kg por unidad si no es tambor/bolsa
+        }
+      }
+
+      // 3. Actualizar Vehículo
+      final vehiculoData = await _client.from('vehiculos')
+          .select('carga_actual_kg, carga_actual_tambores')
+          .eq('vehiculo_codigo', vehiculoCodigo)
+          .maybeSingle();
+          
+      if (vehiculoData != null) {
+        final double currentKg = (vehiculoData['carga_actual_kg'] as num?)?.toDouble() ?? 0;
+        final int currentTamb = (vehiculoData['carga_actual_tambores'] as num?)?.toInt() ?? 0;
+        
+        // Si es Recolección, SUMA al camión. Si es Distribución, RESTA.
+        final int sign = esRecoleccion ? 1 : -1;
+        
+        await _client.from('vehiculos').update({
+          'carga_actual_kg': (currentKg + sign * deltaKg).clamp(0, 999999),
+          'carga_actual_tambores': (currentTamb + sign * deltaTambores).clamp(0, 999),
+        }).eq('vehiculo_codigo', vehiculoCodigo);
+      }
+
+      // 4. Actualizar Estados
+      await _client.from('paradas').update({'estado': AppStates.terminado}).eq('id', paradaId);
+      
+      final String? solId = parada['solicitud_id']?.toString();
+      if (solId != null) {
+        await _client.from('solicitudes').update({'estado': 'Terminada'}).eq('id', solId);
+      }
+      
+    } catch (e) {
+      print('SupabaseService: Error en finalizarParada: $e');
+      throw e;
     }
   }
 }
