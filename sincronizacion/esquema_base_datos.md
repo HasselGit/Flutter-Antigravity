@@ -77,9 +77,23 @@ Resumen de las tablas y relaciones principales utilizadas en GeoLogística.
 - `peso_neto`: numeric (calculado o almacenado)
 - `fecha_registro`: timestamp
 
+### 9. `remitos`
+- `id`: uuid (PK)
+- `parada_id`: uuid (FK a paradas)
+- `chofer_id`: uuid (FK a profiles)
+- `apicultor_id`: uuid (FK a apicultores, representa al **Apicultor Titular/Tercero**)
+- `viaje_id`: uuid (FK a viajes)
+- `remito_codigo`: text (Código formateado ej: REM-XXXX)
+- `firma_url`: text (URL pública de la firma digital)
+- `pdf_url`: text (URL pública del archivo PDF del remito)
+- `estado`: text (Emitido, Anulado)
+- `fecha`: timestamp
+- `persona_nombre`: text (Nombre del Responsable Firmante físico)
+- `persona_dni`: text (DNI del Responsable Firmante físico)
+
 ## 🔗 Relaciones Clave
 - **Viaje -> Paradas**: Un viaje tiene múltiples paradas a través de rutas o directamente.
 - **Parada -> Solicitud**: Una parada representa la ejecución de una solicitud de carga/recolección.
 - **Perfil -> Viaje**: Los choferes están asignados a viajes mediante `chofer_id`.
 - **Parada -> Pesajes**: Una parada de recolección de miel asocia múltiples pesajes de tambores a través de `parada_id`.
-
+- **Remito -> Apicultor**: El remito se asocia directamente a la ficha del apicultor titular (`apicultor_id`) y almacena el firmante físico (`persona_nombre`).

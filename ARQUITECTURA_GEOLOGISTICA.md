@@ -1,12 +1,12 @@
 # Master Blueprint: Arquitectura y Lógica de GeoLogística
-**Versión:** 1.0 (15 de Mayo de 2026)
+**Versión:** 1.1 (17 de Mayo de 2026)
 **Objetivo:** Proveer una guía técnica infalible para la reconstrucción o continuación del proyecto por cualquier IA o desarrollador, garantizando 0 retrocesos.
 
 ## 1. Pilares Arquitectónicos
 - **Framework:** Flutter (Canal Stable).
-- **Backend:** Supabase (PostgreSQL + Realtime).
-- **Diseño:** "Stitch Premium". Colores: `Deep Forest Green` (#1E302C), `Honey Gold` (#C68E17). Tipografía: Inter/Roboto.
-- **Navegación:** `GoRouter` para manejo de pilas y rutas profundas.
+- **Backend:** Supabase (PostgreSQL + Realtime + Storage Buckets).
+- **Diseño:** "Stitch Premium". Colores: `Deep Forest Green` (#1E302C), `Honey Gold` (#C68E17). Tipografía: Inter/Outfit.
+- **Navegación:** `GoRouter` para manejo de pilas y rutas declarativas.
 
 ## 2. Estrategias Críticas (No Cambiar)
 ### A. Autenticación "Bypass" (Estabilidad de Hilo UI)
@@ -47,17 +47,25 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Impeller:** Desactivado en Android para estabilidad gráfica.
 - **Java:** JDK 17+ requerido.
 - **Variables Supabase:** URL y Key Anon deben estar configuradas en `supabase_service.dart`.
+
 ## 7. Logística de Campo Avanzada (Multi-Remito)
-### A. Sistema de Remitos Múltiples
-- **Escenario:** Un apicultor puede entregar carga propia y de terceros en un mismo punto.
-- **Implementación:** La parada no es el fin del proceso; es un contenedor de remitos. Se pueden generar N remitos por parada antes de finalizarla.
-- **Flujo:** `ParadaDetalle` -> `RemitoRegistroPage` (Firma) -> `Supabase (remitos table)`.
+### A. Sistema de Remitos Múltiples y Soporte de Terceros (Terceros)
+- **Escenario**: Un apicultor responsable de la parada (por ejemplo, Hassel) puede entregar carga propia o de un tercero (por ejemplo, Leandro).
+- **Implementación**:
+  - En la parte superior de `RemitoRegistroPage`, se provee un selector de **Apicultor Titular del Remito** conectado con un buscador en tiempo real sobre todos los apicultores de la base de datos.
+  - Esto desvincula al firmante físico del propietario de los tambores: el titular puede ser **Leandro** (Tercero) y el firmante físico puede ser el chofer o un empleado ("Un Tercero" con su nombre/DNI).
+  - Al guardar el remito, la sincronización asocia el remito e impacta los volúmenes directamente en la ficha del **Apicultor Titular** seleccionado, manteniendo la integridad contable.
 
 ### B. Pesaje y Reconciliación "En Caliente"
-- **Habilitación:** El módulo de pesaje se activa si existe un item con código `TCM` en la parada, sin importar la planificación original.
-- **Reconciliación:** El sistema prioriza el conteo físico (registros en tabla `pesajes`) sobre la cantidad planificada en `parada_items`. Al cargar la parada, se sincroniza la cantidad del item `TCM` con el conteo de pesajes.
-- **Unidades:** Los items `TCM` deben usar siempre la unidad `uni` para el conteo individual de tambores.
+- **Habilitación:** El módulo de pesaje se activa si existe un ítem con código `TCM` en la parada, sin importar la planificación original.
+- **Reconciliación:** El sistema prioriza el conteo físico (registros en la tabla `pesajes`) sobre la cantidad planificada en `parada_items`. Al cargar la parada, se sincroniza la cantidad del ítem `TCM` con el conteo de pesajes.
+- **Unidades:** Los ítems `TCM` deben usar siempre la unidad `uni` para el conteo individual de tambores.
 
-### C. Digital Signatures
-- **Lógica:** Se capturan firmas en formato `base64` y se guardan directamente en la tabla `remitos`.
-- **Validación:** Se debe alertar al chofer si la cantidad de tambores pesados no coincide con la cantidad declarada en el remito antes de la firma.
+### C. Firmas Digitales y Generación de PDF (Almacenamiento)
+- **Captura**: Se capturan las firmas mediante un lienzo de dibujo y se exportan como PNG (`Uint8List`).
+- **Almacenamiento**: No se guardan como cadenas base64 en la base de datos para no saturar las transacciones. En su lugar, se suben al Storage Bucket público de Supabase `remitos` mediante el helper robusto `_uploadFileWithAutoBucket`.
+- **Registro**: Se guardan las URLs públicas `firma_url` y `pdf_url` (generadas mediante `Printing` y subidas al Storage) en la fila del remito en la base de datos.
+
+### D. Reseteo de Paradas ("En Blanco" para Remito Continuo)
+- **Base de Datos**: Tan pronto como se confirma la emisión del remito actual, se realiza una transacción de limpieza en Supabase: se eliminan físicamente todos los `pesajes` asociados a esa parada y se setean a `0` las cantidades de todos los `parada_items`.
+- **Caché de UI**: En el retorno a `ParadaDetalleWidget`, se limpian los controladores locales mediante `_quantityControllers.clear()` y los controladores del receptor. Esto obliga a la interfaz a redibujarse completamente limpia, permitiendo iniciar inmediatamente un nuevo remito de producto.
