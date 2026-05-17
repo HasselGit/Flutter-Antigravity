@@ -26,6 +26,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   List<Map<String, dynamic>> _viajes = [];
   List<Map<String, dynamic>> _productos = [];
   Map<String, dynamic>? _selectedViaje;
+  String? _selectedViajeId;
   final List<Map<String, dynamic>> _newItems = [];
 
   @override
@@ -47,13 +48,20 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   }
 
   Future<void> _loadCatalogos() async {
+    final service = SupabaseService();
     try {
-      final service = SupabaseService();
-      _viajes = await service.getViajes();
+      final viajesData = await service.getViajes();
       // Solo viajes en Pendiente
-      _viajes = _viajes.where((v) => AppStates.normalize(v['estado']) == AppStates.pendiente).toList();
+      _viajes = viajesData.where((v) => AppStates.normalize(v['estado']) == AppStates.pendiente).toList();
+    } catch (e) {
+      print('CargaDetalle: Error cargando viajes: $e');
+    }
+
+    try {
       _productos = await service.getProductos();
-    } catch (e) { print('CargaDetalle: Error cargando catálogos: $e'); }
+    } catch (e) {
+      print('CargaDetalle: Error cargando productos: $e');
+    }
   }
 
   Future<void> _loadCarga() async {
@@ -456,15 +464,18 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: DesignTokens.primary.withOpacity(0.1))),
             child: DropdownButtonHideUnderline(
-              child: DropdownButton<Map<String, dynamic>>(
+              child: DropdownButton<String>(
                 isExpanded: true,
                 hint: const Text('Seleccionar viaje...', style: TextStyle(color: Colors.black38)),
-                value: _selectedViaje,
-                items: _viajes.map((v) => DropdownMenuItem(
-                  value: v,
+                value: _selectedViajeId,
+                items: _viajes.map((v) => DropdownMenuItem<String>(
+                  value: v['id'].toString(),
                   child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'}'),
                 )).toList(),
-                onChanged: (v) => setState(() => _selectedViaje = v),
+                onChanged: (v) => setState(() {
+                  _selectedViajeId = v;
+                  _selectedViaje = _viajes.firstWhere((x) => x['id'].toString() == v);
+                }),
               ),
             ),
           ),
@@ -510,6 +521,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
 
   Future<void> _showAddItemDialog() async {
     Map<String, dynamic>? selectedProducto;
+    String? selectedProductoCode;
     final qtyController = TextEditingController();
     await showModalBottomSheet(
       context: context,
@@ -526,19 +538,22 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
             const Text('Agregar Ítem', style: TextStyle(fontFamily: 'Manrope',
                 fontSize: 20, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
             const SizedBox(height: 16),
-            DropdownButtonFormField<Map<String, dynamic>>(
+            DropdownButtonFormField<String>(
               hint: const Text('Producto'),
-              value: selectedProducto,
+              value: selectedProductoCode,
               decoration: InputDecoration(
                   filled: true, fillColor: DesignTokens.surfaceLow,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none)),
-              items: _productos.map((p) => DropdownMenuItem(
-                value: p,
+              items: _productos.map((p) => DropdownMenuItem<String>(
+                value: p['codigo'].toString(),
                 child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? ''}',
                     overflow: TextOverflow.ellipsis),
               )).toList(),
-              onChanged: (v) => setModal(() => selectedProducto = v),
+              onChanged: (v) => setModal(() {
+                selectedProductoCode = v;
+                selectedProducto = _productos.firstWhere((x) => x['codigo'].toString() == v);
+              }),
             ),
             const SizedBox(height: 14),
             TextField(

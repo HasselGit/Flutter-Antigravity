@@ -55,7 +55,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
         final paradasRes = await client
             .from('paradas')
             .select('id, viaje_id, tipo, localidad, ubicacion')
-            .inFilter('id', paradaIds);
+            .in_('id', paradaIds);
         for (var p in paradasRes) {
           paradaMap[p['id'].toString()] = Map<String, dynamic>.from(p);
         }
@@ -68,7 +68,7 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
         final viajesRes = await client
             .from('viajes')
             .select('id, viaje_codigo, fecha')
-            .inFilter('id', viajeIds);
+            .in_('id', viajeIds);
         for (var v in viajesRes) {
           viajeMap[v['id'].toString()] = Map<String, dynamic>.from(v);
         }

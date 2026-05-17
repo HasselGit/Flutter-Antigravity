@@ -45,9 +45,8 @@ void main() async {
     );
     print('Main: Supabase OK');
     
-    print('Main: Inicializando Locale...');
-    await initializeDateFormatting('es_AR', null);
-    print('Main: Locale OK');
+    // Inicialización de Locale en segundo plano para no bloquear el inicio
+    initializeDateFormatting('es_AR', null);
   } catch (e) {
     print('Main: Error en inicialización: $e');
   }

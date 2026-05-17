@@ -1,8 +1,14 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:signature/signature.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../backend/design_tokens.dart';
 import '../backend/supabase_service.dart';
 
@@ -36,15 +42,24 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   bool _isApicultorFirmante = true;
   final _firmanteNombreController = TextEditingController();
   final _firmanteDniController = TextEditingController();
+  final _telefonoController = TextEditingController();
   
   List<Map<String, dynamic>> _availableItems = [];
   Map<String, double> _selectedQuantities = {};
   bool _isLoading = true;
   bool _isSaving = false;
 
+  String? _titularId;
+  String? _titularNombre;
+  String? _titularDni;
+  List<Map<String, dynamic>> _apicultoresList = [];
+
   @override
   void initState() {
     super.initState();
+    _titularId = widget.apicultorId;
+    _titularNombre = widget.apicultorNombre;
+    _titularDni = widget.apicultorDni;
     _loadItems();
     if (widget.apicultorNombre != null) {
       _firmanteNombreController.text = widget.apicultorNombre!;
@@ -53,28 +68,86 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   }
 
   List<Map<String, dynamic>> _pesajes = [];
+  Map<String, dynamic>? _paradaData;
+  Map<String, dynamic>? _viajeData;
 
   Future<void> _loadItems() async {
     try {
-      final itemsFuture = Supabase.instance.client
+      final Future<dynamic> itemsFuture = Supabase.instance.client
           .from('parada_items')
           .select('*')
           .eq('parada_id', widget.paradaId);
           
-      final pesajesFuture = Supabase.instance.client
+      final Future<dynamic> pesajesFuture = Supabase.instance.client
           .from('pesajes')
           .select('*')
           .eq('parada_id', widget.paradaId);
+          
+      final Future<dynamic> paradaFuture = Supabase.instance.client
+          .from('paradas')
+          .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, carga_kg')
+          .eq('id', widget.paradaId)
+          .maybeSingle();
 
-      final results = await Future.wait([itemsFuture, pesajesFuture]);
+      Future<dynamic> apicultorFuture = Future.value(null);
+      if (widget.apicultorId != null) {
+        apicultorFuture = Supabase.instance.client
+            .from('apicultores')
+            .select('id, nombre, telefono, dni')
+            .eq('id', widget.apicultorId!)
+            .maybeSingle();
+      }
+
+      final Future<dynamic> apicultoresListFuture = Supabase.instance.client
+          .from('apicultores')
+          .select('id, nombre, dni, telefono')
+          .order('nombre');
+
+      final results = await Future.wait([
+        itemsFuture,
+        pesajesFuture,
+        paradaFuture,
+        apicultorFuture,
+        apicultoresListFuture,
+      ]);
+      
+      final parada = results[2] as Map<String, dynamic>?;
+      _paradaData = parada;
+      
+      if (parada != null && parada['viaje_id'] != null) {
+        final viaje = await Supabase.instance.client
+            .from('viajes')
+            .select('id, viaje_codigo, vehiculo_codigo, chofer_id')
+            .eq('id', parada['viaje_id'])
+            .maybeSingle();
+        _viajeData = viaje;
+        
+        if (viaje != null && viaje['chofer_id'] != null) {
+          try {
+            final chofer = await Supabase.instance.client
+                .from('profiles')
+                .select('nombre, apellido')
+                .eq('id', viaje['chofer_id'])
+                .maybeSingle();
+            _viajeData!['chofer'] = chofer;
+          } catch (_) {}
+        }
+      }
+
+      final apicultorData = results[3] as Map<String, dynamic>?;
+      final apicultoresList = List<Map<String, dynamic>>.from(results[4] as List? ?? []);
       
       setState(() {
+        _apicultoresList = apicultoresList;
         _availableItems = List<Map<String, dynamic>>.from(results[0]);
         _pesajes = List<Map<String, dynamic>>.from(results[1]);
         
+        if (apicultorData != null && apicultorData['telefono'] != null) {
+          _telefonoController.text = apicultorData['telefono'].toString();
+        }
+        
         for (var item in _availableItems) {
           final id = item['id'].toString();
-          // Si es TCM y hay pesajes, sugerimos la cantidad de pesajes
           if (item['producto_codigo'] == 'TCM' && _pesajes.isNotEmpty) {
             _selectedQuantities[id] = _pesajes.length.toDouble();
           } else {
@@ -84,7 +157,10 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('Error loading items/pesajes: $e');
+      debugPrint('Error loading items/pesajes/metadata: $e');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -93,7 +169,82 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
     _signatureController.dispose();
     _firmanteNombreController.dispose();
     _firmanteDniController.dispose();
+    _telefonoController.dispose();
     super.dispose();
+  }
+
+  String _cleanPhoneNumber(String phone) {
+    String cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleaned.isEmpty) return '';
+    // Si tiene 10 dígitos (ej. celular de Argentina sin prefijo internacional), agregar 549
+    if (cleaned.length == 10) {
+      cleaned = '549$cleaned';
+    }
+    return cleaned;
+  }
+
+  Future<void> _shareWhatsApp(String pdfUrl) async {
+    final String text = 'Hola, le envío el Remito Digital de la operación: $pdfUrl';
+    final String phone = _cleanPhoneNumber(_telefonoController.text);
+    
+    String url;
+    if (phone.isNotEmpty) {
+      url = 'https://wa.me/$phone?text=${Uri.encodeComponent(text)}';
+    } else {
+      url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
+    }
+    
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        debugPrint('Could not launch WhatsApp url');
+      }
+    } catch (e) {
+      debugPrint('Error launching WhatsApp: $e');
+    }
+  }
+
+  Future<void> _uploadFileWithAutoBucket(
+    String path,
+    Uint8List bytes,
+    FileOptions options,
+  ) async {
+    try {
+      await Supabase.instance.client.storage.from('remitos').uploadBinary(
+        path,
+        bytes,
+        fileOptions: options,
+      );
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('bucket not found') || errStr.contains('404')) {
+        print('Bucket "remitos" no encontrado. Intentando crear dinámicamente...');
+        try {
+          await Supabase.instance.client.storage.createBucket(
+            'remitos',
+            const BucketOptions(public: true),
+          );
+          print('Bucket "remitos" creado con éxito. Reintentando la subida...');
+          await Supabase.instance.client.storage.from('remitos').uploadBinary(
+            path,
+            bytes,
+            fileOptions: options,
+          );
+          return;
+        } catch (createErr) {
+          print('Error crítico al crear bucket: $createErr');
+          throw Exception(
+            'El bucket de almacenamiento "remitos" no existe en Supabase.\n'
+            'Por favor, créalo desde la consola web de Supabase con acceso público,\n'
+            'y define las políticas RLS correspondientes para lectura y escritura.'
+          );
+        }
+      } else {
+        rethrow;
+      }
+    }
   }
 
   Future<void> _guardarRemito() async {
@@ -105,38 +256,293 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
     setState(() => _isSaving = true);
 
     try {
+      // 1. Process Signature
       final signatureBytes = await _signatureController.toPngBytes();
-      final signatureBase64 = base64Encode(signatureBytes!);
+      if (signatureBytes == null) throw Exception('Error al capturar la firma');
 
-      // 1. Create Remito Record
+      // 2. Upload Signature using robust auto-bucket helper
+      final signatureFileName = 'firma_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await _uploadFileWithAutoBucket(
+        signatureFileName,
+        signatureBytes,
+        const FileOptions(contentType: 'image/png'),
+      );
+      final firmaUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(signatureFileName);
+
+      // 3. Compile PDF Document
+      final pdf = pw.Document();
+      final String fechaStr = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+      
+      // Calculate Totals
+      double totalBruto = _pesajes.fold(0.0, (sum, pItem) => sum + ((pItem['peso_bruto'] as num?)?.toDouble() ?? 0.0));
+      double totalTara = _pesajes.fold(0.0, (sum, pItem) => sum + ((pItem['tara'] as num?)?.toDouble() ?? 0.0));
+      double totalNeto = totalBruto - totalTara;
+      
+      final receptorNombre = _firmanteNombreController.text;
+      final receptorDni = _firmanteDniController.text;
+      
+      final itemsToInclude = _availableItems.map((it) {
+        final id = it['id'].toString();
+        final selQty = _selectedQuantities[id] ?? 0;
+        return {
+          'producto_codigo': it['producto_codigo'] ?? '-',
+          'cantidad': selQty,
+          'unidad': it['unidad'] ?? '-',
+        };
+      }).where((it) => (it['cantidad'] as num) > 0).toList();
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('REMITO DIGITAL', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('GeoLogistica', style: pw.TextStyle(fontSize: 18, color: PdfColors.green900)),
+                  ],
+                ),
+                pw.SizedBox(height: 10),
+                pw.Text('ID Parada: ${widget.paradaId.split('-').first.toUpperCase()}', style: pw.TextStyle(color: PdfColors.grey700)),
+                pw.Text('Fecha: $fechaStr', style: pw.TextStyle(color: PdfColors.grey700)),
+                pw.Divider(color: PdfColors.grey400),
+                pw.SizedBox(height: 15),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Vehiculo: ${_viajeData?['vehiculo_codigo'] ?? 'S/D'}'),
+                        pw.Text('Viaje Codigo: ${_viajeData?['viaje_codigo'] ?? 'S/D'}'),
+                        pw.Text('Operacion: ${widget.tipoOperacion}'),
+                      ],
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('Ubicacion: ${_paradaData?['ubicacion'] ?? 'S/D'}'),
+                        pw.Text('Localidad: ${_paradaData?['localidad'] ?? 'S/D'}'),
+                      ],
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+                pw.Text('Apicultor Titular: $_titularNombre', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                if (_titularDni != null && _titularDni!.isNotEmpty) pw.Text('DNI/CUIT Titular: $_titularDni'),
+                pw.SizedBox(height: 8),
+                pw.Text('Responsable Firmante (Quien firma): $receptorNombre'),
+                if (receptorDni.isNotEmpty) pw.Text('DNI/CUIT Firmante: $receptorDni'),
+                pw.SizedBox(height: 20),
+                pw.Text('ITEMS INCLUIDOS:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                pw.SizedBox(height: 8),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Producto', 'Cantidad', 'Unidad'],
+                  data: itemsToInclude.map((item) => [
+                    item['producto_codigo']?.toString() ?? '-',
+                    item['cantidad']?.toString() ?? '0',
+                    item['unidad']?.toString() ?? '-',
+                  ]).toList(),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey900),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                ),
+                
+                if (_pesajes.isNotEmpty) ...[
+                  pw.SizedBox(height: 25),
+                  pw.Text('DESGLOSE DE PESAJE INDIVIDUAL (BALANZA):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                  pw.SizedBox(height: 8),
+                  pw.TableHelper.fromTextArray(
+                    headers: ['Tambor #', 'Codigo SENASA', 'Bruto (kg)', 'Tara (kg)', 'Neto (kg)'],
+                    data: List.generate(_pesajes.length, (index) {
+                      final pItem = _pesajes[index];
+                      final bruto = (pItem['peso_bruto'] as num?)?.toDouble() ?? 0.0;
+                      final tara = (pItem['tara'] as num?)?.toDouble() ?? 0.0;
+                      final neto = bruto - tara;
+                      final senasa = pItem['senasa_codigo'] ?? 'S/D';
+                      return [
+                        'T#${index + 1}',
+                        senasa,
+                        bruto.toStringAsFixed(1),
+                        tara.toStringAsFixed(1),
+                        neto.toStringAsFixed(1),
+                      ];
+                    }),
+                    headerDecoration: const pw.BoxDecoration(color: PdfColors.green900),
+                    headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 15),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.end,
+                    children: [
+                      pw.Text('Total Bruto: ${totalBruto.toStringAsFixed(1)} kg | ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Total Tara: ${totalTara.toStringAsFixed(1)} kg | ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Total Neto Real: ${totalNeto.toStringAsFixed(1)} kg', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+                    ],
+                  ),
+                ],
+                
+                pw.Spacer(),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Column(
+                      children: [
+                        pw.Image(pw.MemoryImage(signatureBytes), width: 150),
+                        pw.Container(width: 150, height: 1, color: PdfColors.black),
+                        pw.SizedBox(height: 5),
+                        pw.Text('Firma de Conformidad', style: pw.TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+              ],
+            );
+          },
+        ),
+      );
+
+      // 4. Upload PDF using robust helper
+      final pdfBytes = await pdf.save();
+      final pdfFileName = 'remito_registro_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await _uploadFileWithAutoBucket(
+        pdfFileName,
+        pdfBytes,
+        const FileOptions(contentType: 'application/pdf'),
+      );
+      final pdfUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(pdfFileName);
+
+      // 5. Insert Record to Remitos Table using ONLY valid schema columns
       final remitoData = {
         'parada_id': widget.paradaId,
-        'entidad_nombre': widget.apicultorNombre,
-        'firmante_nombre': _firmanteNombreController.text,
-        'firmante_dni': _firmanteDniController.text,
-        'firma_base64': signatureBase64,
+        'viaje_id': _paradaData?['viaje_id'],
+        'pdf_url': pdfUrl,
         'tipo': widget.tipoOperacion,
         'fecha': DateTime.now().toIso8601String(),
-        'items': _availableItems.map((it) {
-          final selQty = _selectedQuantities[it['id'].toString()] ?? 0;
-          return {
-            'producto_codigo': it['producto_codigo'],
-            'cantidad': selQty,
-            'unidad': it['unidad'],
-          };
-        }).where((it) => (it['cantidad'] as num) > 0).toList(),
+        'firma_url': firmaUrl,
+        'persona_nombre': receptorNombre,
+        'persona_dni': receptorDni,
       };
-
-      // Assuming a 'remitos' table exists with these columns (we'll adapt if needed)
-      // For now, we'll store it and the user can later sync it to PDF
       await Supabase.instance.client.from('remitos').insert(remitoData);
 
+      // 5.1 Sincronizar e Impactar en la Ficha del Apicultor (Tabla solicitudes)
+      for (final item in itemsToInclude) {
+        final String prodCode = item['producto_codigo'].toString();
+        final double qty = (item['cantidad'] as num).toDouble();
+        final String unit = item['unidad'].toString();
+
+        final originalSolId = _paradaData?['solicitud_id']?.toString();
+        
+        // Obtener el ID de apicultor original de forma segura
+        String? originalApicultorId;
+        if (_paradaData != null && _paradaData?['solicitud_id'] != null) {
+          try {
+            final sData = await Supabase.instance.client
+                .from('solicitudes')
+                .select('apicultor_id')
+                .eq('id', _paradaData?['solicitud_id'])
+                .maybeSingle();
+            if (sData != null) {
+              originalApicultorId = sData['apicultor_id']?.toString();
+            }
+          } catch (e) {
+            print('Error obteniendo apicultor de la solicitud original: $e');
+          }
+        }
+        
+        // Usar fallback de _paradaData['apicultor_id'] si originalApicultorId es nulo
+        originalApicultorId ??= _paradaData?['apicultor_id']?.toString();
+
+        try {
+          if (originalSolId != null && originalApicultorId == _titularId) {
+            // Si es el apicultor original de la parada, actualizamos su solicitud original
+            await Supabase.instance.client.from('solicitudes').update({
+              'producto': prodCode,
+              'cantidad': qty,
+              'unidad': unit,
+              'estado': 'Terminada',
+            }).eq('id', originalSolId);
+            print('RemitoRegistro: Solicitud original $originalSolId actualizada a Terminada');
+          } else {
+            // Si es un tercero (multi-remito) o no hay ID original, creamos una solicitud nueva ya finalizada
+            final String customSolCode = 'SOL-REM-${widget.paradaId.split('-').first.toUpperCase()}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+            await Supabase.instance.client.from('solicitudes').insert({
+              'solicitud_codigo': customSolCode,
+              'apicultor_id': _titularId,
+              'producto': prodCode,
+              'cantidad': qty,
+              'unidad': unit,
+              'tipo': widget.tipoOperacion,
+              'localidad': _paradaData?['localidad'] ?? '',
+              'estado': 'Terminada',
+            });
+            print('RemitoRegistro: Solicitud de terceros creada para apicultor $_titularId');
+          }
+        } catch (err) {
+          print('RemitoRegistro: Error al sincronizar con solicitudes: $err');
+        }
+      }
+
+      // 5.2 Limpiar datos activos de la parada para el próximo remito continuo
+      try {
+        await Supabase.instance.client.from('pesajes').delete().eq('parada_id', widget.paradaId);
+        await Supabase.instance.client.from('parada_items').update({'cantidad': 0}).eq('parada_id', widget.paradaId);
+        print('RemitoRegistro: Pesajes limpios y cantidades de parada_items reiniciadas a 0 en la base de datos');
+      } catch (e) {
+        print('RemitoRegistro: Error al limpiar datos activos de la parada: $e');
+      }
+
+      // 6. En el flujo Multi-Remito, la parada se finaliza desde la pantalla anterior (ParadaDetalleWidget)
+      // al presionar "FINALIZAR PARADA COMPLETA", para asegurar que se puedan generar múltiples remitos
+      // y se reconcilie correctamente el inventario del vehículo.
+
+      // 7. Show success dialog and prompt share options
       if (mounted) {
-        context.pop(true); // Return success
+        setState(() => _isSaving = false);
+        final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Remito Emitido', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: const Text('El remito digital ha sido generado y guardado correctamente.'),
+            actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.share_rounded),
+                label: const Text('COMPARTIR'),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_$humanId.pdf');
+                },
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: const Text('WHATSAPP'),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _shareWhatsApp(pdfUrl);
+                },
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                },
+                child: const Text('CERRAR'),
+              ),
+            ],
+          ),
+        ).then((_) {
+          if (mounted) {
+            Navigator.pop(context, true); // Return success to previous screen
+          }
+        });
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar remito: $e')));
-    } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -144,163 +550,1116 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   @override
   Widget build(BuildContext context) {
     final isRecoleccion = widget.tipoOperacion.toLowerCase().contains('recolec');
-    final titleLabel = isRecoleccion ? 'APICULTOR ENTREGA' : 'APICULTOR RECIBE';
 
     return Scaffold(
-      backgroundColor: DesignTokens.surface,
+      backgroundColor: const Color(0xFFF1F5F9), // Sleek, modern gray desk surface
       appBar: AppBar(
-        title: Text('Nuevo Remito', style: DesignTokens.headlineStyle().copyWith(fontSize: 18)),
-        backgroundColor: DesignTokens.surface,
+        backgroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'NUEVO REMITO DIGITAL',
+          style: TextStyle(
+            fontFamily: 'Manrope',
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            color: DesignTokens.primary,
+            letterSpacing: 0.5,
+          ),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: DesignTokens.primary.withOpacity(0.08)),
+        ),
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(titleLabel, style: DesignTokens.labelStyle()),
-                const SizedBox(height: 8),
-                Text(widget.apicultorNombre ?? 'Sin Apicultor', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 24),
-                
-                const Text('¿QUIÉN FIRMA?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.onSurfaceVariant)),
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        title: const Text('El Apicultor', style: TextStyle(fontSize: 14)),
-                        value: true,
-                        groupValue: _isApicultorFirmante,
-                        onChanged: (val) => setState(() {
-                          _isApicultorFirmante = val!;
-                          if (val) {
-                            _firmanteNombreController.text = widget.apicultorNombre ?? '';
-                            _firmanteDniController.text = widget.apicultorDni ?? '';
-                          }
-                        }),
-                      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: Column(
+                children: [
+                  // The Sheet of Paper (Premium Document representation)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: DesignTokens.primary.withOpacity(0.08), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
                     ),
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        title: const Text('Un Tercero', style: TextStyle(fontSize: 14)),
-                        value: false,
-                        groupValue: _isApicultorFirmante,
-                        onChanged: (val) => setState(() {
-                          _isApicultorFirmante = val!;
-                          if (!val) {
-                            _firmanteNombreController.clear();
-                            _firmanteDniController.clear();
-                          }
-                        }),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                if (!_isApicultorFirmante) ...[
-                  TextField(
-                    controller: _firmanteNombreController,
-                    decoration: const InputDecoration(labelText: 'Nombre del Tercero'),
-                  ),
-                  TextField(
-                    controller: _firmanteDniController,
-                    decoration: const InputDecoration(labelText: 'DNI / CUIT'),
-                    keyboardType: TextInputType.number,
-                  ),
-                ],
-                
-                const SizedBox(height: 32),
-                const Text('ITEMS A INCLUIR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.onSurfaceVariant)),
-                const SizedBox(height: 12),
-                ..._availableItems.map((item) {
-                  final id = item['id'].toString();
-                  final isTCM = item['producto_codigo'] == 'TCM';
-                  final qty = _selectedQuantities[id] ?? 0;
-                  final hasMismatch = isTCM && _pesajes.isNotEmpty && qty != _pesajes.length;
-
-                  return Column(
-                    children: [
-                      Card(
-                        child: ListTile(
-                          title: Text(item['producto_codigo'] ?? ''),
-                          subtitle: Text('Máximo planificado: ${item['cantidad']} ${item['unidad']}'),
-                          trailing: SizedBox(
-                            width: 80,
-                            child: TextField(
-                              decoration: const InputDecoration(isDense: true),
-                              keyboardType: TextInputType.number,
-                              onChanged: (val) {
-                                setState(() {
-                                  _selectedQuantities[id] = double.tryParse(val) ?? 0;
-                                });
-                              },
-                              controller: TextEditingController.fromValue(
-                                TextEditingValue(
-                                  text: qty.toString(),
-                                  selection: TextSelection.collapsed(offset: qty.toString().length),
-                                ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── CABECERA DEL DOCUMENTO ────────────────────────────────────
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFDBE49).withOpacity(0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.assignment_turned_in_rounded,
+                                color: Color(0xFF7D5700),
+                                size: 24,
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'REMITO DE OPERACIÓN',
+                                    style: TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                      color: DesignTokens.primary,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Nº: ${_viajeData?['viaje_codigo'] ?? 'V-PENDIENTE'}',
+                                        style: TextStyle(
+                                          fontFamily: 'Work Sans',
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                          color: DesignTokens.primary.withOpacity(0.5),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Fecha: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
+                                        style: TextStyle(
+                                          fontFamily: 'Work Sans',
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                          color: DesignTokens.primary.withOpacity(0.5),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Divider(color: DesignTokens.primary.withOpacity(0.08), height: 1, thickness: 1),
+                        const SizedBox(height: 20),
+
+                        // ── DATOS DEL PERSONAL ────────────────────────────────────────
+                        _sectionHeader('💼 DATOS DEL PERSONAL'),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            children: [
+                              _documentDataRow('Chofer', _getChoferDisplay()),
+                              const SizedBox(height: 8),
+                              _documentDataRow('Apicultor / Receptor', _titularNombre ?? 'Sin Asignar'),
+                              const SizedBox(height: 8),
+                              _documentDataRow('Viaje ID', _viajeData?['viaje_codigo']?.toString() ?? 'S/D'),
+                            ],
                           ),
                         ),
-                      ),
-                      if (hasMismatch)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Row(
+                        const SizedBox(height: 24),
+
+                        // ── DETALLE DE OPERACIÓN ──────────────────────────────────────
+                        _sectionHeader('⚙️ DETALLE DE OPERACIÓN'),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _operacionBadgeCard(
+                                'Tipo de Operación',
+                                widget.tipoOperacion.toUpperCase(),
+                                isRecoleccion ? const Color(0xFFFEF3C7) : const Color(0xFFDBEAFE),
+                                isRecoleccion ? const Color(0xFFB45309) : const Color(0xFF1E40AF),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _operacionBadgeCard(
+                                'Estado Parada',
+                                'EN PROCESO',
+                                const Color(0xFFF1F5F9),
+                                const Color(0xFF475569),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ── VERIFICACIÓN DE CONTACTO ──────────────────────────────────
+                        _sectionHeader('📞 VERIFICACIÓN DE CONTACTO'),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFBEB), // Soft yellow/brown background
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Aviso: Seleccionaste $qty TCM pero solo hay ${_pesajes.length} pesajes registrados.',
-                                  style: const TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
+                              Row(
+                                children: [
+                                  const Icon(Icons.phone_iphone_rounded, color: Color(0xFFB45309), size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Verifique el número para el envío directo por WhatsApp.',
+                                      style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        fontSize: 12,
+                                        color: const Color(0xFFB45309).withOpacity(0.9),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _telefonoController,
+                                keyboardType: TextInputType.phone,
+                                style: const TextStyle(
+                                  fontFamily: 'Work Sans',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                ),
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  hintText: 'Ej: 5491165432109',
+                                  hintStyle: TextStyle(color: Colors.black.withOpacity(0.3)),
+                                  prefixIcon: const Icon(Icons.phone_android_rounded, color: Color(0xFF7D5700), size: 18),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFF59E0B)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFD97706), width: 1.5),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      const SizedBox(height: 8),
-                    ],
-                  );
-                }),
-                
-                const SizedBox(height: 32),
-                const Text('FIRMA DIGITAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.onSurfaceVariant)),
-                const SizedBox(height: 12),
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
+                        const SizedBox(height: 24),
+
+                        // ── APICULTOR TITULAR ──────────────────────────────────────────
+                        _sectionHeader('🐝 APICULTOR TITULAR DEL REMITO'),
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                          onTap: () async {
+                            final result = await showDialog<Map<String, dynamic>>(
+                              context: context,
+                              builder: (context) {
+                                String searchQuery = '';
+                                return StatefulBuilder(
+                                  builder: (context, setDialogState) {
+                                    final filtered = _apicultoresList.where((a) =>
+                                      (a['nombre']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false) ||
+                                      (a['dni']?.toString().toLowerCase().contains(searchQuery.toLowerCase()) ?? false)
+                                    ).toList();
+                                    return AlertDialog(
+                                      title: const Text('Buscar Apicultor Titular', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      content: SizedBox(
+                                        width: double.maxFinite,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            TextField(
+                                              decoration: InputDecoration(
+                                                hintText: 'Nombre o DNI...',
+                                                prefixIcon: const Icon(Icons.search_rounded),
+                                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                              ),
+                                              onChanged: (v) => setDialogState(() => searchQuery = v),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Expanded(
+                                              child: filtered.isEmpty
+                                                  ? const Center(child: Text('No se encontraron apicultores', style: TextStyle(color: Colors.black45)))
+                                                  : ListView.builder(
+                                                      shrinkWrap: true,
+                                                      itemCount: filtered.length,
+                                                      itemBuilder: (context, i) => ListTile(
+                                                        leading: const Icon(Icons.person_outline_rounded, color: DesignTokens.primary),
+                                                        title: Text(filtered[i]['nombre'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                                        subtitle: Text('DNI: ${filtered[i]['dni'] ?? '—'}', style: const TextStyle(fontSize: 12)),
+                                                        onTap: () => Navigator.pop(context, filtered[i]),
+                                                      ),
+                                                    ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                            if (result != null) {
+                              setState(() {
+                                _titularId = result['id']?.toString();
+                                _titularNombre = result['nombre']?.toString();
+                                _titularDni = result['dni']?.toString();
+                                if (result['telefono'] != null) {
+                                  _telefonoController.text = result['telefono'].toString();
+                                }
+                                if (_isApicultorFirmante) {
+                                  _firmanteNombreController.text = _titularNombre ?? '';
+                                  _firmanteDniController.text = _titularDni ?? '';
+                                }
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.person_search_rounded, size: 22, color: DesignTokens.primary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _titularNombre ?? 'Seleccionar Apicultor...',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: DesignTokens.primary),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _titularId == widget.apicultorId ? 'Apicultor Responsable de la Parada' : 'Tercero Apicultor (Multi-Remito)',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: _titularId == widget.apicultorId ? Colors.green : Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.arrow_drop_down_rounded, color: Colors.black54),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ── ¿QUIÉN FIRMA? ─────────────────────────────────────────────
+                        _sectionHeader('👤 RESPONSABLE FIRMANTE'),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _firmanteRadioTile('El Apicultor', true),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _firmanteRadioTile('Un Tercero', false),
+                            ),
+                          ],
+                        ),
+                        if (!_isApicultorFirmante) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  controller: _firmanteNombreController,
+                                  style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
+                                  decoration: InputDecoration(
+                                    labelText: 'Nombre del Tercero',
+                                    labelStyle: const TextStyle(color: Colors.black54),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _firmanteDniController,
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
+                                  decoration: InputDecoration(
+                                    labelText: 'DNI / CUIT',
+                                    labelStyle: const TextStyle(color: Colors.black54),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+
+                        // ── DETALLE DE PRODUCTOS ──────────────────────────────────────
+                        _sectionHeader('📦 DETALLE DE PRODUCTOS'),
+                        const SizedBox(height: 10),
+                        _buildProductsTable(),
+                        const SizedBox(height: 24),
+
+                        // ── PLANILLA DE PESAJE TÉCNICA ────────────────────────────────
+                        if (_pesajes.isNotEmpty) ...[
+                          _sectionHeader('⚖️ PLANILLA DE PESAJE TÉCNICA'),
+                          const SizedBox(height: 10),
+                          _buildWeighingTable(),
+                          const SizedBox(height: 24),
+                        ],
+
+                        // ── FIRMAS DE CONFORMIDAD ─────────────────────────────────────
+                        _sectionHeader('✍️ FIRMAS DE CONFORMIDAD'),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Apicultor / Receptor Signature Column
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  Text(
+                                    _isApicultorFirmante ? 'RECEPTOR (APICULTOR)' : 'RECEPTOR (TERCERO)',
+                                    style: const TextStyle(
+                                      fontFamily: 'Work Sans',
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 9,
+                                      color: Colors.black54,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    height: 130,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: const Color(0xFFF8FAFC),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Signature(
+                                        controller: _signatureController,
+                                        backgroundColor: const Color(0xFFF8FAFC),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  TextButton.icon(
+                                    onPressed: () => _signatureController.clear(),
+                                    icon: const Icon(Icons.clear_rounded, size: 14, color: Colors.redAccent),
+                                    label: const Text(
+                                      'LIMPIAR FIRMA',
+                                      style: TextStyle(
+                                        fontFamily: 'Work Sans',
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 10,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            // Chofer Signature Seal Column
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'CERTIFICACIÓN (CHOFER)',
+                                    style: TextStyle(
+                                      fontFamily: 'Work Sans',
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 9,
+                                      color: Colors.black54,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    height: 130,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: const Color(0xFFDCFCE7), width: 1.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: const Color(0xFFF0FDF4),
+                                    ),
+                                    child: Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.verified_user_rounded, color: Color(0xFF16A34A), size: 28),
+                                            const SizedBox(height: 8),
+                                            const Text(
+                                              'FIRMA VALIDADA',
+                                              style: TextStyle(
+                                                fontFamily: 'Work Sans',
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 10,
+                                                color: Color(0xFF166534),
+                                                letterSpacing: 0.5,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _getChoferDisplay(),
+                                              style: const TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontSize: 9,
+                                                color: Color(0xFF15803D),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              maxLines: 2,
+                                              textAlign: TextAlign.center,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Divider(color: DesignTokens.primary.withOpacity(0.08), height: 1),
+                        const SizedBox(height: 16),
+
+                        // ── FOOTER LEGAL / MARCA ──────────────────────────────────────
+                        const Text(
+                          'El presente documento digital certifica la entrega y recepción de los productos detallados. Firma emitida mediante la plataforma digital GeoLogística.',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontStyle: FontStyle.italic,
+                            fontSize: 10,
+                            color: Colors.black38,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Center(
+                          child: Text(
+                            'GeoLogística - Tecnología y Logística Apícola',
+                            style: TextStyle(
+                              fontFamily: 'Work Sans',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 9,
+                              color: Colors.black26,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── BOTÓN DE ACCIÓN FLOTANTE / PRINCIPAL ──────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSaving ? null : _guardarRemito,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFDBE49), // Gold Stitch primary
+                        foregroundColor: const Color(0xFF08201A),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 4,
+                        shadowColor: const Color(0xFFFDBE49).withOpacity(0.4),
+                      ),
+                      icon: _isSaving 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFF08201A), strokeWidth: 2))
+                        : const Icon(Icons.border_color_rounded, size: 20, color: Color(0xFF08201A)),
+                      label: Text(
+                        _isSaving ? 'GUARDANDO REMITO...' : 'GENERAR Y FIRMAR REMITO',
+                        style: const TextStyle(
+                          fontFamily: 'Work Sans',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          letterSpacing: 0.8,
+                          color: Color(0xFF08201A),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(
+      title.toUpperCase(),
+      style: const TextStyle(
+        fontFamily: 'Work Sans',
+        fontWeight: FontWeight.w900,
+        fontSize: 11,
+        color: Color(0xFF9C6644), // Elegant brown/gold brand tone
+        letterSpacing: 0.8,
+      ),
+    );
+  }
+
+  Widget _documentDataRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 12,
+            color: Colors.black.withOpacity(0.45),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 12,
+            color: Colors.black,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _operacionBadgeCard(String label, String badgeText, Color bg, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 10,
+              color: Colors.black.withOpacity(0.4),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              badgeText,
+              style: TextStyle(
+                fontFamily: 'Work Sans',
+                fontWeight: FontWeight.w800,
+                fontSize: 9,
+                color: textColor,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _firmanteRadioTile(String label, bool isApicultor) {
+    final active = _isApicultorFirmante == isApicultor;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isApicultorFirmante = isApicultor;
+          if (isApicultor) {
+            _firmanteNombreController.text = _titularNombre ?? '';
+            _firmanteDniController.text = _titularDni ?? '';
+          } else {
+            _firmanteNombreController.clear();
+            _firmanteDniController.clear();
+          }
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF08201A).withOpacity(0.04) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? const Color(0xFF08201A) : const Color(0xFFE2E8F0),
+            width: active ? 1.5 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+              color: active ? const Color(0xFF08201A) : Colors.black38,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? const Color(0xFF08201A) : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getChoferDisplay() {
+    final chofer = _viajeData?['chofer'];
+    if (chofer != null) {
+      final name = chofer['nombre']?.toString() ?? '';
+      final surname = chofer['apellido']?.toString() ?? '';
+      if (name.isNotEmpty || surname.isNotEmpty) {
+        return '$name $surname'.trim();
+      }
+    }
+    return 'Chofer Asignado';
+  }
+
+  Widget _buildProductsTable() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          // Table Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFF08201A), // Dark elegant primary background
+              borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'DESCRIPCIÓN DEL PRODUCTO',
+                  style: TextStyle(
+                    fontFamily: 'Work Sans',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 9,
                     color: Colors.white,
-                  ),
-                  child: Signature(
-                    controller: _signatureController,
-                    backgroundColor: Colors.white,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                TextButton(
-                  onPressed: () => _signatureController.clear(),
-                  child: const Text('LIMPIAR FIRMA'),
-                ),
-                
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _guardarRemito,
-                    style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
-                    child: _isSaving 
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('GENERAR Y FIRMAR REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text(
+                  'CANTIDAD / PESO',
+                  style: TextStyle(
+                    fontFamily: 'Work Sans',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 9,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ],
             ),
           ),
+          // Table Rows
+          ...List.generate(_availableItems.length, (idx) {
+            final item = _availableItems[idx];
+            final id = item['id'].toString();
+            final isTCM = item['producto_codigo'] == 'TCM';
+            final qty = _selectedQuantities[id] ?? 0;
+            final isLast = idx == _availableItems.length - 1;
+            final hasMismatch = isTCM && _pesajes.isNotEmpty && qty != _pesajes.length;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: isLast ? Colors.transparent : const Color(0xFFE2E8F0),
+                  ),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['producto_codigo'] ?? '',
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Planificado: ${item['cantidad']} ${item['unidad']}',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 10,
+                              color: Colors.black.withOpacity(0.4),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              if (qty > 0) {
+                                setState(() {
+                                  _selectedQuantities[id] = qty - 1;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFF1F5F9),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: const Icon(Icons.remove_rounded, size: 14, color: Color(0xFF08201A)),
+                            ),
+                          ),
+                          Container(
+                            width: 50,
+                            alignment: Alignment.center,
+                            child: Text(
+                              qty.toStringAsFixed(0),
+                              style: const TextStyle(
+                                fontFamily: 'Work Sans',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedQuantities[id] = qty + 1;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFF1F5F9),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: const Icon(Icons.add_rounded, size: 14, color: Color(0xFF08201A)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (hasMismatch) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 12),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Sugerido: ${_pesajes.length} TCM según pesaje de balanza.',
+                            style: const TextStyle(
+                              color: Colors.orange,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeighingTable() {
+    double totalBruto = _pesajes.fold(0.0, (sum, pItem) => sum + ((pItem['peso_bruto'] as num?)?.toDouble() ?? 0.0));
+    double totalTara = _pesajes.fold(0.0, (sum, pItem) => sum + ((pItem['tara'] as num?)?.toDouble() ?? 0.0));
+    double totalNeto = totalBruto - totalTara;
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFDCFCE7)), // Soft green outline matching light green theme
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          // Table Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFF16A34A), // Rich green header
+              borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'CÓDIGO SENASA',
+                    style: TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 8,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'BRUTO (KG)',
+                    style: TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 8,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'TARA (KG)',
+                    style: TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 8,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'NETO (KG)',
+                    style: TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 8,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Table Rows
+          ...List.generate(_pesajes.length, (idx) {
+            final pItem = _pesajes[idx];
+            final bruto = (pItem['peso_bruto'] as num?)?.toDouble() ?? 0.0;
+            final tara = (pItem['tara'] as num?)?.toDouble() ?? 0.0;
+            final neto = bruto - tara;
+            final senasa = pItem['senasa_codigo'] ?? 'S/D';
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: idx % 2 == 0 ? const Color(0xFFF9FBF9) : Colors.white,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      senasa,
+                      style: const TextStyle(
+                        fontFamily: 'Work Sans',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        color: Color(0xFF166534),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      bruto.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontFamily: 'Work Sans',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        color: Colors.black87,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      tara.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontFamily: 'Work Sans',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        color: Colors.black87,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      neto.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontFamily: 'Work Sans',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                        color: Color(0xFF15803D),
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // Table Footer (Totals row highlighted in light yellow/gold)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFFBEB), // Soft golden brand highlight
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(11)),
+              border: Border(top: BorderSide(color: Color(0xFFFDE68A), width: 1.5)),
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  flex: 3,
+                  child: Text(
+                    'TOTALES',
+                    style: TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 10,
+                      color: Color(0xFF7D5700),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    '${totalBruto.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 10,
+                      color: Colors.black,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    '${totalTara.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 10,
+                      color: Colors.black,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    '${totalNeto.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 10,
+                      color: Color(0xFF7D5700),
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
 import '../components/agregaritem.dart';
 import '../backend/design_tokens.dart';
 import '../backend/app_states.dart';
@@ -189,13 +191,17 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     final localidad = p['localidad'] ?? 'S/D';
     final apicultorId = p['apicultor_id']?.toString();
 
+    final List<dynamic> rawPesajes = p['pesajes'] as List? ?? [];
+    final List<Map<String, dynamic>> pesajes = List<Map<String, dynamic>>.from(rawPesajes);
+
     // Obtener viaje_codigo del viaje asociado
-    return FutureBuilder<Map<String, dynamic>?>(
+    return FutureBuilder<dynamic>(
       future: viajeId.isNotEmpty
           ? Supabase.instance.client.from('viajes').select('viaje_codigo').eq('id', viajeId).maybeSingle()
           : Future.value(null),
       builder: (context, snap) {
-        final viajeCode = snap.data?['viaje_codigo']?.toString() ?? 'V-S/N';
+        final data = snap.data as Map<String, dynamic>?;
+        final viajeCode = data?['viaje_codigo']?.toString() ?? 'V-S/N';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,6 +216,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                 border: Border.all(color: DesignTokens.secondary.withOpacity(0.15)),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -239,6 +246,106 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                       ),
                     ],
                   ),
+                  
+                  if (pesajes.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9), // Premium soft green background
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Ya existe un pesaje de ${pesajes.length} TCM',
+                              style: const TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Color(0xFF2E7D32),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: DesignTokens.primary.withOpacity(0.08)),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: pesajes.length,
+                        separatorBuilder: (_, __) => Divider(height: 1, color: DesignTokens.primary.withOpacity(0.08)),
+                        itemBuilder: (ctx, idx) {
+                          final pesaje = pesajes[idx];
+                          final String senasa = pesaje['senasa_codigo']?.toString() ?? 'S/D';
+                          final double bruto = (pesaje['peso_bruto'] as num?)?.toDouble() ?? 0.0;
+                          final double tara = (pesaje['tara'] as num?)?.toDouble() ?? 0.0;
+                          final double neto = (pesaje['peso_neto'] as num?)?.toDouble() ?? (bruto - tara);
+                          
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: DesignTokens.primary.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '#${idx + 1}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: DesignTokens.primary),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'SENASA: $senasa',
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: DesignTokens.primary),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Bruto: ${bruto.toStringAsFixed(1)} kg • Tara: ${tara.toStringAsFixed(1)} kg',
+                                        style: TextStyle(fontSize: 11, color: DesignTokens.primary.withOpacity(0.5)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    const Text(
+                                      'NETO',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 9, color: DesignTokens.secondary, letterSpacing: 0.5),
+                                    ),
+                                    Text(
+                                      '${neto.toStringAsFixed(1)} kg',
+                                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: DesignTokens.primary),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -254,11 +361,17 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                           'localidad': localidad,
                           if (apicultorId != null) 'apicultorId': apicultorId,
                         },
-                      ).then((_) => setState(() {})),
-                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                      label: const Text(
-                        'AGREGAR PESAJE',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ).then((_) => setState(() {
+                        _paradaFuture = _fetchParadaData();
+                      })),
+                      icon: Icon(
+                        pesajes.isNotEmpty ? Icons.edit_rounded : Icons.add_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      label: Text(
+                        pesajes.isNotEmpty ? 'MODIFICAR / AGREGAR PESAJE' : 'AGREGAR PESAJE',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: DesignTokens.primary,
@@ -469,10 +582,30 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
             child: ListTile(
               leading: const Icon(Icons.description_rounded, color: DesignTokens.primary),
               title: Text('Remito #${r['id'].toString().substring(0, 6).toUpperCase()}'),
-              subtitle: Text('Firmado por: ${r['firmante_nombre'] ?? 'S/D'}'),
+              subtitle: Text('Fecha: ${r['fecha'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(r['fecha'])) : 'S/D'} | Tipo: ${r['tipo'] ?? 'S/D'}'),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                 // TODO: Ver PDF del remito guardado
+              onTap: () async {
+                final url = r['pdf_url'];
+                if (url != null && url.isNotEmpty) {
+                  try {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No se pudo abrir el PDF en esta plataforma')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error al intentar abrir el PDF: $e')),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Este remito no tiene un PDF asociado')),
+                  );
+                }
               },
             ),
           )),
@@ -493,7 +626,14 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                 ),
               ),
             ).then((success) {
-              if (success == true) setState(() { _paradaFuture = _fetchParadaData(); });
+              if (success == true) {
+                setState(() {
+                  _quantityControllers.clear();
+                  _receptorNombreController.clear();
+                  _receptorDniController.clear();
+                  _paradaFuture = _fetchParadaData();
+                });
+              }
             }),
             icon: const Icon(Icons.add_task_rounded, color: Colors.white),
             label: const Text('GENERAR NUEVO REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

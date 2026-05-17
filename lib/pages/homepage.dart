@@ -218,6 +218,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gerenteHome'),
                           ),
                         ],
+                        if (_userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
+                          _moduleCard(
+                            icon: Icons.inventory_2_rounded,
+                            title: 'Gestión de Cargas',
+                            subtitle: 'Preparar cargas\npara viajes',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/cargas'),
+                          ),
                         if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
                           _moduleCard(
                             icon: Icons.assignment_ind_rounded,
@@ -480,6 +489,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                 _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
                 _drawerItem(Icons.warehouse_rounded, 'Cargas Depósito', () => context.push('/depositoHome')),
+                if (_userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
+                  _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),
                 const Divider(),
                 _drawerItem(Icons.group_rounded, 'Apicultores', () => context.push('/apicultores')),
                 _drawerItem(Icons.receipt_long_rounded, 'Remitos Digitales', () => context.push('/remitosLista')),

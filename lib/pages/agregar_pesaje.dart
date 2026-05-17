@@ -29,6 +29,7 @@ class AgregarPesajeWidget extends StatefulWidget {
 
 class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
   final List<Map<String, dynamic>> _tambores = [];
+  final List<String> _deletedTamborIds = [];
   bool _saving = false;
   bool _loadingExisting = true;
 
@@ -112,11 +113,15 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
   }
 
   void _eliminarTambor(int index) {
+    final t = _tambores[index];
+    if (t['id'] != null) {
+      _deletedTamborIds.add(t['id'].toString());
+    }
     setState(() => _tambores.removeAt(index));
   }
 
   Future<void> _guardarPesaje() async {
-    if (_tambores.isEmpty) {
+    if (_tambores.isEmpty && _deletedTamborIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Agregá al menos un tambor antes de guardar')),
       );
@@ -127,6 +132,11 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
 
     try {
       final client = Supabase.instance.client;
+
+      // Borrar tambores eliminados de la base de datos
+      for (final id in _deletedTamborIds) {
+        await client.from('pesajes').delete().eq('id', id);
+      }
 
       // Insertar solo los tambores no guardados aún
       final nuevos = _tambores.where((t) => t['guardado'] == false).toList();

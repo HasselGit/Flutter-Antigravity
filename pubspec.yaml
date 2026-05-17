@@ -24,7 +24,7 @@ dependencies:
     git:
       url: https://github.com/FlutterFlow/flutter_barcode_scanner
       ref: 3b315cdeb48e06d1758c5110b3d2dbc3e922a7ce
-  flutter_cache_manager: ^3.4.1
+  flutter_cache_manager: ^3.3.1
   flutter_plugin_android_lifecycle: ^2.0.19
   font_awesome_flutter: ^10.9.0
   from_css_color: ^2.0.0
@@ -36,16 +36,15 @@ dependencies:
   page_transition: ^2.1.0
   path_provider: ^2.1.4
   provider: ^6.1.5
-  rxdart: ^0.28.0
+  rxdart: ^0.27.7
   shared_preferences: any
-  sign_in_with_apple: ^7.0.1
+  sign_in_with_apple: ^5.0.0
   sqflite: ^2.3.3
-  storage_client: ^2.5.2
   signature: ^5.5.0
   pdf: any
   printing: any
-  supabase: any
-  supabase_flutter: any
+  supabase: ^1.0.0
+  supabase_flutter: ^1.0.0
   timeago: ^3.7.0
   url_launcher: ^6.3.1
   webview_flutter: any

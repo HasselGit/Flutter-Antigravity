@@ -16,36 +16,40 @@ class SupabaseService {
   // ─── AUTH ─────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String email, String password) async {
-    final cleanEmail = email.trim();
+    final cleanEmail = email.trim().toLowerCase();
     final cleanPass = password.trim();
     try {
-      // Usamos acceso directo a la base de datos para evitar bloqueos del SDK de Auth
-      // y porque la tabla profiles contiene la columna 'contrasena'
+      print('SupabaseService: Intentando login para $cleanEmail');
+      // Buscamos solo por email primero para ser más flexibles
       final profile = await _client.from('profiles')
           .select()
-          .eq('email', cleanEmail)
-          .eq('contrasena', cleanPass)
-          .maybeSingle()
-          .timeout(const Duration(seconds: 10));
+          .ilike('email', cleanEmail)
+          .maybeSingle();
       
       if (profile != null) {
-        return await _saveLocal(profile);
+        // Verificación manual de contraseña para evitar errores de tipo en la DB
+        final dbPass = profile['contrasena']?.toString() ?? '';
+        if (dbPass == cleanPass) {
+          return await _saveLocal(profile);
+        } else {
+          throw Exception('Contraseña incorrecta');
+        }
       } else {
-        throw Exception('Perfil no encontrado o contraseña incorrecta');
+        throw Exception('Usuario no encontrado');
       }
     } catch (e) {
       print('SupabaseService: Error en login: $e');
       if (e is TimeoutException) {
         throw Exception('Tiempo de espera agotado. Revisa tu conexión.');
       }
-      throw Exception('Credenciales incorrectas o error de conexión');
+      throw Exception(e.toString().replaceAll('Exception:', '').trim());
     }
   }
 
   Future<Map<String, dynamic>> _saveLocal(Map<String, dynamic> user) async {
     try {
       print('SupabaseService: Iniciando _saveLocal...');
-      final prefs = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', user['id']?.toString() ?? '');
       await prefs.setString('user_email', user['email'] ?? '');
       await prefs.setString('user_nombre', user['nombre'] ?? '');
@@ -63,16 +67,30 @@ class SupabaseService {
 
   Future<List<Map<String, dynamic>>> getViajes({String? userId, String? role}) async {
     try {
-      // Consulta optimizada con joins para evitar el bucle de queries individuales
-      var query = _client.from('viajes').select('*, paradas(*)');
+      List<dynamic> data;
+      try {
+        // Consulta optimizada con joins para evitar el bucle de queries individuales
+        var query = _client.from('viajes').select('*, paradas(*)');
 
-      if (role == 'Chofer' && userId != null) {
-        query = query.eq('chofer_id', userId);
+        if (role == 'Chofer' && userId != null) {
+          query = query.eq('chofer_id', userId);
+        }
+
+        data = await query
+            .order('created_at', ascending: false)
+            .timeout(const Duration(seconds: 15));
+      } catch (innerError) {
+        print('SupabaseService: getViajes con paradas falló ($innerError). Reintentando consulta simple de viajes.');
+        var query = _client.from('viajes').select('*');
+
+        if (role == 'Chofer' && userId != null) {
+          query = query.eq('chofer_id', userId);
+        }
+
+        data = await query
+            .order('created_at', ascending: false)
+            .timeout(const Duration(seconds: 15));
       }
-
-      final List<dynamic> data = await query
-          .order('created_at', ascending: false)
-          .timeout(const Duration(seconds: 15));
 
       final viajes = List<Map<String, dynamic>>.from(data);
       for (var v in viajes) {
@@ -552,13 +570,53 @@ class SupabaseService {
           select: 'id, descripcion, codigo, unidad, activo',
           order: 'descripcion');
       
-      // Filtramos solo los activos si la columna existe (si no, asumimos todos activos)
-      final filteredList = list.where((p) => p['activo'] != false).toList();
+      final dbProducts = list.where((p) => p['activo'] != false).map((p) => {
+        'id': p['id']?.toString(),
+        'codigo': p['codigo']?.toString() ?? '',
+        'descripcion': p['descripcion']?.toString() ?? '',
+        'unidad': p['unidad']?.toString() ?? 'Uni',
+      }).toList();
+
+      // Mapeamos masterCatalog al mismo esquema uniforme
+      final masterProducts = ProductosData.masterCatalog.map((p) => {
+        'id': p['codigo']?.toString(), // Usamos el código numérico como ID temporal
+        'codigo': p['producto']?.toString() ?? p['codigo']?.toString() ?? '',
+        'descripcion': p['descripcion']?.toString() ?? '',
+        'unidad': p['unidad']?.toString() ?? 'Uni',
+      }).toList();
+
+      // Combinar sin duplicados en el código de producto (por ejemplo, TCM, TRC)
+      final Map<String, Map<String, dynamic>> combined = {};
       
-      if (filteredList.isNotEmpty) return filteredList;
-      return ProductosData.masterCatalog;
+      // Agregamos los del catálogo maestro primero
+      for (var p in masterProducts) {
+        final code = p['codigo'].toString().trim().toUpperCase();
+        if (code.isNotEmpty) {
+          combined[code] = p;
+        }
+      }
+      
+      // Sobreescribimos/agregamos con los de la base de datos (más actualizados)
+      for (var p in dbProducts) {
+        final code = p['codigo'].toString().trim().toUpperCase();
+        if (code.isNotEmpty) {
+          combined[code] = p;
+        }
+      }
+
+      final mergedList = combined.values.toList();
+      // Ordenamos por descripción
+      mergedList.sort((a, b) => a['descripcion'].toString().toLowerCase().compareTo(b['descripcion'].toString().toLowerCase()));
+      return mergedList;
     } catch (e) {
-      return ProductosData.masterCatalog;
+      print('SupabaseService: Error en getProductos: $e');
+      // Fallback a catálogo maestro normalizado
+      return ProductosData.masterCatalog.map((p) => {
+        'id': p['codigo']?.toString(),
+        'codigo': p['producto']?.toString() ?? p['codigo']?.toString() ?? '',
+        'descripcion': p['descripcion']?.toString() ?? '',
+        'unidad': p['unidad']?.toString() ?? 'Uni',
+      }).toList();
     }
   }
 
@@ -578,13 +636,26 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getRemitos() async {
     try {
       final data = await _client.from('remitos')
-          .select('*, apicultores(nombre), paradas(tipo, neto_kg)')
+          .select('*, paradas(id, tipo, localidad, ubicacion, solicitud_id)')
           .order('created_at', ascending: false);
       final remitos = List<Map<String, dynamic>>.from(data as List);
+      
       for (var r in remitos) {
         if (r['paradas'] != null) {
           r['tipo'] = r['paradas']['tipo'];
-          r['peso_neto'] = r['paradas']['neto_kg'];
+          r['localidad'] = r['paradas']['localidad'];
+          r['ubicacion'] = r['paradas']['ubicacion'];
+          
+          final solId = r['paradas']['solicitud_id'];
+          if (solId != null) {
+            final sol = await _client.from('solicitudes')
+                .select('id, apicultor_id, apicultores(nombre)')
+                .eq('id', solId)
+                .maybeSingle();
+            if (sol != null && sol['apicultores'] != null) {
+              r['apicultor_nombre'] = sol['apicultores']['nombre'];
+            }
+          }
         }
       }
       return remitos;

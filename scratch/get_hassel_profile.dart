@@ -6,10 +6,10 @@ void main() async {
     'sb_publishable_H6MPPGj7rIO4Oih0o7f6cg_x7bsgKFo',
   );
 
-  print('--- Estructura de muestra: remitos ---');
+  print('--- Perfil de hassel00@gmail.com ---');
   try {
-    final sample = await client.from('remitos').select().limit(1);
-    print('Remito: $sample');
+    final sample = await client.from('profiles').select().eq('email', 'hassel00@gmail.com');
+    print('Perfil: $sample');
   } catch (err) {
     print('Error: $err');
   }

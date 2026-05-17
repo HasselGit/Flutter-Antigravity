@@ -18,6 +18,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   List<Map<String, dynamic>> _viajesPlanificados = [];
   List<Map<String, dynamic>> _cargasTerminadas = [];
   List<Map<String, dynamic>> _filteredHistory = [];
+  List<Map<String, dynamic>> _productos = [];
   bool _loading = true;
   String _searchQuery = '';
   DateTime? _selectedDate;
@@ -48,10 +49,14 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       // Fetch Terminated Cargas for second tab
       final history = await SupabaseService().getTerminatedCargas();
 
+      // Fetch Products
+      final prods = await Supabase.instance.client.from('productos').select();
+
       if (mounted) {
         setState(() {
           _viajesPlanificados = List<Map<String, dynamic>>.from(pendingViajes);
           _cargasTerminadas = history;
+          _productos = List<Map<String, dynamic>>.from(prods);
           _applyFilters();
           _loading = false;
         });
@@ -355,10 +360,9 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   }
 
   void _showAddCargaDialog() {
-    Map<String, dynamic>? selectedViaje;
-    Map<String, dynamic>? selectedProducto;
+    String? selectedViajeId;
+    String? selectedProductoCodigo;
     final qtyController = TextEditingController();
-    List<Map<String, dynamic>> products = [];
 
     showModalBottomSheet(
       context: context,
@@ -367,12 +371,6 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
-          if (products.isEmpty) {
-            Supabase.instance.client.from('productos').select().then((data) {
-              if (ctx.mounted) setModalState(() => products = data);
-            });
-          }
-
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
             child: SingleChildScrollView(
@@ -382,24 +380,24 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                 children: [
                   Text('Asignar Carga a Viaje', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
                   const SizedBox(height: 20),
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedViaje,
+                  DropdownButtonFormField<String>(
+                    value: selectedViajeId,
                     decoration: const InputDecoration(labelText: 'Seleccionar Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
-                    items: _viajesPlanificados.map((v) => DropdownMenuItem(
-                      value: v,
+                    items: _viajesPlanificados.map((v) => DropdownMenuItem<String>(
+                      value: v['id']?.toString(),
                       child: Text(v['viaje_codigo'] ?? 'S/C'),
                     )).toList(),
-                    onChanged: (v) => setModalState(() => selectedViaje = v),
+                    onChanged: (v) => setModalState(() => selectedViajeId = v),
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedProducto,
+                  DropdownButtonFormField<String>(
+                    value: selectedProductoCodigo,
                     decoration: const InputDecoration(labelText: 'Producto', prefixIcon: Icon(Icons.inventory_2_rounded)),
-                    items: products.map((p) => DropdownMenuItem(
-                      value: p,
+                    items: _productos.map((p) => DropdownMenuItem<String>(
+                      value: p['codigo']?.toString(),
                       child: Text(p['descripcion'] ?? 'S/N'),
                     )).toList(),
-                    onChanged: (v) => setModalState(() => selectedProducto = v),
+                    onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -413,21 +411,24 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     height: 56,
                     child: ElevatedButton(
                       onPressed: () async {
-                        if (selectedViaje == null || selectedProducto == null || qtyController.text.isEmpty) return;
+                        if (selectedViajeId == null || selectedProductoCodigo == null || qtyController.text.isEmpty) return;
+                        
+                        final viaje = _viajesPlanificados.firstWhere((v) => v['id']?.toString() == selectedViajeId);
+                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo);
+
                         try {
-                          // Simplified: creating a carga for the trip
                           final humanId = 'CAR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
                           final cargaResp = await Supabase.instance.client.from('cargas').insert({
-                            'viaje_id': selectedViaje!['id'],
+                            'viaje_id': viaje['id'],
                             'carga_codigo': humanId,
                             'estado': AppStates.pendiente,
                           }).select('id').single();
                           
                           await Supabase.instance.client.from('carga_items').insert({
                             'carga_id': cargaResp['id'],
-                            'producto_codigo': selectedProducto!['descripcion'],
+                            'producto_codigo': prod['codigo'] ?? prod['descripcion'],
                             'cantidad': double.tryParse(qtyController.text) ?? 0,
-                            'unidad': selectedProducto!['unidad'] ?? 'UN',
+                            'unidad': prod['unidad'] ?? 'UN',
                           });
 
                           if (ctx.mounted) {

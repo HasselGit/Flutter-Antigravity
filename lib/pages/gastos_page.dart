@@ -152,7 +152,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
             Supabase.instance.client
                 .from('viajes')
                 .select('id, viaje_codigo, estado')
-                .inFilter('estado', ['En Curso', 'En Proceso', 'Cargado', 'Iniciado'])
+                .in_('estado', ['En Curso', 'En Proceso', 'Cargado', 'Iniciado'])
                 .order('fecha', ascending: false)
                 .limit(20)
                 .then((data) {

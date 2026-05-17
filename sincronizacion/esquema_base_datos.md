@@ -66,7 +66,20 @@ Resumen de las tablas y relaciones principales utilizadas en GeoLogística.
 - `descripcion`: text
 - `unidad`: text
 
+### 8. `pesajes`
+- `id`: uuid (PK)
+- `parada_id`: uuid (FK a paradas)
+- `viaje_id`: uuid (FK a viajes, opcional)
+- `apicultor_id`: uuid (FK a apicultores, opcional)
+- `senasa_codigo`: text
+- `peso_bruto`: numeric
+- `tara`: numeric
+- `peso_neto`: numeric (calculado o almacenado)
+- `fecha_registro`: timestamp
+
 ## 🔗 Relaciones Clave
 - **Viaje -> Paradas**: Un viaje tiene múltiples paradas a través de rutas o directamente.
 - **Parada -> Solicitud**: Una parada representa la ejecución de una solicitud de carga/recolección.
 - **Perfil -> Viaje**: Los choferes están asignados a viajes mediante `chofer_id`.
+- **Parada -> Pesajes**: Una parada de recolección de miel asocia múltiples pesajes de tambores a través de `parada_id`.
+

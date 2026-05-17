@@ -3,17 +3,17 @@ import 'package:supabase/supabase.dart';
 void main() async {
   final client = SupabaseClient(
     'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+    'sb_publishable_H6MPPGj7rIO4Oih0o7f6cg_x7bsgKFo',
   );
+
+  print('--- Verificando Profiles en DB ---');
   try {
-    // Intentamos obtener una fila de profiles para ver las columnas
-    final res = await client.from('profiles').select().limit(1);
-    if (res.isNotEmpty) {
-      print('Profiles Columns: ${res.first.keys.toList()}');
-    } else {
-      print('Profiles table is empty or not accessible');
+    final profiles = await client.from('profiles').select('id, nombre, apellido, puesto, email');
+    print('Total profiles: ${profiles.length}');
+    for (var p in profiles) {
+      print(' - ID: "${p['id']}", Email: "${p['email']}", Nombre: "${p['nombre']} ${p['apellido']}", Puesto: "${p['puesto']}"');
     }
   } catch (e) {
-    print('Error checking profiles: $e');
+    print('Error: $e');
   }
 }

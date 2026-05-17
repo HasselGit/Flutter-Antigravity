@@ -62,7 +62,7 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
       _cargas.where((c) => (c['estado'] ?? AppStates.pendiente) == estado).toList();
 
   bool get _canCreate =>
-      _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras';
+      _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP';
 
   @override
   Widget build(BuildContext context) {
