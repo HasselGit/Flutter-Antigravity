@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import '../backend/design_tokens.dart';
+import '../backend/pdf_invoice_generator.dart';
 
 class RemitoCargaPageWidget extends StatefulWidget {
   final String cargaId;
@@ -77,73 +78,51 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     }
   }
 
-  Future<void> _generatePdf() async {
-    final pdf = pw.Document();
-    final date = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(_carga?['updated_at'] ?? DateTime.now().toIso8601String()));
+  Future<Uint8List> _generatePdfBytes() async {
     final chofer = '${_carga?['viaje']?['profiles']?['nombre'] ?? ''} ${_carga?['viaje']?['profiles']?['apellido'] ?? ''}'.trim();
+    final String updatedAtDate = _carga?['updated_at'] ?? DateTime.now().toIso8601String();
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('REMITO DE CARGA', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('GeoLogística', style: pw.TextStyle(fontSize: 18, color: PdfColors.green900)),
-                ],
-              ),
-              pw.SizedBox(height: 10),
-              pw.Text('Código: ${_carga?['carga_codigo'] ?? 'S/C'}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              pw.Text('Fecha de Salida: $date', style: pw.TextStyle(color: PdfColors.grey700)),
-              pw.Divider(),
-              pw.SizedBox(height: 15),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('Viaje: ${_carga?['viaje']?['viaje_codigo'] ?? 'S/V'}'),
-                      pw.Text('Chofer: $chofer'),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text('Vehículo: ${_carga?['viaje']?['vehiculo_codigo'] ?? 'S/D'}'),
-                      pw.Text('Estado: TERMINADO'),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 25),
-              pw.Text('DETALLE DE CARGA', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 8),
-              pw.TableHelper.fromTextArray(
-                headers: ['Producto', 'Cantidad', 'Unidad'],
-                data: _items.map((it) => [
-                  it['producto_codigo'] ?? '-',
-                  it['cantidad']?.toString() ?? '0',
-                  it['unidad'] ?? '-'
-                ]).toList(),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey900),
-                headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Spacer(),
-              pw.Center(
-                child: pw.Text('Documento Digital de Uso Interno - Depósito Central', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-              ),
-            ],
-          );
-        },
+    Uint8List? logoBytes;
+    try {
+      final logoData = await rootBundle.load('assets/images/geomiel_logo.png');
+      logoBytes = logoData.buffer.asUint8List();
+    } catch (e) {
+      print('Error cargando geomiel_logo.png para remito de carga: $e');
+    }
+
+    return await PdfInvoiceGenerator.generateCargaManifestPDF(
+      cargaCodigo: _carga?['carga_codigo'] ?? 'S/C',
+      viajeCodigo: _carga?['viaje']?['viaje_codigo'] ?? 'S/V',
+      choferNombre: chofer,
+      vehiculoCodigo: _carga?['viaje']?['vehiculo_codigo'] ?? 'S/D',
+      updatedAtDate: updatedAtDate,
+      items: _items,
+      logoBytes: logoBytes,
+    );
+  }
+
+  void _showPdfPreviewDialog(BuildContext context, Uint8List pdfBytes, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: DesignTokens.primary,
+          elevation: 0,
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+        body: PdfPreview(
+          build: (format) => pdfBytes,
+          allowPrinting: true,
+          allowSharing: true,
+          canChangePageFormat: false,
+          dynamicLayout: false,
+        ),
       ),
     );
-
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
   @override
@@ -209,27 +188,66 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
                 onPressed: _shareWhatsApp,
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366), 
+                  foregroundColor: Colors.white, 
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('ENVIAR POR WHATSAPP', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton.icon(
-                onPressed: _generatePdf,
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: DesignTokens.primary), foregroundColor: DesignTokens.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('VER PDF / IMPRIMIR', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    icon: Icons.visibility_outlined,
+                    label: 'VER',
+                    backgroundColor: const Color(0xFFE0F2FE),
+                    textColor: const Color(0xFF0369A1),
+                    onTap: () async {
+                      final bytes = await _generatePdfBytes();
+                      if (mounted) {
+                        _showPdfPreviewDialog(context, bytes, 'Comprobante Carga $code');
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    icon: Icons.download_rounded,
+                    label: 'DESCARGAR',
+                    backgroundColor: const Color(0xFFF0FDF4),
+                    textColor: const Color(0xFF15803D),
+                    onTap: () async {
+                      final bytes = await _generatePdfBytes();
+                      await Printing.sharePdf(bytes: bytes, filename: 'Comprobante_Carga_$code.pdf');
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    icon: Icons.print_outlined,
+                    label: 'IMPRIMIR',
+                    backgroundColor: const Color(0xFFFEF3C7),
+                    textColor: const Color(0xFFB45309),
+                    onTap: () async {
+                      final bytes = await _generatePdfBytes();
+                      await Printing.layoutPdf(onLayout: (format) => bytes);
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -246,6 +264,43 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
           Text(label, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: DesignTokens.primary)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color backgroundColor,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: textColor, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

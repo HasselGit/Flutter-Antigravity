@@ -42,8 +42,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       // Fetch Pending Voyages for first tab
       final pendingViajes = await Supabase.instance.client
           .from('viajes')
-          .select('*, profiles(nombre, apellido), paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
-          .or('estado.eq.Planificado,estado.eq.Pendiente')
+          .select('*, profiles(nombre, apellido), paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, carga_items(*))')
+          .eq('estado', 'Pendiente')
           .order('fecha', ascending: true);
 
       // Fetch Terminated Cargas for second tab
@@ -179,13 +179,53 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         
         double totalKg = 0;
         int totalTambores = 0;
-        for (var p in (v['paradas'] as List? ?? [])) {
-          for (var item in (p['parada_items'] as List? ?? [])) {
+        
+        final listCargas = v['cargas'] as List? ?? [];
+        final activeCarga = listCargas.isNotEmpty ? listCargas.first : null;
+        final listItems = activeCarga != null ? (activeCarga['carga_items'] as List? ?? []) : [];
+        
+        // Agregar las cantidades consolidadas de productos para mostrar
+        final Map<String, double> aggregatedItems = {};
+        
+        if (listItems.isNotEmpty) {
+          // Calculate from consolidated database loads
+          for (var item in listItems) {
             final double cant = (item['cantidad'] ?? 0).toDouble();
-            final String prod = (item['producto_codigo'] ?? '').toString().toLowerCase();
-            if (prod.contains('tcm')) { totalKg += cant * 300; totalTambores += cant.toInt(); }
-            else if (prod.contains('vacio') || prod.contains('vacío') || prod.contains('tv')) { totalKg += cant * 20; totalTambores += cant.toInt(); }
-            else { totalKg += cant; }
+            final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+            if (prod.isNotEmpty) {
+              aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
+            }
+            final String prodLower = prod.toLowerCase();
+            if (prodLower.contains('tcm')) {
+              totalKg += cant * 300;
+              totalTambores += cant.toInt();
+            } else if (prodLower.contains('vacio') || prodLower.contains('vacío') || prodLower.contains('tv')) {
+              totalKg += cant * 20;
+              totalTambores += cant.toInt();
+            } else {
+              totalKg += cant;
+            }
+          }
+        } else {
+          // Fallback to planned paradas if no physical load exists
+          for (var p in (v['paradas'] as List? ?? [])) {
+            for (var item in (p['parada_items'] as List? ?? [])) {
+              final double cant = (item['cantidad'] ?? 0).toDouble();
+              final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+              if (prod.isNotEmpty) {
+                aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
+              }
+              final String prodLower = prod.toLowerCase();
+              if (prodLower.contains('tcm')) {
+                totalKg += cant * 300;
+                totalTambores += cant.toInt();
+              } else if (prodLower.contains('vacio') || prodLower.contains('vacío') || prodLower.contains('tv')) {
+                totalKg += cant * 20;
+                totalTambores += cant.toInt();
+              } else {
+                totalKg += cant;
+              }
+            }
           }
         }
 
@@ -227,6 +267,29 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     _metricCol('UNIDAD', v['vehiculo_codigo'] ?? 'S/D', Icons.local_shipping),
                   ],
                 ),
+                if (aggregatedItems.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('CARGA COMPUESTA POR:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.grey, letterSpacing: 0.5)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: aggregatedItems.entries.map((entry) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: DesignTokens.primary.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                        ),
+                        child: Text(
+                          '${entry.key} × ${entry.value.toStringAsFixed(0)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: DesignTokens.primary),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
                 if (excede) ...[
                   const SizedBox(height: 8),
                   const Text('⚠️ Excede capacidad del vehículo', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
@@ -332,6 +395,29 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           children: [
             Text('Viaje: ${c['viaje']?['viaje_codigo'] ?? 'S/V'}', style: const TextStyle(fontSize: 12)),
             Text('Fecha: $dateStr', style: const TextStyle(fontSize: 12)),
+            if (items.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: items.map((item) {
+                  final String prod = (item['producto_codigo'] ?? 'S/D').toString().toUpperCase();
+                  final double cant = (item['cantidad'] ?? 0).toDouble();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.green.withOpacity(0.15)),
+                    ),
+                    child: Text(
+                      '$prod × ${cant.toStringAsFixed(0)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.green),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
         trailing: ElevatedButton(

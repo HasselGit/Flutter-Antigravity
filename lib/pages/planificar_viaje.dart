@@ -308,7 +308,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             'chofer_id': _selectedChofer!['id'],
             'vehiculo_codigo': _selectedVehiculo!['vehiculo_codigo'],
             'viaje_codigo': 'VIAJE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
-            'estado': 'Planificado',
+            'estado': 'Pendiente',
             'fecha': _fechaPlanificada.toIso8601String(),
             'descripcion': _descripcionController.text,
           },

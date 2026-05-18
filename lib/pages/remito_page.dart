@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../backend/design_tokens.dart';
+import '../backend/pdf_invoice_generator.dart';
 
 class RemitoPageWidget extends StatefulWidget {
   final String paradaId;
@@ -119,8 +121,6 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       final signatureBytes = await _signatureController.toPngBytes();
       if (signatureBytes == null) throw Exception('Error al procesar firma');
 
-      final pdf = pw.Document();
-
       double tryParseDouble(dynamic val) {
         if (val == null) return 0.0;
         if (val is num) return val.toDouble();
@@ -128,92 +128,38 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       }
 
       final tipoOperacion = _paradaData?['tipo'] ?? 'Operación';
-      final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
-
       final apicultorNombre = _paradaData?['ubicacion'] ?? 'Sin nombre';
-      final receptorNombre = widget.receptorTipo == 'Tercero' ? widget.receptorNombre : apicultorNombre;
-      final receptorDni = widget.receptorTipo == 'Tercero' ? widget.receptorDni : '';
+      final apicultorLocalidad = _paradaData?['localidad'] ?? 'S/D';
+      final receptorNombre = widget.receptorTipo == 'Tercero' ? (widget.receptorNombre ?? apicultorNombre) : apicultorNombre;
+      final receptorDni = widget.receptorTipo == 'Tercero' ? (widget.receptorDni ?? '') : '';
 
       double totalBruto = tryParseDouble(_paradaData?['carga_kg']);
       double totalNeto = tryParseDouble(_paradaData?['neto_kg']);
 
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('REMITO DIGITAL', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('GeoLogística', style: pw.TextStyle(fontSize: 18, color: PdfColors.green900)),
-                  ],
-                ),
-                pw.SizedBox(height: 10),
-                pw.Text('ID Parada: ${widget.paradaId.split('-').first.toUpperCase()}', style: pw.TextStyle(color: PdfColors.grey700)),
-                pw.Text('Fecha: $fecha', style: pw.TextStyle(color: PdfColors.grey700)),
-                pw.Divider(color: PdfColors.grey400),
-                pw.SizedBox(height: 15),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('Vehículo: ${_viajeData?['vehiculo_codigo'] ?? 'S/D'}'),
-                        pw.Text('Operación: $tipoOperacion'),
-                      ],
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text('Ubicación: ${_paradaData?['ubicacion'] ?? 'S/D'}'),
-                        pw.Text('Localidad: ${_paradaData?['localidad'] ?? 'S/D'}'),
-                      ],
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 20),
-                pw.Text('Responsable: $receptorNombre', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                if (receptorDni != null && receptorDni.isNotEmpty) pw.Text('DNI/CUIT: $receptorDni'),
-                pw.SizedBox(height: 20),
-                pw.TableHelper.fromTextArray(
-                  headers: ['Producto', 'Cant', 'Unidad', 'Peso'],
-                  data: _items.map((item) => [
-                    item['producto_codigo'] ?? '-',
-                    item['cantidad']?.toString() ?? '0',
-                    item['unidad'] ?? '-',
-                    item['peso_kg']?.toString() ?? '0.0'
-                  ]).toList(),
-                  headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey900),
-                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
-                ),
-                pw.SizedBox(height: 20),
-                if (totalBruto > 0) pw.Text('Total Bruto: ${totalBruto.toStringAsFixed(2)} KG'),
-                if (totalNeto > 0) pw.Text('Total Neto: ${totalNeto.toStringAsFixed(2)} KG'),
-                pw.Spacer(),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.center,
-                  children: [
-                    pw.Column(
-                      children: [
-                        pw.Image(pw.MemoryImage(signatureBytes), width: 150),
-                        pw.Container(width: 150, height: 1, color: PdfColors.black),
-                        pw.Text('Firma del Responsable'),
-                      ],
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 20),
-              ],
-            );
-          },
-        ),
+      Uint8List? logoBytes;
+      try {
+        final logoData = await rootBundle.load('assets/images/geomiel_logo.png');
+        logoBytes = logoData.buffer.asUint8List();
+      } catch (e) {
+        print('Error cargando geomiel_logo.png para remito: $e');
+      }
+
+      final pdfBytes = await PdfInvoiceGenerator.generateClientRemitoPDF(
+        paradaId: widget.paradaId,
+        tipoOperacion: tipoOperacion,
+        vehiculoCodigo: _viajeData?['vehiculo_codigo'],
+        viajeCodigo: _viajeData?['viaje_codigo'],
+        apicultorNombre: apicultorNombre,
+        apicultorLocalidad: apicultorLocalidad,
+        receptorNombre: receptorNombre,
+        receptorDni: receptorDni,
+        items: _items,
+        totalBruto: totalBruto,
+        totalNeto: totalNeto,
+        signatureBytes: signatureBytes,
+        logoBytes: logoBytes,
       );
 
-      final pdfBytes = await pdf.save();
       final fileName = 'remito_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       
       await Supabase.instance.client.storage.from('remitos').uploadBinary(
@@ -248,31 +194,72 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
         setState(() => _loading = false);
         showDialog(
           context: context,
+          barrierDismissible: false,
           builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('Remito Emitido', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: const Text('El remito digital ha sido generado y guardado correctamente.'),
+            content: const Text('El remito digital de cliente ha sido generado y guardado correctamente.'),
+            actionsAlignment: MainAxisAlignment.center,
             actions: [
-              TextButton.icon(
-                icon: const Icon(Icons.share_rounded),
-                label: const Text('COMPARTIR'),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_$humanId.pdf');
-                },
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.visibility_outlined, color: Color(0xFF0369A1)),
+                        label: const Text('VER', style: TextStyle(color: Color(0xFF0369A1), fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          _showPdfPreviewDialog(context, pdfBytes, 'Remito $humanId');
+                        },
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.print_outlined, color: Color(0xFFB45309)),
+                        label: const Text('IMPRIMIR', style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          await Printing.layoutPdf(onLayout: (format) => pdfBytes);
+                        },
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.download_rounded, color: Color(0xFF15803D)),
+                        label: const Text('DESCARGAR', style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          await Printing.sharePdf(bytes: pdfBytes, filename: 'Remito_$humanId.pdf');
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.chat_bubble_outline_rounded),
+                      label: const Text('ENVIAR POR WHATSAPP'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366), 
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        _shareWhatsApp(pdfUrl);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      context.pop(true);
+                    },
+                    child: const Text('CERRAR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('WHATSAPP'),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _shareWhatsApp(pdfUrl);
-                },
-              ),
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CERRAR')),
             ],
           ),
-        ).then((_) => context.pop());
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -280,6 +267,30 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  void _showPdfPreviewDialog(BuildContext context, Uint8List pdfBytes, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: DesignTokens.primary,
+          elevation: 0,
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+        body: PdfPreview(
+          build: (format) => pdfBytes,
+          allowPrinting: true,
+          allowSharing: true,
+          canChangePageFormat: false,
+          dynamicLayout: false,
+        ),
+      ),
+    );
   }
 
   @override

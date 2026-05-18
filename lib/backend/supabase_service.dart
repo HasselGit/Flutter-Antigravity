@@ -636,27 +636,104 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getRemitos() async {
     try {
       final data = await _client.from('remitos')
-          .select('*, paradas(id, tipo, localidad, ubicacion, solicitud_id)')
+          .select('*, paradas(id, tipo, localidad, ubicacion, solicitud_id, parada_items(producto_codigo, cantidad))')
           .order('created_at', ascending: false);
       final remitos = List<Map<String, dynamic>>.from(data as List);
       
+      // 1. Gather all unique non-null solicitud_ids
+      final List<String> solIds = [];
       for (var r in remitos) {
+        if (r['paradas'] != null && r['paradas']['solicitud_id'] != null) {
+          final id = r['paradas']['solicitud_id'].toString();
+          if (!solIds.contains(id)) {
+            solIds.add(id);
+          }
+        }
+      }
+
+      // 2. Query all solicitudes in batch
+      final Map<String, Map<String, dynamic>> solMap = {};
+      if (solIds.isNotEmpty) {
+        try {
+          final List<dynamic> solsData = await _client.from('solicitudes')
+              .select('id, apicultor_id, apicultores(nombre, localidad)')
+              .filter('id', 'in', solIds);
+          for (var s in solsData) {
+            if (s['id'] != null) {
+              solMap[s['id'].toString()] = s;
+            }
+          }
+        } catch (se) {
+          print('SupabaseService: Error in getRemitos batch solicitudes fetch: $se');
+        }
+      }
+
+      for (var r in remitos) {
+        // Map remito_codigo
+        r['remito_codigo'] = r['numero_remito'] ?? 'REM-${r['parada_id']?.toString().split('-').first.toUpperCase()}';
+
+        bool hasRecoleccion = false;
+        bool hasDistribucion = false;
+
+        final remitoTipo = r['tipo']?.toString().toLowerCase() ?? '';
+        if (remitoTipo.contains('mixt') || remitoTipo.contains('ambos') || (remitoTipo.contains('rec') && remitoTipo.contains('dist'))) {
+          hasRecoleccion = true;
+          hasDistribucion = true;
+        }
+
         if (r['paradas'] != null) {
-          r['tipo'] = r['paradas']['tipo'];
           r['localidad'] = r['paradas']['localidad'];
           r['ubicacion'] = r['paradas']['ubicacion'];
           
+          final items = r['paradas']['parada_items'] as List? ?? [];
+          for (var item in items) {
+            final code = (item['producto_codigo'] ?? '').toString().toUpperCase();
+            if (code == 'TCM' || code.contains('MIEL')) {
+              hasRecoleccion = true;
+            } else {
+              hasDistribucion = true;
+            }
+          }
+          
+          // Fallback if parada_items is empty, use the parada type
+          if (items.isEmpty && !hasRecoleccion && !hasDistribucion) {
+            final t = r['paradas']['tipo']?.toString().toLowerCase() ?? '';
+            if (t.contains('mixt') || t.contains('ambos') || (t.contains('rec') && t.contains('dist'))) {
+              hasRecoleccion = true;
+              hasDistribucion = true;
+            } else if (t.contains('recol') || t.contains('rec')) {
+              hasRecoleccion = true;
+            } else {
+              hasDistribucion = true;
+            }
+          }
+          
           final solId = r['paradas']['solicitud_id'];
-          if (solId != null) {
-            final sol = await _client.from('solicitudes')
-                .select('id, apicultor_id, apicultores(nombre)')
-                .eq('id', solId)
-                .maybeSingle();
-            if (sol != null && sol['apicultores'] != null) {
+          if (solId != null && solMap.containsKey(solId.toString())) {
+            final sol = solMap[solId.toString()]!;
+            if (sol['apicultores'] != null) {
               r['apicultor_nombre'] = sol['apicultores']['nombre'];
+              r['apicultor_localidad'] = sol['apicultores']['localidad'];
             }
           }
         }
+
+        // Fallbacks for apicultor
+        r['apicultor_nombre'] = r['apicultor_nombre'] ?? r['ubicacion'] ?? r['persona_nombre'] ?? 'Apicultor S/D';
+        r['apicultor_localidad'] = r['apicultor_localidad'] ?? r['localidad'] ?? 'Sin localidad';
+
+        // Determine type display and category
+        if (hasRecoleccion && hasDistribucion) {
+          r['tipo_display'] = 'Distribución y Recolección';
+          r['tipo_categoria'] = 'Mixta';
+        } else if (hasRecoleccion) {
+          r['tipo_display'] = 'Recolección';
+          r['tipo_categoria'] = 'Recolecciones';
+        } else {
+          r['tipo_display'] = 'Distribución';
+          r['tipo_categoria'] = 'Distribuciones';
+        }
+        r['tipo'] = r['tipo_display']; // For backward compatibility
       }
       return remitos;
     } catch (e) {

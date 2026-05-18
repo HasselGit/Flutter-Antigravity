@@ -1,17 +1,28 @@
-import 'package:supabase/supabase.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
 
 void main() async {
-  final client = SupabaseClient(
-    'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+  print('Iniciando verificación...');
+  Supabase.initialize(
+    url: 'https://pgtwhqypohkgrvyxunsq.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBndHdocXlwb2hncnZ5eHVuc3EiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTcxNDkxNTYzOCwiZXhwIjoyMDI5NDkxNjM4fQ.aHq2v3_8W6xW7Z3b-5L1N4Xp3X3_5X3_5X3_5X3_5X3',
   );
-
-  final res = await client.from('solicitudes')
-      .select()
-      .or('apicultor_id.eq.A01508,apicultor_id.eq.1508');
   
-  print('RESULTS: ${res.length} items');
-  for (var r in res) {
-    print('ID: ${r['id']} | Cod: ${r['solicitud_codigo']} | Api: ${r['apicultor_id']} | Estado: ${r['estado']}');
+  final client = Supabase.instance.client;
+  try {
+    final sols = await client.from('solicitudes').select('id, apicultor_id, producto, cantidad, estado').limit(10);
+    print('Muestra de solicitudes:');
+    for (var s in sols) {
+      print('Solicitud ID: ${s['id']}, apicultor_id: ${s['apicultor_id']}, producto: ${s['producto']}, estado: ${s['estado']}');
+    }
+    
+    final apis = await client.from('apicultores').select('id, nombre').limit(5);
+    print('\nMuestra de apicultores:');
+    for (var a in apis) {
+      print('Apicultor ID: ${a['id']}, nombre: ${a['nombre']}');
+    }
+  } catch (e) {
+    print('Error: $e');
   }
+  exit(0);
 }

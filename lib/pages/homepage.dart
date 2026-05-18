@@ -218,7 +218,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gerenteHome'),
                           ),
                         ],
-                        if (_userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
+                        if ((_userRole == 'Compras' || _userRole == 'Admin APP') && _userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia')
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Gestión de Cargas',
@@ -245,6 +245,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
+                        if (_userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia') ...[
                           _moduleCard(
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
@@ -252,14 +253,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/pesajes'),
-                          ),
-                          _moduleCard(
-                            icon: Icons.inventory_2_rounded,
-                            title: 'Distribuciones',
-                            subtitle: 'Insumos y\nentregas',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/distribuciones'),
                           ),
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
@@ -277,16 +270,25 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gastos'),
                           ),
-                          _moduleCard(
-                            icon: Icons.alt_route_rounded,
-                            title: 'Control de Ruta',
-                            subtitle: 'Trayectos activos\nen tiempo real',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/rutas'),
-                          ),
                         ],
-                      ),
+                        _moduleCard(
+                          icon: Icons.inventory_2_rounded,
+                          title: 'Distribuciones',
+                          subtitle: 'Insumos y\nentregas',
+                          bgColor: DesignTokens.primary,
+                          accentColor: DesignTokens.secondary,
+                          onTap: () => context.push('/distribuciones'),
+                        ),
+                        _moduleCard(
+                          icon: Icons.alt_route_rounded,
+                          title: 'Control de Ruta',
+                          subtitle: 'Trayectos activos\nen tiempo real',
+                          bgColor: DesignTokens.primary,
+                          accentColor: DesignTokens.secondary,
+                          onTap: () => context.push('/rutas'),
+                        ),
+                      ],
+                    ),
 
                     const SizedBox(height: 28),
 

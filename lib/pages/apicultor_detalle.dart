@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../backend/supabase_service.dart';
 import '../backend/apicultores_data.dart';
+import '../backend/productos_data.dart';
 
 class ApicultorDetalleWidget extends StatefulWidget {
   final Map<String, dynamic> apicultor;
@@ -106,53 +107,109 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
     }
   }
 
+  Map<String, String> _resolveProductInfo(String codeOrDesc) {
+    final clean = codeOrDesc.trim().toUpperCase();
+    
+    // Fix broken encoding in database/sheets
+    var cleanFixed = clean;
+    if (clean.contains('AZ') && clean.contains('AR')) {
+      cleanFixed = 'AZ';
+    } else if (clean.contains('AZÚCAR') || clean.contains('AZUCAR') || clean.contains('AZÃºCAR')) {
+      cleanFixed = 'AZ';
+    }
+    
+    final prod = ProductosData.masterCatalog.firstWhere(
+      (p) => p['producto'].toString().toUpperCase() == cleanFixed ||
+             p['codigo'].toString().toUpperCase() == cleanFixed ||
+             p['descripcion'].toString().toUpperCase() == cleanFixed,
+      orElse: () => <String, dynamic>{},
+    );
+    
+    if (prod.isNotEmpty) {
+      return {
+        'descripcion': prod['descripcion'].toString(),
+        'unidad': prod['unidad'].toString().toLowerCase().contains('bolsa') ? 'Bolsas' : prod['unidad'].toString(),
+      };
+    }
+    
+    // Fallback if not found in catalog
+    return {
+      'descripcion': codeOrDesc,
+      'unidad': 'kg',
+    };
+  }
+
   Future<void> _fetchDetailedData() async {
     setState(() => _isLoading = true);
     try {
       final client = Supabase.instance.client;
       final apiId = (widget.apicultor['apicultor_codigo'] ?? widget.apicultor['id']).toString();
       
-      List<String> idCandidates = [apiId];
-      if (apiId.startsWith('A')) {
-        idCandidates.add(apiId.replaceAll(RegExp(r'^A0*'), ''));
-      } else {
-        idCandidates.add('A${apiId.padLeft(5, '0')}');
+      // Generar una lista ultra-resiliente de posibles formatos del código de apicultor
+      final clean = apiId.trim().toUpperCase();
+      final numericPart = clean.replaceAll(RegExp(r'^A0*'), '');
+      
+      final List<String> idCandidates = [clean];
+      if (numericPart.isNotEmpty) {
+        idCandidates.add(numericPart);
+        idCandidates.add('A${numericPart.padLeft(5, '0')}'); // A01887
+        idCandidates.add('A${numericPart.padLeft(4, '0')}'); // A1887
+        idCandidates.add('A$numericPart');
       }
+      final uniqueCandidates = idCandidates.toSet().toList();
 
-      String orFilter = idCandidates.map((id) => 'apicultor_id.eq.$id').join(',');
+      String orFilter = uniqueCandidates.map((id) => 'apicultor_id.eq.$id').join(',');
 
       final allSolsRes = await client.from('solicitudes')
-          .select('*, remitos(remito_codigo)')
+          .select('*')
           .or(orFilter)
           .order('created_at', ascending: false);
       
       final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes as List);
 
-      // Enriquecer con remitos desde paradas si no están directos
+      // Enriquecer con remitos y datos de producto de forma ultra segura
       for (var s in allSols) {
-        if (s['remitos'] == null) {
-          try {
-            final paradaRem = await client.from('paradas')
-                .select('remitos(remito_codigo)')
-                .eq('solicitud_id', s['id'])
+        s['remito_codigo'] = null;
+        
+        // Resolver producto
+        final prodRaw = s['producto'] ?? 'S/D';
+        final resolved = _resolveProductInfo(prodRaw.toString());
+        s['producto_display'] = resolved['descripcion'];
+        s['unidad_display'] = resolved['unidad'];
+
+        try {
+          final paradasData = await client.from('paradas')
+              .select('id')
+              .eq('solicitud_id', s['id'])
+              .limit(1);
+          if (paradasData.isNotEmpty) {
+            final paradaId = paradasData[0]['id'];
+            final remitoData = await client.from('remitos')
+                .select('numero_remito')
+                .eq('parada_id', paradaId)
                 .maybeSingle();
-            if (paradaRem != null && paradaRem['remitos'] != null) {
-              s['remito_codigo'] = paradaRem['remitos']['remito_codigo'];
+            if (remitoData != null) {
+              s['remito_codigo'] = remitoData['numero_remito'] ?? 'REM-${paradaId.toString().split('-').first.toUpperCase()}';
             }
-          } catch (_) {}
-        } else {
-          s['remito_codigo'] = s['remitos']['remito_codigo'];
+          }
+        } catch (e) {
+          print('Error recuperando remito para apicultor detalle: $e');
         }
       }
 
       final List<Map<String, dynamic>> activas = allSols.where((s) {
-        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
-        return estado != 'terminada' && estado != 'finalizada' && estado != 'cancelada';
+        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase().trim();
+        return estado != 'terminada' && estado != 'terminado' &&
+               estado != 'finalizada' && estado != 'finalizado' &&
+               estado != 'completada' && estado != 'completado' &&
+               estado != 'cancelada' && estado != 'cancelado';
       }).toList();
 
       final List<Map<String, dynamic>> recientes = allSols.where((s) {
-        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase();
-        return estado == 'terminada' || estado == 'finalizada';
+        final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase().trim();
+        return estado == 'terminada' || estado == 'terminado' ||
+               estado == 'finalizada' || estado == 'finalizado' ||
+               estado == 'completada' || estado == 'completado';
       }).take(10).toList();
 
       final Map<String, Map<String, double>> resumen = {};
@@ -164,19 +221,26 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       };
 
       for (var s in allSols) {
-        final prod = s['producto'] ?? 'S/D';
+        final prodDisplay = s['producto_display'] ?? s['producto'] ?? 'S/D';
         final cant = double.tryParse(s['cantidad']?.toString() ?? '0') ?? 0;
         final tipoRaw = (s['tipo'] ?? 'Operación').toString();
         final String tipo = tipoRaw.toLowerCase().contains('recolecci') ? 'Recolección' : 'Distribución';
-        final estado = (s['estado'] ?? 'Pendiente').toString().toUpperCase();
+        final estado = (s['estado'] ?? 'Pendiente').toString().toUpperCase().trim();
         
-        resumen.putIfAbsent(prod, () => {});
-        resumen[prod]![tipo] = (resumen[prod]![tipo] ?? 0) + cant;
+        resumen.putIfAbsent(prodDisplay, () => {});
+        resumen[prodDisplay]![tipo] = (resumen[prodDisplay]![tipo] ?? 0) + cant;
 
-        if (estado.contains('PENDIENTE')) estadoCounts['PENDIENTES'] = (estadoCounts['PENDIENTES'] ?? 0) + 1;
-        else if (estado.contains('ASIGNADA')) estadoCounts['ASIGNADAS'] = (estadoCounts['ASIGNADAS'] ?? 0) + 1;
-        else if (estado.contains('CURSO')) estadoCounts['EN CURSO'] = (estadoCounts['EN CURSO'] ?? 0) + 1;
-        else if (estado.contains('TERMINADA') || estado.contains('FINALIZADA')) estadoCounts['TERMINADAS'] = (estadoCounts['TERMINADAS'] ?? 0) + 1;
+        if (estado.contains('PENDIENTE')) {
+          estadoCounts['PENDIENTES'] = (estadoCounts['PENDIENTES'] ?? 0) + 1;
+        } else if (estado.contains('ASIGNADA')) {
+          estadoCounts['ASIGNADAS'] = (estadoCounts['ASIGNADAS'] ?? 0) + 1;
+        } else if (estado.contains('CURSO') || estado.contains('PROCESO')) {
+          estadoCounts['EN CURSO'] = (estadoCounts['EN CURSO'] ?? 0) + 1;
+        } else if (estado.contains('TERMINADA') || estado.contains('TERMINADO') ||
+                   estado.contains('FINALIZADA') || estado.contains('FINALIZADO') ||
+                   estado.contains('COMPLETADA') || estado.contains('COMPLETADO')) {
+          estadoCounts['TERMINADAS'] = (estadoCounts['TERMINADAS'] ?? 0) + 1;
+        }
       }
 
       // Calcular maxTotal para barras de progreso
@@ -640,8 +704,8 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold)),
-                Text('${tipo} • Estimado: ${s['cantidad']} ${s['unidad'] ?? 'kg'}', 
+                Text(s['producto_display'] ?? s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold)),
+                Text('${tipo} • Estimado: ${s['cantidad']} ${s['unidad_display'] ?? s['unidad'] ?? 'kg'}', 
                   style: DesignTokens.bodyStyle().copyWith(fontSize: 12, color: Colors.black38)
                 ),
               ],
@@ -695,8 +759,8 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
-                Text('${tipo} • ${s['cantidad']} ${s['unidad'] ?? 'kg'}', 
+                Text(s['producto_display'] ?? s['producto'] ?? 'Producto', style: DesignTokens.bodyStyle().copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('${tipo} • ${s['cantidad']} ${s['unidad_display'] ?? s['unidad'] ?? 'kg'}', 
                   style: DesignTokens.bodyStyle().copyWith(fontSize: 11, color: Colors.black38)
                 ),
               ],
@@ -778,7 +842,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
   Widget _buildProductSummary() {
     return Column(
-      children: _resumenDetallado.entries.map((entry) {
+      children: _resumenDetallado.entries.map<Widget>((entry) {
         final product = entry.key;
         final totalsByType = entry.value;
         return _buildProductCardDetailed(product, totalsByType);
@@ -787,6 +851,8 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   }
 
   Widget _buildProductCardDetailed(String product, Map<String, double> totalsByType) {
+    final resolved = _resolveProductInfo(product);
+    final String unitLabel = resolved['unidad'] ?? 'unidades';
     double total = totalsByType.values.fold(0, (sum, v) => sum + v);
     IconData icon = Icons.hive_rounded;
     Color iconColor = const Color(0xFFC68E17);
@@ -851,7 +917,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                 style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900, color: DesignTokens.primary)
               ),
               const SizedBox(width: 8),
-              Text('kg totales', style: DesignTokens.bodyStyle().copyWith(fontSize: 14, color: Colors.black26)),
+              Text('${unitLabel.toLowerCase()} totales', style: DesignTokens.bodyStyle().copyWith(fontSize: 14, color: Colors.black26)),
             ],
           ),
           const SizedBox(height: 16),

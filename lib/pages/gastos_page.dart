@@ -122,6 +122,26 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
               Text('Viaje: $viaje', style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
             ],
           ),
+          if (g['descripcion'] != null && g['descripcion'].toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9F9F9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEEEEEE)),
+              ),
+              child: Text(
+                g['descripcion'],
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -134,7 +154,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     String? selectedTipo = 'Combustible';
     String? selectedMetodo = 'Efectivo';
     DateTime selectedFecha = DateTime.now();
-    Map<String, dynamic>? selectedViaje;
+    String? selectedViajeId;
     XFile? pickedFile;
 
     // Local list of trips for the dropdown
@@ -152,11 +172,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
             Supabase.instance.client
                 .from('viajes')
                 .select('id, viaje_codigo, estado')
-                .in_('estado', ['En Curso', 'En Proceso', 'Cargado', 'Iniciado'])
+                .filter('estado', 'in', ['En Proceso', 'En Curso', 'Terminado'])
                 .order('fecha', ascending: false)
-                .limit(20)
+                .limit(40)
                 .then((data) {
-              if (ctx.mounted) setModalState(() => availableTrips = data);
+              if (ctx.mounted) {
+                setModalState(() {
+                  availableTrips = List<Map<String, dynamic>>.from(data);
+                });
+              }
             });
           }
 
@@ -234,8 +258,8 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                   ),
                   const SizedBox(height: 16),
 
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedViaje,
+                  DropdownButtonFormField<String>(
+                    value: selectedViajeId,
                     decoration: InputDecoration(
                       labelText: 'Vincular a Viaje',
                       prefixIcon: const Icon(Icons.local_shipping_rounded, color: DesignTokens.primary),
@@ -246,11 +270,11 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
                     ),
                     hint: const Text('Seleccione un viaje...'),
-                    items: availableTrips.map((v) => DropdownMenuItem(
-                      value: v,
-                      child: Text(v['viaje_codigo'] ?? 'S/C'),
+                    items: availableTrips.map((v) => DropdownMenuItem<String>(
+                      value: v['id']?.toString(),
+                      child: Text('${v['viaje_codigo'] ?? 'S/C'} (${v['estado'] ?? ''})'),
                     )).toList(),
-                    onChanged: (v) => setModalState(() => selectedViaje = v),
+                    onChanged: (v) => setModalState(() => selectedViajeId = v),
                   ),
                   const SizedBox(height: 16),
 
@@ -372,13 +396,19 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
                           final prefs = await SharedPreferences.getInstance();
                           final userId = prefs.getString('user_id');
+                          final userNombre = prefs.getString('user_nombre') ?? '';
+                          final userApellido = prefs.getString('user_apellido') ?? '';
+                          final userPuesto = prefs.getString('user_puesto') ?? '';
+                          
+                          final auditSuffix = '\n[Registrado por: $userNombre $userApellido ($userPuesto)]';
+
                           await Supabase.instance.client.from('gastos').insert({
                             'tipo_gasto': selectedTipo,
                             'importe': double.tryParse(amountController.text) ?? 0,
-                            'descripcion': descController.text,
+                            'descripcion': descController.text + auditSuffix,
                             'nro_comprobante': comprobanteController.text,
                             'forma_pago': selectedMetodo,
-                            'viaje_id': selectedViaje?['id'],
+                            'viaje_id': selectedViajeId,
                             'fecha': selectedFecha.toIso8601String(),
                             'chofer_id': userId,
                             'comprobante_url': publicUrl,
