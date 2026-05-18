@@ -22,8 +22,8 @@ dependencies:
   flutter_animate: any
   flutter_barcode_scanner: 
     git:
-      url: https://github.com/FlutterFlow/flutter_barcode_scanner
-      ref: 3b315cdeb48e06d1758c5110b3d2dbc3e922a7ce
+      url: https://github.com/decodevM/flutter_barcode_scanner.git
+      ref: flutter-3.29
   flutter_cache_manager: ^3.3.1
   flutter_plugin_android_lifecycle: ^2.0.19
   font_awesome_flutter: ^11.0.0
