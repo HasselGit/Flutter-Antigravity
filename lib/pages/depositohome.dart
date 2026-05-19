@@ -50,7 +50,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       final history = await SupabaseService().getTerminatedCargas();
 
       // Fetch Products
-      final prods = await Supabase.instance.client.from('productos').select();
+      final prods = await SupabaseService().getProductos();
 
       if (mounted) {
         setState(() {

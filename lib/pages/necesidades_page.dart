@@ -43,7 +43,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
       final service = SupabaseService();
       final neceData = await service.getAllNecesidades();
       final apiData = await service.getApicultores();
-      final prodData = await Supabase.instance.client.from('productos').select('descripcion, codigo, unidad').order('descripcion');
+      final prodData = await service.getProductos();
 
       if (mounted) {
         setState(() {

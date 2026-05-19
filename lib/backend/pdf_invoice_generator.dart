@@ -495,9 +495,9 @@ class PdfInvoiceGenerator {
                       children: [
                         pw.Text('APICULTOR TITULAR:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
                         pw.SizedBox(height: 3),
-                        pw.Text(titularNombre ?? 'Sin nombre', style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                        pw.Text(titularNombre ?? 'Sin nombre', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                         if (titularDni != null && titularDni.isNotEmpty)
-                          pw.Text('DNI/CUIT Categoria: $titularDni', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                          pw.Text('DNI/CUIT Categoria: $titularDni', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                       ],
                     ),
                   ),
@@ -507,9 +507,9 @@ class PdfInvoiceGenerator {
                       children: [
                         pw.Text('FIRMATE / RESPONSABLE:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
                         pw.SizedBox(height: 3),
-                        pw.Text(receptorNombre, style: const pw.TextStyle(fontSize: 10)),
+                        pw.Text(receptorNombre, style: pw.TextStyle(fontSize: 10)),
                         if (receptorDni.isNotEmpty)
-                          pw.Text('DNI/CUIT Receptor: $receptorDni', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                          pw.Text('DNI/CUIT Receptor: $receptorDni', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                       ],
                     ),
                   ),

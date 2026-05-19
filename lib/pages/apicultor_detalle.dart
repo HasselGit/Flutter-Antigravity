@@ -369,7 +369,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
 
     // Cargar productos igual que en necesidades_page
     try {
-      final prodData = await Supabase.instance.client.from('productos').select('descripcion, codigo, unidad').order('descripcion');
+      final prodData = await SupabaseService().getProductos();
       productos = List<Map<String, dynamic>>.from(prodData);
     } catch (e) {
       print('Error cargando productos: $e');

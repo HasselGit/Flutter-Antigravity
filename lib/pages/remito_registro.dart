@@ -152,7 +152,8 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         
         for (var item in _availableItems) {
           final id = item['id'].toString();
-          if (item['producto_codigo'] == 'TCM' && _pesajes.isNotEmpty) {
+          final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
+          if ((pCode == 'TCM' || pCode == '1') && _pesajes.isNotEmpty) {
             _selectedQuantities[id] = _pesajes.length.toDouble();
           } else {
             _selectedQuantities[id] = (item['cantidad'] as num).toDouble();
@@ -397,11 +398,11 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         }
       }
 
-      // 5.2 Limpiar datos activos de la parada para el próximo remito continuo
+      // 5.2 Limpiar datos activos de la parada para el próximo remito continuo (Preservando parada_items para el resumen final del viaje)
       try {
         await Supabase.instance.client.from('pesajes').delete().eq('parada_id', widget.paradaId);
-        await Supabase.instance.client.from('parada_items').update({'cantidad': 0}).eq('parada_id', widget.paradaId);
-        print('RemitoRegistro: Pesajes limpios y cantidades de parada_items reiniciadas a 0 en la base de datos');
+        // await Supabase.instance.client.from('parada_items').update({'cantidad': 0}).eq('parada_id', widget.paradaId);
+        print('RemitoRegistro: Pesajes limpios. parada_items preservados para el resumen del viaje.');
       } catch (e) {
         print('RemitoRegistro: Error al limpiar datos activos de la parada: $e');
       }
@@ -1279,7 +1280,8 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
           ...List.generate(_availableItems.length, (idx) {
             final item = _availableItems[idx];
             final id = item['id'].toString();
-            final isTCM = item['producto_codigo'] == 'TCM';
+            final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
+            final isTCM = pCode == 'TCM' || pCode == '1';
             final qty = _selectedQuantities[id] ?? 0;
             final isLast = idx == _availableItems.length - 1;
             final hasMismatch = isTCM && _pesajes.isNotEmpty && qty != _pesajes.length;

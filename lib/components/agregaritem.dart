@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/design_tokens.dart';
+import '../backend/supabase_service.dart';
 
 class AgregarItemWidget extends StatefulWidget {
   const AgregarItemWidget({super.key, required this.paradaId});
@@ -26,7 +27,7 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
 
   Future<void> _loadProductos() async {
     try {
-      final response = await Supabase.instance.client.from('productos').select().order('descripcion');
+      final response = await SupabaseService().getProductos();
       setState(() {
         _productos = List<Map<String, dynamic>>.from(response);
       });
@@ -46,10 +47,11 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           Center(
             child: Container(
               width: 40, height: 4,
@@ -216,6 +218,7 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

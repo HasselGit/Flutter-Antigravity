@@ -146,6 +146,138 @@ class SupabaseService {
             .eq('viaje_id', viajeId).order('orden_secuencia');
         viaje['paradas'] = paradas;
       }
+
+      // ENRICHMENT OF PARADA_ITEMS WITH COMPLETED SOLICITUDES
+      try {
+        final List<dynamic> paradasList = viaje['paradas'] ?? [];
+        if (paradasList.isNotEmpty) {
+          // Build maps based on masterCatalog
+          final Map<String, String> numericToAlpha = {};
+          final Map<String, String> productToUnit = {};
+          for (var p in ProductosData.masterCatalog) {
+            final numCode = p['codigo']?.toString().trim();
+            final alphaCode = p['producto']?.toString().trim().toUpperCase();
+            final unit = p['unidad']?.toString() ?? 'uni';
+            if (numCode != null && alphaCode != null && alphaCode.isNotEmpty) {
+              numericToAlpha[numCode] = alphaCode;
+              productToUnit[alphaCode] = unit;
+              productToUnit[numCode] = unit;
+            }
+          }
+
+          final List<String> pSolIds = [];
+          final List<String> pShortIds = [];
+          for (var p in paradasList) {
+            if (p['solicitud_id'] != null) {
+              pSolIds.add(p['solicitud_id'].toString());
+            }
+            if (p['id'] != null) {
+              pShortIds.add(p['id'].toString().split('-').first.toUpperCase());
+            }
+          }
+
+          List<dynamic> allSols = [];
+          if (pSolIds.isNotEmpty || pShortIds.isNotEmpty) {
+            final List<String> orFilters = [];
+            if (pSolIds.isNotEmpty) {
+              orFilters.add('id.in.(${pSolIds.join(",")})');
+            }
+            for (var shortId in pShortIds) {
+              orFilters.add('solicitud_codigo.ilike.SOL-REM-$shortId%');
+            }
+
+            final res = await _client.from('solicitudes')
+                .select('id, solicitud_codigo, producto, cantidad, estado')
+                .or(orFilters.join(','));
+            allSols = List<dynamic>.from(res ?? []);
+          }
+
+          for (var p in paradasList) {
+            final String shortId = p['id'].toString().split('-').first.toUpperCase();
+            final matchingSols = allSols.where((s) {
+              final sId = s['id']?.toString();
+              final sCode = s['solicitud_codigo']?.toString() ?? '';
+              return (sId != null && sId == p['solicitud_id']?.toString()) ||
+                     (sCode.toUpperCase().startsWith('SOL-REM-$shortId'));
+            }).toList();
+
+            if (matchingSols.isNotEmpty) {
+              // Group and sum completed solicitudes
+              final Map<String, Map<String, dynamic>> aggregated = {};
+              for (var s in matchingSols) {
+                String prod = (s['producto'] ?? '').toString().toUpperCase();
+                if (numericToAlpha.containsKey(prod)) {
+                  prod = numericToAlpha[prod]!;
+                }
+                final double qty = (s['cantidad'] as num?)?.toDouble() ?? 0.0;
+                final String unit = productToUnit[prod] ?? 'uni';
+                final String estado = s['estado']?.toString().toLowerCase() ?? '';
+
+                if (estado.contains('terminada') || estado.contains('terminado')) {
+                  if (aggregated.containsKey(prod)) {
+                    aggregated[prod]!['cantidad'] = (aggregated[prod]!['cantidad'] as double) + qty;
+                  } else {
+                    aggregated[prod] = {
+                      'producto_codigo': prod,
+                      'cantidad': qty,
+                      'unidad': unit,
+                    };
+                  }
+                }
+              }
+
+              if (aggregated.isNotEmpty) {
+                // We have actual completed items! Let's override or update parada_items.
+                final List<dynamic> currentItems = p['parada_items'] != null ? List<dynamic>.from(p['parada_items']) : [];
+                final List<dynamic> updatedItems = [];
+
+                // For each aggregated item, if it exists in currentItems, update its quantity.
+                // Otherwise, add it.
+                for (var aggKey in aggregated.keys) {
+                  final aggItem = aggregated[aggKey]!;
+                  final existing = currentItems.firstWhere((it) {
+                    String itCode = (it['producto_codigo'] ?? '').toString().toUpperCase();
+                    if (numericToAlpha.containsKey(itCode)) {
+                      itCode = numericToAlpha[itCode]!;
+                    }
+                    return itCode == aggKey;
+                  }, orElse: () => null);
+
+                  if (existing != null) {
+                    existing['cantidad'] = aggItem['cantidad'];
+                    existing['unidad'] = aggItem['unidad'];
+                    existing['producto_codigo'] = aggKey; // Ensure standard alpha code
+                    updatedItems.add(existing);
+                  } else {
+                    updatedItems.add(aggItem);
+                  }
+                }
+
+                // Keep planned items that were NOT part of completed solicitudes but set their quantity to 0 if the stop is completed.
+                final bool isParadaTerminada = p['estado']?.toString().toLowerCase().contains('terminad') ?? false;
+                for (var it in currentItems) {
+                  String itCode = (it['producto_codigo'] ?? '').toString().toUpperCase();
+                  if (numericToAlpha.containsKey(itCode)) {
+                    itCode = numericToAlpha[itCode]!;
+                  }
+                  if (!aggregated.containsKey(itCode)) {
+                    if (isParadaTerminada) {
+                      it['cantidad'] = 0.0; // it didn't happen
+                    }
+                    it['producto_codigo'] = itCode; // standard to alpha
+                    updatedItems.add(it);
+                  }
+                }
+
+                p['parada_items'] = updatedItems;
+              }
+            }
+          }
+        }
+      } catch (enrichErr) {
+        print('SupabaseService: Error during parada_items enrichment: $enrichErr');
+      }
+
       try {
         final gastos = await _client.from('gastos')
             .select('id, categoria, monto, fecha, comprobante_url')
@@ -287,9 +419,12 @@ class SupabaseService {
 
   Future<Map<String, dynamic>> getGerenteStats() async {
     try {
+      // 1. Carga total en Kg (de paradas)
       final paradasData = await _client.from('paradas')
           .select('carga_kg').not('carga_kg', 'is', null).timeout(const Duration(seconds: 10));
       double totalKg = (paradasData as List).fold(0.0, (sum, p) => sum + ((p['carga_kg'] as num?)?.toDouble() ?? 0));
+
+      // 2. Viajes activos (en curso)
       final viajesDataRaw = await _client.from('viajes')
           .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, descripcion')
           .eq('estado', AppStates.enCurso).timeout(const Duration(seconds: 10));
@@ -303,15 +438,128 @@ class SupabaseService {
           } catch (_) {}
         }
       }
+
+      // 3. Stock de tambores (de pesajes)
       final pesajesData = await _client.from('pesajes').select('id').timeout(const Duration(seconds: 10));
+      final int tamboresStock = (pesajesData as List).length;
+
+      // 4. Conteo de todos los viajes por estado
+      final viajesAllRaw = await _client.from('viajes').select('estado').timeout(const Duration(seconds: 10));
+      int viajesPendientes = 0;
+      int viajesEnCursoCount = 0;
+      int viajesTerminados = 0;
+      for (var v in (viajesAllRaw as List)) {
+        final estado = AppStates.normalize(v['estado']);
+        if (estado == AppStates.pendiente || estado == 'Planificado') {
+          viajesPendientes++;
+        } else if (estado == AppStates.enCurso) {
+          viajesEnCursoCount++;
+        } else if (estado == AppStates.terminado) {
+          viajesTerminados++;
+        }
+      }
+
+      // 5. Estadísticas de solicitudes (Distribuciones vs Recolecciones) y Totales por Producto
+      final solicitudesRaw = await _client.from('solicitudes')
+          .select('tipo, estado, producto, cantidad')
+          .timeout(const Duration(seconds: 15));
+      
+      int recoleccionesTotal = 0;
+      int distribucionesTotal = 0;
+      final Map<String, int> recoleccionesByState = {'Pendiente': 0, 'Asignada': 0, 'En Curso': 0, 'Terminada': 0};
+      final Map<String, int> distribucionesByState = {'Pendiente': 0, 'Asignada': 0, 'En Curso': 0, 'Terminada': 0};
+      final Map<String, Map<String, dynamic>> productTotals = {};
+
+      // Mapear códigos numéricos a alfanuméricos para consolidar correctamente los productos
+      final Map<String, String> numericToAlpha = {};
+      final Map<String, String> productToUnit = {};
+      for (var p in ProductosData.masterCatalog) {
+        final numCode = p['codigo']?.toString().trim();
+        final alphaCode = p['producto']?.toString().trim().toUpperCase();
+        final unit = p['unidad']?.toString() ?? 'uni';
+        if (numCode != null && alphaCode != null && alphaCode.isNotEmpty) {
+          numericToAlpha[numCode] = alphaCode;
+          productToUnit[alphaCode] = unit;
+          productToUnit[numCode] = unit;
+        }
+      }
+
+      for (var s in (solicitudesRaw as List)) {
+        final tipo = s['tipo']?.toString().toLowerCase() ?? '';
+        final estado = s['estado']?.toString() ?? 'Pendiente';
+        String prod = s['producto']?.toString().toUpperCase() ?? '';
+        if (numericToAlpha.containsKey(prod)) {
+          prod = numericToAlpha[prod]!;
+        }
+        final double qty = (s['cantidad'] as num?)?.toDouble() ?? 0.0;
+        final String unit = productToUnit[prod] ?? 'uni';
+
+        // Normalizar sub-estado de solicitud
+        String normEstado = 'Pendiente';
+        if (estado.toLowerCase() == 'asignada' || estado.toLowerCase() == 'asignado') normEstado = 'Asignada';
+        if (estado.toLowerCase() == 'en curso' || estado.toLowerCase() == 'en_curso' || estado.toLowerCase() == 'en proceso') normEstado = 'En Curso';
+        if (estado.toLowerCase() == 'terminada' || estado.toLowerCase() == 'terminado') normEstado = 'Terminada';
+
+        final bool isRecoleccion = tipo.contains('recol') || tipo.contains('rec');
+        final bool isDistribucion = tipo.contains('distrib') || tipo.contains('dist');
+
+        if (isRecoleccion) {
+          recoleccionesTotal++;
+          recoleccionesByState[normEstado] = (recoleccionesByState[normEstado] ?? 0) + 1;
+        } else if (isDistribucion) {
+          distribucionesTotal++;
+          distribucionesByState[normEstado] = (distribucionesByState[normEstado] ?? 0) + 1;
+        }
+
+        // Totales por producto
+        if (prod.isNotEmpty) {
+          if (productTotals.containsKey(prod)) {
+            productTotals[prod]!['cantidad'] = (productTotals[prod]!['cantidad'] as double) + qty;
+          } else {
+            productTotals[prod] = {
+              'producto': prod,
+              'cantidad': qty,
+              'unidad': unit,
+            };
+          }
+        }
+      }
+
       return {
         'totalKg': totalKg,
-        'viajesEnCurso': viajesData.length,
+        'viajesEnCurso': viajesEnCursoCount,
         'viajesActivos': viajesData,
-        'tamboresStock': (pesajesData as List).length,
+        'tamboresStock': tamboresStock,
+        'viajesCount': {
+          'pendientes': viajesPendientes,
+          'enCurso': viajesEnCursoCount,
+          'terminados': viajesTerminados,
+          'total': viajesAllRaw.length,
+        },
+        'solicitudesCount': {
+          'recoleccionesTotal': recoleccionesTotal,
+          'distribucionesTotal': distribucionesTotal,
+          'recoleccionesByState': recoleccionesByState,
+          'distribucionesByState': distribucionesByState,
+        },
+        'productTotals': productTotals.values.toList(),
       };
     } catch (e) {
-      return {'totalKg': 0.0, 'viajesEnCurso': 0, 'viajesActivos': [], 'tamboresStock': 0};
+      print('SupabaseService: Error en getGerenteStats: $e');
+      return {
+        'totalKg': 0.0,
+        'viajesEnCurso': 0,
+        'viajesActivos': [],
+        'tamboresStock': 0,
+        'viajesCount': {'pendientes': 0, 'enCurso': 0, 'terminados': 0, 'total': 0},
+        'solicitudesCount': {
+          'recoleccionesTotal': 0,
+          'distribucionesTotal': 0,
+          'recoleccionesByState': {'Pendiente': 0, 'Asignada': 0, 'En Curso': 0, 'Terminada': 0},
+          'distribucionesByState': {'Pendiente': 0, 'Asignada': 0, 'En Curso': 0, 'Terminada': 0},
+        },
+        'productTotals': [],
+      };
     }
   }
 
@@ -570,11 +818,27 @@ class SupabaseService {
           select: 'id, descripcion, codigo, unidad, activo',
           order: 'descripcion');
       
-      final dbProducts = list.where((p) => p['activo'] != false).map((p) => {
-        'id': p['id']?.toString(),
-        'codigo': p['codigo']?.toString() ?? '',
-        'descripcion': p['descripcion']?.toString() ?? '',
-        'unidad': p['unidad']?.toString() ?? 'Uni',
+      // Crear un mapeo de código numérico a alfanumérico basado en masterCatalog
+      final Map<String, String> numericToAlpha = {};
+      for (var p in ProductosData.masterCatalog) {
+        final numCode = p['codigo']?.toString().trim();
+        final alphaCode = p['producto']?.toString().trim().toUpperCase();
+        if (numCode != null && alphaCode != null && alphaCode.isNotEmpty) {
+          numericToAlpha[numCode] = alphaCode;
+        }
+      }
+
+      final dbProducts = list.where((p) => p['activo'] != false).map((p) {
+        String code = p['codigo']?.toString().trim().toUpperCase() ?? '';
+        if (numericToAlpha.containsKey(code)) {
+          code = numericToAlpha[code]!;
+        }
+        return {
+          'id': p['id']?.toString(),
+          'codigo': code,
+          'descripcion': p['descripcion']?.toString() ?? '',
+          'unidad': p['unidad']?.toString() ?? 'Uni',
+        };
       }).toList();
 
       // Mapeamos masterCatalog al mismo esquema uniforme
@@ -965,9 +1229,34 @@ class SupabaseService {
 
   Future<void> deleteSolicitud(String id) async {
     try {
+      // 1. Obtener las paradas que tengan este solicitud_id
+      final paradasRes = await _client.from('paradas')
+          .select('id')
+          .eq('solicitud_id', id);
+      
+      final List<dynamic> paradas = paradasRes as List;
+      for (var p in paradas) {
+        final pId = p['id'];
+        if (pId != null) {
+          try {
+            await _client.from('parada_items').delete().eq('parada_id', pId);
+          } catch (_) {}
+          try {
+            await _client.from('pesajes').delete().eq('parada_id', pId);
+          } catch (_) {}
+          try {
+            await _client.from('remitos').delete().eq('parada_id', pId);
+          } catch (_) {}
+          try {
+            await _client.from('paradas').delete().eq('id', pId);
+          } catch (_) {}
+        }
+      }
+      
+      // 2. Borrar la solicitud
       await _client.from('solicitudes').delete().eq('id', id);
     } catch (e) {
-      print('SupabaseService: Error eliminando solicitud: $e');
+      print('SupabaseService: Error eliminando solicitud en cascada: $e');
       throw 'No se pudo eliminar la solicitud: $e';
     }
   }

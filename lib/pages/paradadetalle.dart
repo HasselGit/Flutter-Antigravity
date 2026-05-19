@@ -70,7 +70,8 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
       
       // Corrección de unidades TCM y Reconciliación
       for (var item in items) {
-        if (item['producto_codigo'] == 'TCM') {
+        final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
+        if (pCode == 'TCM' || pCode == '1') {
           // 1. Corregir unidad si está mal (kg -> uni)
           if (item['unidad']?.toString().toLowerCase() != 'uni') {
             await Supabase.instance.client.from('parada_items').update({'unidad': 'uni'}).eq('id', item['id']);

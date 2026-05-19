@@ -272,14 +272,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                           ),
                         ],
                         _moduleCard(
-                          icon: Icons.inventory_2_rounded,
-                          title: 'Distribuciones',
-                          subtitle: 'Insumos y\nentregas',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/distribuciones'),
-                        ),
-                        _moduleCard(
                           icon: Icons.alt_route_rounded,
                           title: 'Control de Ruta',
                           subtitle: 'Trayectos activos\nen tiempo real',

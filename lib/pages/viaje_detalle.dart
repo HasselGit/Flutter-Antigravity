@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geo_logistica/backend/supabase_service.dart';
 import 'package:geo_logistica/backend/design_tokens.dart';
 import 'package:geo_logistica/backend/app_states.dart';
@@ -7,6 +8,9 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
+import 'dart:typed_data';
 
 class ViajeDetalleWidget extends StatefulWidget {
   final String viajeId;
@@ -363,6 +367,27 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     final remitos = List<Map<String, dynamic>>.from(p['remitos'] ?? []);
     final bool isViajeTerminado = AppStates.normalize(_viaje?['estado']) == AppStates.terminado;
     
+    // Determinar tipo display dinámico basado en productos reales
+    bool hasRecoleccion = false;
+    bool hasDistribucion = false;
+    for (var item in items) {
+      final code = (item['producto_codigo'] ?? '').toString().toUpperCase();
+      if (code == 'TCM' || code == '1' || code.contains('MIEL')) {
+        hasRecoleccion = true;
+      } else {
+        hasDistribucion = true;
+      }
+    }
+    
+    String tipoDisplay = p['tipo'] ?? 'Operación';
+    if (hasRecoleccion && hasDistribucion) {
+      tipoDisplay = 'Mixta';
+    } else if (hasRecoleccion) {
+      tipoDisplay = 'Recolección';
+    } else if (hasDistribucion) {
+      tipoDisplay = 'Distribución';
+    }
+    
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: isViajeTerminado ? null : () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
@@ -398,7 +423,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: theme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                  child: Text((p['tipo'] ?? 'Operación').toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
+                  child: Text(tipoDisplay.toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
                 ),
                 if (!isViajeTerminado) ...[
                   const SizedBox(width: 8),
@@ -476,30 +501,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                         IconButton(
                           icon: const Icon(Icons.visibility_rounded, color: Color(0xFF16A34A), size: 18),
                           tooltip: 'Ver PDF',
-                          onPressed: () async {
-                            try {
-                              final uri = Uri.parse(pdfUrl);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              }
-                            } catch (e) {
-                              print('Error opening PDF: $e');
-                            }
-                          },
+                          onPressed: () => _showPdfPreviewDialog(context, pdfUrl, 'Remito - $persona'),
                         ),
                         IconButton(
                           icon: const Icon(Icons.share_rounded, color: Color(0xFF16A34A), size: 18),
                           tooltip: 'Compartir',
-                          onPressed: () async {
-                            try {
-                              final uri = Uri.parse(pdfUrl);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              }
-                            } catch (e) {
-                              print('Error opening PDF: $e');
-                            }
-                          },
+                          onPressed: () => _sharePdf(pdfUrl, 'Remito - $persona'),
                         ),
                       ],
                     ],
@@ -592,7 +599,8 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
   Widget _buildRutaGroup(Map<String, dynamic> ruta, FlutterFlowTheme theme) {
     final paradasRuta = List<Map<String, dynamic>>.from(ruta['paradas'] ?? []);
-    final bool cambioPendiente = ruta['cambio_solicitado'] == true;
+    final bool isViajeEnCurso = AppStates.normalize(_viaje?['estado']) == AppStates.enCurso;
+    final bool cambioPendiente = ruta['cambio_solicitado'] == true && isViajeEnCurso;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -703,20 +711,110 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     paradasOrdenadas.sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
     
     final waypoints = paradasOrdenadas
-        .map((p) => '${p['ubicacion']}, ${p['localidad']}, La Pampa, Argentina')
+        .map((p) {
+          final ubi = (p['ubicacion'] ?? '').toString();
+          final loc = (p['localidad'] ?? '').toString();
+          if (ubi.toLowerCase().contains('sin apicultor') || ubi.isEmpty) {
+            if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty) {
+              return '';
+            }
+            return '$loc, La Pampa, Argentina';
+          }
+          if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty) {
+            return '$ubi, La Pampa, Argentina';
+          }
+          return '$ubi, $loc, La Pampa, Argentina';
+        })
+        .where((s) => s.isNotEmpty)
         .map((s) => Uri.encodeComponent(s))
         .join('|');
         
     final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico,+La+Pampa&destination=General+Pico,+La+Pampa&waypoints=$waypoints&travelmode=driving';
     
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir Google Maps'))
-        );
+    try {
+      final uri = Uri.parse(url);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
+    } catch (e) {
+      try {
+        final uri = Uri.parse(url);
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (err2) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No se pudo abrir Google Maps: $err2'))
+          );
+        }
+      }
+    }
+  }
+
+  Future<Uint8List> _downloadPdf(String url) async {
+    try {
+      // 1. Try public fetch
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        return res.bodyBytes;
+      }
+    } catch (_) {}
+    
+    // 2. Fallback to Supabase Storage direct download
+    try {
+      final fileName = url.split('/').last;
+      final bytes = await Supabase.instance.client.storage.from('remitos').download(fileName);
+      return bytes;
+    } catch (e) {
+      print('Error downloading PDF from Storage: $e');
+      rethrow;
+    }
+  }
+
+  void _showPdfPreviewDialog(BuildContext context, String url, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: DesignTokens.primary,
+          elevation: 0,
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+        body: FutureBuilder<Uint8List>(
+          future: _downloadPdf(url),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: DesignTokens.secondary));
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return Center(child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Error al cargar PDF: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
+              ));
+            }
+            return PdfPreview(
+              build: (format) => snapshot.data!,
+              allowPrinting: true,
+              allowSharing: true,
+              canChangePageFormat: false,
+              dynamicLayout: false,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sharePdf(String url, String filename) async {
+    try {
+      final bytes = await _downloadPdf(url);
+      await Printing.sharePdf(bytes: bytes, filename: '$filename.pdf');
+    } catch (e) {
+      print('Error sharing PDF: $e');
     }
   }
 }
