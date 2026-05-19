@@ -1,34 +1,33 @@
-# Sesión Actual - 18 de Mayo, 2026
+# Sesión Actual - 19 de Mayo, 2026
 
-## Objetivos Alcanzados: Panel Ejecutivo, Capacidad Dinámica en Depósito, Remitos Premium con Ubicación y Categoría Mixta, y Compilación Ofuscada
+## Objetivos Alcanzados: Estabilización Operativa del Terreno, Conciliación TCM/1, Navegación CEO y Corrección de Overflows
 
-### 1. 📊 Panel Ejecutivo para Roles CEO, Gerente y Gerencia
-- **Personalización de Interfaz**: Se acondicionó la cuadrícula de botones del Home en [homepage.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/homepage.dart) para detectar dinámicamente si el rol del usuario es ejecutivo (`CEO`, `Gerente` o `Gerencia`).
-- **Ocultamiento Inteligente**: Para estos perfiles, se removieron los botones grandes de color verde (`Gestión de Cargas`, `Control Pesajes`, `Gastos` y `Productos`), ofreciendo una pantalla limpia de control ejecutivo enfocada únicamente en KPIs y reportería superior.
-
-### 2. 🚛 Cálculo de Capacidad Dinámica y Exceso en Depósito
-- **Cálculo Físico Consolidado**: Modificado el flujo de carga en [depositohome.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/depositohome.dart) para resolver las capacidades del vehículo y la advertencia de exceso mediante la relación consolidada `cargas` e `carga_items`.
-- **Estructura Robusta**: Ahora realiza la consulta en tiempo real uniendo la carga asignada y sus ítems de carga activos, calculando el peso en base a reglas de factor de conversión (300 Kg por tambor `TCM`, 20 Kg por vacío `TV`). Cuenta con un fallback seguro que calcula a través de `parada_items` si aún no se ha consolidado físicamente la carga.
-
-### 3. 📄 Remitos Premium con Apicultor Localizado y Categoría Mixta
-- **Geolocalización en Remitos**: Se modificó `getRemitos()` en [supabase_service.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/backend/supabase_service.dart) para realizar un join profundo con `solicitudes` y `apicultores` (nombre y localidad).
-- **Adiós a los ID Planos / Apicultor S/D**: En [remitos_lista_page.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/remitos_lista_page.dart), las tarjetas de los remitos ahora despliegan elegantemente: **`"Apicultor (Localidad)"`** (ej. *Hassel (Parque Apícola)*) en lugar del nombre plano, otorgando un contexto geográfico inmediato.
-- **Peso Neto Removido**: Se limpió el diseño visual ocultando el valor del `PESO NETO` ("no es necesario que digan lo kg").
-- **Categorización Mixta Automática**: Si una parada contiene tanto ítems de recolección (`TCM`) como de distribución (insumos/vacíos), la app determina dinámicamente que es **"Distribución y Recolección"**.
-- **Filtro Mixto**: Se integró un nuevo chip horizontal de filtro rápido **"Mixta"** para aislar estas operaciones multifunción en la UI con total fluidez.
-
-### 4. 🛡️ Script y Pipeline de Compilación Segura con Ofuscación
-- **Automatización**: Se creó el archivo [build_apk_secure.ps1](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/build_apk_secure.ps1) en la raíz del proyecto.
-- **Protección de Datos e IP**: Este script automatiza la limpieza (`flutter clean`), resolución de paquetes (`flutter pub get`) y genera un binario de producción altamente seguro mediante `--obfuscate` y `--split-debug-info`, reemplazando todo rastro de nombres de clases y métodos por caracteres aleatorios ilegibles.
+Hoy hemos consolidado, verificado y estabilizado las últimas discrepancias operativas encontradas en terreno para garantizar una experiencia impecable tanto para el conductor en ruta como para el CEO en oficina.
 
 ---
 
-## Archivos Clave Modificados:
-- [homepage.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/homepage.dart): Ocultación condicional de tarjetas de gestión para perfiles directivos (CEO, Gerentes).
-- [depositohome.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/depositohome.dart): Integración de `cargas` y `carga_items` para el cálculo dinámico de exceso de carga del camión.
-- [supabase_service.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/backend/supabase_service.dart): Consulta enriquecida en `getRemitos()` con paradas, solicitudes y localidad de apicultores.
-- [remitos_lista_page.dart](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/lib/pages/remitos_lista_page.dart): Tarjetas con formato "Apicultor (Localidad)", remoción de peso neto, soporte para operaciones mixtas y chip de filtrado interactivo.
-- [build_apk_secure.ps1](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/build_apk_secure.ps1): Utilidad nativa automatizada para la compilación y ofuscación segura del APK de distribución.
+### 🛠️ 1. Restablecimiento de Estadísticas Reales del CEO
+- **Normalización de Codificación**: Corregimos un fallo crítico de sincronización donde los contadores del CEO se mostraban en `0`. Esto sucedía debido a discrepancias en la codificación de caracteres en la base de datos de Supabase (`Recolección` vs `Recoleccin`).
+- **Lógica Inteligente**: Modificamos el método `getGerenteStats()` en `SupabaseService` para buscar por subcadenas parciales (`tipo.contains('recol')` y `tipo.contains('distrib')`), resolviendo de forma permanente cualquier error tipográfico o de codificación.
+- **Navegación Interactiva**: Enlazamos las tarjetas de Distribuciones y Recolecciones en el Home del Gerente (`gerentehome.dart`) para que el CEO pueda hacer clic y navegar directamente a `/recolecciones` y `/distribuciones` con gestos y micro-animaciones fluidas.
+
+### 🚛 2. Conciliación y Equivalencia de Códigos de Pesaje TCM / 1
+- **Problema de Integridad**: El pesaje del chofer registraba el tambor de miel con el código interno `'1'`, mientras que la gerencia y la base de datos de administración exigían estrictamente el código `'TCM'`. Esto causaba que la carga recolectada se mantuviera en `0` en la pantalla final de viaje.
+- **Solución**: Programamos una equivalencia bidireccional en las clases operacionales de pesaje y remitos (`remito_registro.dart`, `paradadetalle.dart` y `viaje_detalle.dart`) para procesar y sumar indistintamente `'TCM'` o `'1'`. Ahora el inventario de miel recolectada se actualiza en tiempo real con precisión milimétrica.
+
+### 📱 3. Corrección de Desbordamiento de Pantalla por Teclado (Zebra de Flutter)
+- **Problema**: Al agregar insumos mediante la hoja inferior `AgregarItemWidget`, el teclado virtual del dispositivo móvil desbordaba verticalmente la UI, mostrando la clásica barra amarilla y negra de error.
+- **Solución**: Envolvimos el formulario principal de `agregaritem.dart` en un contenedor scrollable responsivo (`SingleChildScrollView`). Ahora, el formulario se desplaza de forma limpia e inteligente adaptándose al teclado sin desbordamientos de layout.
+
+### 📦 4. Deduplicación y Sincronización Única de Catálogo
+- **Centralización**: Eliminamos consultas directas duplicadas a la tabla `productos` que causaban que algunos dropdowns listaran productos duplicados o desordenados.
+- **Solución**: Homogeneizamos las pantallas `necesidades_page.dart`, `depositohome.dart`, `apicultor_detalle.dart`, y `agregaritem.dart` para consumir la consulta unificada de `SupabaseService().getProductos()`, garantizando consistencia a lo largo de toda la plataforma.
+
+### 🗺️ 5. Control de Visibilidad Condicional de Cambios de Ruta
+- **Acondicionamiento**: Ocultamos los componentes informativos de "Cambio de Ruta Solicitado" y "Aprobar Cambio de Ruta" en la pantalla de detalle de viaje (`viaje_detalle.dart`) cuando el viaje está planificado o finalizado, mostrando esta funcionalidad exclusiva de forma dinámica únicamente cuando el viaje se encuentra **"En Curso"**.
 
 ---
-*Sesión del 18 de Mayo finalizada con éxito rotundo. Todas las correcciones han sido aplicadas y verificadas, y el proceso de compilación segura está resguardado y listo para ser invocado.*
+
+## 💾 Sincronización y Compilación Exitosa
+- **Verificación**: Todo el código de la producción (`lib/`) se analizó exhaustivamente mediante `flutter analyze` y se encuentra **libre de errores de compilación**.
+- **Control de Versiones**: Los archivos actualizados fueron integrados en el commit local y sincronizados exitosamente con tu repositorio remoto de GitHub (`main`).
