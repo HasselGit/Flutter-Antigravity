@@ -53,6 +53,7 @@ dependencies:
   path: ^1.9.0
 
 dependency_overrides:
+  sqflite: 2.3.3+1
   flutter_barcode_scanner:
     git:
       url: https://github.com/decodevM/flutter_barcode_scanner.git
