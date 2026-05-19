@@ -1,5 +1,5 @@
 # Master Blueprint: Arquitectura y Lógica de GeoLogística
-**Versión:** 1.1 (17 de Mayo de 2026)
+**Versión:** 1.2 (19 de Mayo de 2026)
 **Objetivo:** Proveer una guía técnica infalible para la reconstrucción o continuación del proyecto por cualquier IA o desarrollador, garantizando 0 retrocesos.
 
 ## 1. Pilares Arquitectónicos
@@ -66,6 +66,16 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Almacenamiento**: No se guardan como cadenas base64 en la base de datos para no saturar las transacciones. En su lugar, se suben al Storage Bucket público de Supabase `remitos` mediante el helper robusto `_uploadFileWithAutoBucket`.
 - **Registro**: Se guardan las URLs públicas `firma_url` y `pdf_url` (generadas mediante `Printing` y subidas al Storage) en la fila del remito en la base de datos.
 
-### D. Reseteo de Paradas ("En Blanco" para Remito Continuo)
-- **Base de Datos**: Tan pronto como se confirma la emisión del remito actual, se realiza una transacción de limpieza en Supabase: se eliminan físicamente todos los `pesajes` asociados a esa parada y se setean a `0` las cantidades de todos los `parada_items`.
-- **Caché de UI**: En el retorno a `ParadaDetalleWidget`, se limpian los controladores locales mediante `_quantityControllers.clear()` y los controladores del receptor. Esto obliga a la interfaz a redibujarse completamente limpia, permitiendo iniciar inmediatamente un nuevo remito de producto.
+### D. Preservación de Cantidades y Remito Continuo
+- **Conservación de Datos**: Al confirmarse la firma y emisión del remito, **no** se restablecen a `0` las cantidades de `parada_items` ni se eliminan los `pesajes` físicos en Supabase. Esto asegura que la pantalla de *Detalle de Viaje* y los resúmenes ejecutivos preserven y muestren los valores reales completados en terreno.
+- **Caché de UI**: En el retorno a `ParadaDetalleWidget`, los controladores locales se sincronizan y refrescan de forma segura para permitir ediciones o revisiones del estado de entrega.
+
+## 8. Dashboard Premium & Eliminaciones en Cascada (CEO/Gerencia)
+- **Panel Ejecutivo Premium**: En `homepage.dart`, se ocultan condicionalmente los accesos operacionales (`Gestión de Cargas`, `Control Pesajes`, `Gastos`, `Productos`) para roles directivos (`CEO`, `Gerente`, `Gerencia`), presentándoles una interfaz ejecutiva pura de KPIs.
+- **Navegación Interactiva**: En `gerentehome.dart`, las tarjetas de Distribuciones y Recolecciones están enlazadas mediante animaciones de respuesta táctil (`InkWell` con chevrons) para redirigir fluidamente a `/recolecciones` y `/distribuciones`.
+- **Bypass de Codificación de Caracteres**: Las estadísticas del CEO calculan Distribuciones y Recolecciones en tiempo real mediante comparaciones de subcadena parciales (`tipo.contains('recol')` y `tipo.contains('distrib')`), previniendo que discrepancias de codificación (`Recolección` vs `Recoleccin` en Supabase) congelen los contadores en `0`.
+- **Cascada Inteligente de Solicitudes**: Al eliminar una solicitud desde el panel, el sistema realiza una limpieza profunda y transaccional sobre `parada_items`, `pesajes` y `remitos`. Si el viaje está en estado `Pendiente`, la solicitud es liberada al planificador volviendo de estado `Asignada` a `Pendiente`.
+
+## 9. Equivalencia de Productos de Terreno (TCM / 1)
+- **Conciliación de Códigos**: Los conductores registran los pesajes de tambores utilizando el código numérico `'1'`, mientras que el sistema administrativo procesa `'TCM'`.
+- **Lógica de Mapeo**: Se implementó una lógica de equivalencia bidireccional en las pantallas y validaciones clave (`remito_registro.dart`, `paradadetalle.dart` y `viaje_detalle.dart`). Ambas claves se consideran idénticas al sumar existencias, consolidar pesos y renderizar la interfaz.
