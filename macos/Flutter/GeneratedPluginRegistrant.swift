@@ -11,7 +11,7 @@ import printing
 import share_plus
 import shared_preferences_foundation
 import sign_in_with_apple
-import sqflite_darwin
+import sqflite
 import url_launcher_macos
 import webview_flutter_wkwebview
 

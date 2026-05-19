@@ -54,6 +54,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   String? _titularId;
   String? _titularNombre;
   String? _titularDni;
+  String? _apicultorTelefono;
   List<Map<String, dynamic>> _apicultoresList = [];
 
   @override
@@ -145,6 +146,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         _pesajes = List<Map<String, dynamic>>.from(results[1]);
         
         if (apicultorData != null && apicultorData['telefono'] != null) {
+          _apicultorTelefono = apicultorData['telefono'].toString();
           _telefonoController.text = apicultorData['telefono'].toString();
         }
         
@@ -771,6 +773,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                                 _titularId = result['id']?.toString();
                                 _titularNombre = result['nombre']?.toString();
                                 _titularDni = result['dni']?.toString();
+                                _apicultorTelefono = result['telefono']?.toString();
                                 if (result['telefono'] != null) {
                                   _telefonoController.text = result['telefono'].toString();
                                 }
@@ -862,6 +865,18 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                                   style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
                                   decoration: InputDecoration(
                                     labelText: 'DNI / CUIT',
+                                    labelStyle: const TextStyle(color: Colors.black54),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _telefonoController,
+                                  keyboardType: TextInputType.phone,
+                                  style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
+                                  decoration: InputDecoration(
+                                    labelText: 'Teléfono del Tercero (WhatsApp)',
                                     labelStyle: const TextStyle(color: Colors.black54),
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1166,9 +1181,11 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
           if (isApicultor) {
             _firmanteNombreController.text = _titularNombre ?? '';
             _firmanteDniController.text = _titularDni ?? '';
+            _telefonoController.text = _apicultorTelefono ?? '';
           } else {
             _firmanteNombreController.clear();
             _firmanteDniController.clear();
+            _telefonoController.clear();
           }
         });
       },

@@ -207,7 +207,7 @@ class _ChoferHomeWidgetState extends State<ChoferHomeWidget> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       children: [
-                        Expanded(child: _quickAction(Icons.inventory_2_rounded, 'PRODUCTOS', () => context.push('/productos'))),
+                        Expanded(child: _quickAction(Icons.inventory_2_rounded, 'CARGAS', () => context.push('/cargas'))),
                         const SizedBox(width: 12),
                         Expanded(child: _quickAction(Icons.account_balance_wallet_rounded, 'GASTOS', () => context.push('/gastos'))),
                         const SizedBox(width: 12),

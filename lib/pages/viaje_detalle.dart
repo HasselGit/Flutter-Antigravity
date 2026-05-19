@@ -77,7 +77,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_viaje == null) return const Scaffold(body: Center(child: Text('No se encontró el viaje')));
 
-    final paradas = List<Map<String, dynamic>>.from(_viaje!['paradas'] ?? []);
+    final paradas = List<Map<String, dynamic>>.from(_viaje!['paradas'] ?? [])
+      ..sort((a, b) {
+        final int oA = (a['orden_secuencia'] as num?)?.toInt() ?? 0;
+        final int oB = (b['orden_secuencia'] as num?)?.toInt() ?? 0;
+        return oA.compareTo(oB);
+      });
     final gastos = List<Map<String, dynamic>>.from(_viaje!['gastos'] ?? []);
     final chofer = _viaje!['chofer'] ?? _viaje!['profiles'] ?? {};
     final choferNombre = (chofer['nombre'] != null) 
@@ -355,10 +360,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
   Widget _buildParadaItem(Map<String, dynamic> p, FlutterFlowTheme theme) {
     final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
+    final remitos = List<Map<String, dynamic>>.from(p['remitos'] ?? []);
+    final bool isViajeTerminado = AppStates.normalize(_viaje?['estado']) == AppStates.terminado;
     
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/paradaDetalle?paradaId=${p['id']}'),
+      onTap: isViajeTerminado ? null : () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(20),
@@ -389,14 +396,16 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   ),
                 ),
                 Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: theme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                child: Text((p['tipo'] ?? 'Operación').toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, color: DesignTokens.primary, size: 20),
-            ],
-          ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: theme.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                  child: Text((p['tipo'] ?? 'Operación').toUpperCase(), style: TextStyle(color: theme.primary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
+                ),
+                if (!isViajeTerminado) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right_rounded, color: DesignTokens.primary, size: 20),
+                ],
+              ],
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(height: 1, thickness: 0.5),
@@ -415,30 +424,114 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               )).toList(),
               const SizedBox(height: 8),
             ],
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: p['remito_id'] != null ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                children: [
-                  Icon(Icons.description_outlined, size: 16, color: p['remito_id'] != null ? Colors.green[700] : Colors.orange),
-                  const SizedBox(width: 8),
-                  Text(
-                    p['remito_id'] != null ? 'REMITO: EMITIDO' : 'REMITO: PENDIENTE', 
-                    style: TextStyle(
-                      fontSize: 11, 
-                      fontWeight: FontWeight.w900, 
-                      color: p['remito_id'] != null ? Colors.green[700] : Colors.orange,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  if (p['remito_id'] != null) ...[
-                    const Spacer(),
-                    const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
-                  ],
-                ],
+            if (remitos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'DOCUMENTOS DE CONFORMIDAD:',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F5132),
+                  letterSpacing: 0.5,
+                ),
               ),
-            ),
-            if (p['remito_id'] == null)
+              const SizedBox(height: 6),
+              ...remitos.map((r) {
+                final String pdfUrl = r['pdf_url'] ?? '';
+                final String persona = r['persona_nombre'] ?? 'Receptor';
+                final String fechaRemito = r['fecha'] != null 
+                    ? DateFormat('dd/MM HH:mm').format(DateTime.parse(r['fecha'].toString()))
+                    : '';
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFDCFCE7)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.picture_as_pdf_rounded, size: 20, color: Color(0xFF16A34A)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Remito - $persona',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF14532D)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (fechaRemito.isNotEmpty)
+                              Text(
+                                'Emitido: $fechaRemito',
+                                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (pdfUrl.isNotEmpty) ...[
+                        IconButton(
+                          icon: const Icon(Icons.visibility_rounded, color: Color(0xFF16A34A), size: 18),
+                          tooltip: 'Ver PDF',
+                          onPressed: () async {
+                            try {
+                              final uri = Uri.parse(pdfUrl);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            } catch (e) {
+                              print('Error opening PDF: $e');
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.share_rounded, color: Color(0xFF16A34A), size: 18),
+                          tooltip: 'Compartir',
+                          onPressed: () async {
+                            try {
+                              final uri = Uri.parse(pdfUrl);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            } catch (e) {
+                              print('Error opening PDF: $e');
+                            }
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }).toList(),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: p['remito_id'] != null ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    Icon(Icons.description_outlined, size: 16, color: p['remito_id'] != null ? Colors.green[700] : Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      p['remito_id'] != null ? 'REMITO: EMITIDO' : 'REMITO: PENDIENTE', 
+                      style: TextStyle(
+                        fontSize: 11, 
+                        fontWeight: FontWeight.w900, 
+                        color: p['remito_id'] != null ? Colors.green[700] : Colors.orange,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    if (p['remito_id'] != null) ...[
+                      const Spacer(),
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (p['remito_id'] == null && !isViajeTerminado && _isChofer)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Row(

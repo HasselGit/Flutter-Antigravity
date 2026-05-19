@@ -8,6 +8,7 @@ import '../backend/design_tokens.dart';
 import '../backend/app_states.dart';
 import '../backend/supabase_service.dart';
 import 'remito_registro.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ParadaDetalleWidget extends StatefulWidget {
   const ParadaDetalleWidget({super.key, required this.paradaId});
@@ -29,22 +30,41 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   final _receptorDniController = TextEditingController();
   bool _isEditingQuantities = false;
   bool _isFinishing = false;
+  String? _userRole;
+  Map<String, dynamic>? _resolvedParada;
+
+  bool get _isChofer => _userRole == 'Chofer';
 
   @override
   void initState() {
     super.initState();
+    _loadUserRole();
     _paradaFuture = _fetchParadaData();
+  }
+
+  Future<void> _loadUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _userRole = prefs.getString('user_puesto');
+      });
+    }
   }
 
   Future<Map<String, dynamic>?> _fetchParadaData() async {
     if (widget.paradaId == null) return null;
     final data = await Supabase.instance.client
         .from('paradas')
-        .select('*, parada_items(*), remitos(*), pesajes(*)')
+        .select('*, parada_items(*), remitos(*), pesajes(*), viajes(vehiculo_codigo, viaje_codigo, estado)')
         .eq('id', widget.paradaId!)
         .maybeSingle();
     
     if (data != null) {
+      if (mounted) {
+        setState(() {
+          _resolvedParada = data;
+        });
+      }
       final items = List<Map<String, dynamic>>.from(data['parada_items'] ?? []);
       final pesajes = List<Map<String, dynamic>>.from(data['pesajes'] ?? []);
       
@@ -116,6 +136,10 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isParadaTerminada = _resolvedParada != null && AppStates.normalize(_resolvedParada!['estado']) == AppStates.terminado;
+    final bool isViajeTerminado = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.terminado;
+    final bool isReadOnly = !_isChofer || isParadaTerminada || isViajeTerminado;
+
     return Scaffold(
       backgroundColor: DesignTokens.surface,
       appBar: AppBar(
@@ -132,10 +156,11 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          IconButton(
-            icon: Icon(_isEditingQuantities ? Icons.check_circle_rounded : Icons.edit_note_rounded, color: DesignTokens.primary),
-            onPressed: () => setState(() => _isEditingQuantities = !_isEditingQuantities),
-          ),
+          if (!isReadOnly)
+            IconButton(
+              icon: Icon(_isEditingQuantities ? Icons.check_circle_rounded : Icons.edit_note_rounded, color: DesignTokens.primary),
+              onPressed: () => setState(() => _isEditingQuantities = !_isEditingQuantities),
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -165,12 +190,12 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                       children: [
                         _buildHeader(p),
                         const SizedBox(height: 32),
-                        _buildItemsSection(),
+                        _buildItemsSection(isReadOnly),
                         // Sección de pesaje — visible si hay algún item TCM
                         if ((p['parada_items'] as List? ?? []).any((it) => it['producto_codigo'] == 'TCM')) ...
-                          [const SizedBox(height: 32), _buildPesajeSection(p)],
+                          [const SizedBox(height: 32), _buildPesajeSection(p, isReadOnly)],
                         const SizedBox(height: 32),
-                        _buildDigitalRemitoForm(p),
+                        _buildDigitalRemitoForm(p, isReadOnly),
                         const SizedBox(height: 100),
                       ],
                     ),
@@ -185,7 +210,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   }
 
   // ─── SECCIÓN DE PESAJE (solo Recoleccion) ──────────────────────────────────
-  Widget _buildPesajeSection(Map<String, dynamic> p) {
+  Widget _buildPesajeSection(Map<String, dynamic> p, bool isReadOnly) {
     final viajeId = p['viaje_id']?.toString() ?? '';
     final apicultorNombre = p['ubicacion'] ?? p['localidad'] ?? 'S/D';
     final localidad = p['localidad'] ?? 'S/D';
@@ -346,40 +371,42 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     ),
                   ],
 
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.push(
-                        '/agregarPesaje',
-                        extra: {
-                          'paradaId': widget.paradaId ?? '',
-                          'viajeId': viajeId,
-                          'viajeCode': viajeCode,
-                          'apicultorNombre': apicultorNombre,
-                          'localidad': localidad,
-                          if (apicultorId != null) 'apicultorId': apicultorId,
-                        },
-                      ).then((_) => setState(() {
-                        _paradaFuture = _fetchParadaData();
-                      })),
-                      icon: Icon(
-                        pesajes.isNotEmpty ? Icons.edit_rounded : Icons.add_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      label: Text(
-                        pesajes.isNotEmpty ? 'MODIFICAR / AGREGAR PESAJE' : 'AGREGAR PESAJE',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: DesignTokens.primary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
+                  if (!isReadOnly) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: () => context.push(
+                          '/agregarPesaje',
+                          extra: {
+                            'paradaId': widget.paradaId ?? '',
+                            'viajeId': viajeId,
+                            'viajeCode': viajeCode,
+                            'apicultorNombre': apicultorNombre,
+                            'localidad': localidad,
+                            if (apicultorId != null) 'apicultorId': apicultorId,
+                          },
+                        ).then((_) => setState(() {
+                          _paradaFuture = _fetchParadaData();
+                        })),
+                        icon: Icon(
+                          pesajes.isNotEmpty ? Icons.edit_rounded : Icons.add_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        label: Text(
+                          pesajes.isNotEmpty ? 'MODIFICAR / AGREGAR PESAJE' : 'AGREGAR PESAJE',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: DesignTokens.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -432,7 +459,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     );
   }
 
-  Widget _buildItemsSection() {
+  Widget _buildItemsSection(bool isReadOnly) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -440,22 +467,23 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('RESUMEN DE PRODUCTOS', style: DesignTokens.labelStyle()),
-            TextButton.icon(
-              onPressed: () async {
-                await showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => AgregarItemWidget(paradaId: widget.paradaId!),
-                );
-                setState(() {
-                  _paradaFuture = _fetchParadaData();
-                });
-              },
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text('Agregar'),
-              style: TextButton.styleFrom(foregroundColor: DesignTokens.primary),
-            ),
+            if (!isReadOnly)
+              TextButton.icon(
+                onPressed: () async {
+                  await showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => AgregarItemWidget(paradaId: widget.paradaId!),
+                  );
+                  setState(() {
+                    _paradaFuture = _fetchParadaData();
+                  });
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                label: const Text('Agregar'),
+                style: TextButton.styleFrom(foregroundColor: DesignTokens.primary),
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -472,7 +500,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               itemCount: items.length,
               itemBuilder: (context, i) {
                 final item = items[i];
-                return _buildItemCard(item);
+                return _buildItemCard(item, isReadOnly);
               },
             );
           },
@@ -500,7 +528,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     );
   }
 
-  Widget _buildItemCard(Map<String, dynamic> item) {
+  Widget _buildItemCard(Map<String, dynamic> item, bool isReadOnly) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -526,7 +554,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               ],
             ),
           ),
-          if (_isEditingQuantities) ...[
+          if (!isReadOnly && _isEditingQuantities) ...[
             SizedBox(
               width: 70,
               child: TextField(
@@ -559,7 +587,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     );
   }
 
-  Widget _buildDigitalRemitoForm(Map<String, dynamic> p) {
+  Widget _buildDigitalRemitoForm(Map<String, dynamic> p, bool isReadOnly) {
     final remitos = p['remitos'] as List? ?? [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,58 +637,61 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               },
             ),
           )),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          height: 55,
-          child: ElevatedButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => RemitoRegistroPage(
-                  paradaId: widget.paradaId!,
-                  apicultorId: p['apicultor_id'],
-                  apicultorNombre: p['persona_nombre'] ?? p['ubicacion'],
-                  apicultorDni: p['persona_dni'],
-                  tipoOperacion: p['tipo'] ?? 'Recolección',
-                ),
-              ),
-            ).then((success) {
-              if (success == true) {
-                setState(() {
-                  _quantityControllers.clear();
-                  _receptorNombreController.clear();
-                  _receptorDniController.clear();
-                  _paradaFuture = _fetchParadaData();
-                });
-              }
-            }),
-            icon: const Icon(Icons.add_task_rounded, color: Colors.white),
-            label: const Text('GENERAR NUEVO REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A6B43),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-        ),
-        if (remitos.isNotEmpty) ...[
-          const SizedBox(height: 16),
+        if (!isReadOnly) ...[
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            height: 50,
-            child: OutlinedButton(
-              onPressed: () async {
-                setState(() => _isFinishing = true);
-                await SupabaseService().finalizarParada(widget.paradaId!, 'CAMION-01');
-                if (mounted) context.pop();
-              },
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: DesignTokens.primary),
+            height: 55,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RemitoRegistroPage(
+                    paradaId: widget.paradaId!,
+                    apicultorId: p['apicultor_id'],
+                    apicultorNombre: p['persona_nombre'] ?? p['ubicacion'],
+                    apicultorDni: p['persona_dni'],
+                    tipoOperacion: p['tipo'] ?? 'Recolección',
+                  ),
+                ),
+              ).then((success) {
+                if (success == true) {
+                  setState(() {
+                    _quantityControllers.clear();
+                    _receptorNombreController.clear();
+                    _receptorDniController.clear();
+                    _paradaFuture = _fetchParadaData();
+                  });
+                }
+              }),
+              icon: const Icon(Icons.add_task_rounded, color: Colors.white),
+              label: const Text('GENERAR NUEVO REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A6B43),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('FINALIZAR PARADA COMPLETA', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
             ),
           ),
+          if (remitos.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton(
+                onPressed: () async {
+                  setState(() => _isFinishing = true);
+                  final String vehiculoCodigo = p['viajes']?['vehiculo_codigo']?.toString() ?? 'CAMION-01';
+                  await SupabaseService().finalizarParada(widget.paradaId!, vehiculoCodigo);
+                  if (mounted) context.pop();
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: DesignTokens.primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('FINALIZAR PARADA COMPLETA', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
         ],
       ],
     );

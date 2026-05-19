@@ -127,7 +127,7 @@ class SupabaseService {
       }
       try {
         final rutas = await _client.from('rutas')
-            .select('*, paradas(*, parada_items(*))')
+            .select('*, paradas(*, parada_items(*), remitos(*))')
             .eq('viaje_id', viajeId).order('created_at');
         viaje['rutas_data'] = rutas;
         
@@ -142,7 +142,7 @@ class SupabaseService {
       } catch (_) { 
         // Fallback a paradas directas si no hay rutas aún
         final paradas = await _client.from('paradas')
-            .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+            .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
             .eq('viaje_id', viajeId).order('orden_secuencia');
         viaje['paradas'] = paradas;
       }
