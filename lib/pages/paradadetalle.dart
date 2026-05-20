@@ -34,6 +34,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   Map<String, dynamic>? _resolvedParada;
 
   bool get _isChofer => _userRole == 'Chofer';
+  bool get _isAdmin => Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
 
   @override
   void initState() {
@@ -141,7 +142,8 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     final bool isViajeTerminado = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.terminado;
     final List<dynamic> remitosList = _resolvedParada != null ? (_resolvedParada!['remitos'] as List? ?? []) : [];
     final bool hasNoRemito = remitosList.isEmpty;
-    final bool isReadOnly = !_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado;
+    // El admin tiene acceso total; el chofer puede editar si no hay remito aún en parada terminada
+    final bool isReadOnly = _isAdmin ? false : (!_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado);
 
     return Scaffold(
       backgroundColor: DesignTokens.surface,
@@ -614,7 +616,48 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               leading: const Icon(Icons.description_rounded, color: DesignTokens.primary),
               title: Text('Remito #${r['id'].toString().substring(0, 6).toUpperCase()}'),
               subtitle: Text('Fecha: ${r['fecha'] != null ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(r['fecha'])) : 'S/D'} | Tipo: ${r['tipo'] ?? 'S/D'}'),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.chevron_right_rounded),
+                  // Botón eliminar remito: solo visible para admin
+                  if (_isAdmin)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                      tooltip: 'Eliminar remito (Admin)',
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Eliminar Remito'),
+                            content: const Text('¿Confirma eliminar este remito? La parada volverá a estar editable para regenerarlo.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                child: const Text('ELIMINAR'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true && mounted) {
+                          try {
+                            await SupabaseService().deleteRemito(r['id'].toString(), widget.paradaId!);
+                            setState(() { _paradaFuture = _fetchParadaData(); });
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Remito eliminado. La parada está editable nuevamente.'), backgroundColor: Colors.orange),
+                            );
+                          } catch (e) {
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                ],
+              ),
               onTap: () async {
                 final url = r['pdf_url'];
                 if (url != null && url.isNotEmpty) {

@@ -25,6 +25,7 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   bool _loading = true;
   String? _error;
   String? _userRole;
+  bool _isAdmin = false; // hassel00@gmail.com tiene acceso total
 
   final List<String> _tabs = ['PENDIENTE', 'EN PROCESO', 'TERMINADOS'];
   final List<String> _statusKeys = ['Pendiente', 'En Proceso', 'Terminado'];
@@ -47,9 +48,13 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
     try {
       final prefs = await SharedPreferences.getInstance();
       final userRole = prefs.getString('user_puesto');
-      if (mounted) setState(() => _userRole = userRole);
+      final userEmail = Supabase.instance.client.auth.currentUser?.email ?? '';
+      if (mounted) setState(() {
+        _userRole = userRole;
+        _isAdmin = (userEmail == 'hassel00@gmail.com');
+      });
       final userId = prefs.getString('user_id');
-      print('ViajesPage: Iniciando fetch para role: $userRole, userId: $userId');
+      print('ViajesPage: Iniciando fetch para role: $userRole, userId: $userId, admin: $_isAdmin');
 
       final data = await SupabaseService().getViajes(userId: userId, role: userRole);
       
@@ -300,8 +305,8 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
                                 style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Work Sans'),
                               ),
                             ),
-                            if ((_userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
-                                (estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado'))
+                            if ((_isAdmin || _userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') &&
+                                (_isAdmin || estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado'))
                               Row(
                                 children: [
                                   IconButton(

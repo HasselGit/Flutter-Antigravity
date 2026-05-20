@@ -572,6 +572,7 @@ class SupabaseService {
           .from('solicitudes')
           .select('*, apicultores(*)')
           .eq('estado', AppStates.pendiente)
+          .neq('estado', 'Eliminada') // doble seguridad
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 15));
       return List<Map<String, dynamic>>.from(data);
@@ -1271,6 +1272,22 @@ class SupabaseService {
 
   Future<void> deleteParadaItem(String itemId) async {
     await _client.from('parada_items').delete().eq('id', itemId);
+  }
+
+  /// Elimina un remito y restablece la parada a editable (solo para admin).
+  Future<void> deleteRemito(String remitoId, String paradaId) async {
+    try {
+      // Eliminar el remito
+      await _client.from('remitos').delete().eq('id', remitoId);
+      // Resetear la parada: quitar remito_id y volver a En Proceso para que se pueda regenerar
+      await _client.from('paradas').update({
+        'remito_id': null,
+        'estado': AppStates.enCurso,
+      }).eq('id', paradaId);
+    } catch (e) {
+      print('SupabaseService: Error eliminando remito: $e');
+      throw 'No se pudo eliminar el remito: $e';
+    }
   }
 
   Future<void> finalizarParada(String paradaId, String vehiculoCodigo) async {

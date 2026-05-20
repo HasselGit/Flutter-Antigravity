@@ -53,8 +53,9 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   bool get _isChofer => _userRole == 'Chofer';
+  bool get _isAdmin => Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
   bool get _canEditRoute =>
-      _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras';
+      _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras';
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
     setState(() => _saving = true);
@@ -112,6 +113,41 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.primary),
+        actions: [
+          // Botón de eliminar viaje: solo disponible para el admin
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              tooltip: 'Eliminar viaje (Admin)',
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Eliminar Viaje'),
+                    content: Text('¿Está seguro de eliminar el viaje ${_viaje!['viaje_codigo']}? Esta acción no se puede deshacer.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                        child: const Text('ELIMINAR'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && mounted) {
+                  try {
+                    await SupabaseService().deleteViaje(widget.viajeId);
+                    if (mounted) context.pop();
+                  } catch (e) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error al eliminar: $e'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -383,14 +419,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     if (hasRecoleccion && hasDistribucion) {
       tipoDisplay = 'Mixta';
     } else if (hasRecoleccion) {
-      tipoDisplay = 'Recolección';
+                          tipoDisplay = 'Recolección';
     } else if (hasDistribucion) {
       tipoDisplay = 'Distribución';
     }
     
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: isViajeTerminado ? null : () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
+      onTap: (isViajeTerminado && !_isAdmin) ? null : () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
+
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(20),

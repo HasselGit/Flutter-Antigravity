@@ -528,70 +528,81 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModal) => Container(
-          decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Agregar Ítem', style: TextStyle(fontFamily: 'Manrope',
-                    fontSize: 20, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  hint: const Text('Producto'),
-                  value: selectedProductoCode,
-                  decoration: InputDecoration(
-                      filled: true, fillColor: DesignTokens.surfaceLow,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none)),
-                  items: _productos.map((p) => DropdownMenuItem<String>(
-                    value: p['codigo'].toString(),
-                    child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? ''}',
-                        overflow: TextOverflow.ellipsis),
-                  )).toList(),
-                  onChanged: (v) => setModal(() {
-                    selectedProductoCode = v;
-                    selectedProducto = _productos.firstWhere((x) => x['codigo'].toString() == v);
-                  }),
+        builder: (ctx, setModal) {
+          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+          return Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: SafeArea(
+              top: false,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.75,
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: qtyController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                      labelText: 'Cantidad',
-                      filled: true, fillColor: DesignTokens.surfaceLow,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none)),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity, height: 52,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (selectedProducto == null || qtyController.text.isEmpty) return;
-                      setState(() {
-                        _newItems.add({
-                          'producto_codigo': selectedProducto!['codigo'] ?? selectedProducto!['descripcion'],
-                          'cantidad': double.tryParse(qtyController.text) ?? 0,
-                          'unidad': selectedProducto!['unidad'] ?? 'UN',
-                        });
-                      });
-                      Navigator.pop(ctx);
-                    },
-                    style: DesignTokens.primaryButtonStyle,
-                    child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.bold)),
+                decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Agregar Ítem', style: TextStyle(fontFamily: 'Manrope',
+                          fontSize: 20, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        hint: const Text('Producto'),
+                        value: selectedProductoCode,
+                        decoration: InputDecoration(
+                            filled: true, fillColor: DesignTokens.surfaceLow,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none)),
+                        items: _productos.map((p) => DropdownMenuItem<String>(
+                          value: p['codigo'].toString(),
+                          child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? ''}',
+                              overflow: TextOverflow.ellipsis),
+                        )).toList(),
+                        onChanged: (v) => setModal(() {
+                          selectedProductoCode = v;
+                          selectedProducto = _productos.firstWhere((x) => x['codigo'].toString() == v);
+                        }),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: qtyController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                            labelText: 'Cantidad',
+                            filled: true, fillColor: DesignTokens.surfaceLow,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none)),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity, height: 52,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (selectedProducto == null || qtyController.text.isEmpty) return;
+                            setState(() {
+                              _newItems.add({
+                                'producto_codigo': selectedProducto!['codigo'] ?? selectedProducto!['descripcion'],
+                                'cantidad': double.tryParse(qtyController.text) ?? 0,
+                                'unidad': selectedProducto!['unidad'] ?? 'UN',
+                              });
+                            });
+                            Navigator.pop(ctx);
+                          },
+                          style: DesignTokens.primaryButtonStyle,
+                          child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

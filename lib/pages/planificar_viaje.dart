@@ -77,9 +77,12 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
             }
           }
           if (solIds.isNotEmpty) {
-            // Buscamos estas solicitudes específicas aunque no estén pendientes
+            // Buscamos estas solicitudes específicas aunque no estén pendientes,
+            // pero excluimos las Eliminadas (no deben reaparecer en el planificador)
             final data = await Supabase.instance.client.from('solicitudes')
-                .select('*, apicultores(*)').filter('id', 'in', solIds);
+                .select('*, apicultores(*)')
+                .filter('id', 'in', solIds)
+                .neq('estado', 'Eliminada');
             asignadasAlViaje.addAll(List<Map<String, dynamic>>.from(data as List));
           }
         }
