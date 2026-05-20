@@ -1,5 +1,5 @@
 # Master Blueprint: Arquitectura y Lógica de GeoLogística
-**Versión:** 1.3 (20 de Mayo de 2026)
+**Versión:** 1.4 (20 de Mayo de 2026)
 **Objetivo:** Proveer una guía técnica infalible para la reconstrucción o continuación del proyecto por cualquier IA o desarrollador, garantizando 0 retrocesos.
 
 ## 1. Pilares Arquitectónicos
@@ -40,8 +40,9 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 
 ## 5. Prevención de Errores Comunes (Checklist)
 - [ ] **Cascada de Eliminación**: Al borrar un viaje, limpiar primero `carga_items`, luego `cargas`, luego `parada_items`, luego `paradas`, y finalmente el viaje. Liberar solicitudes (`estado = 'Pendiente'`).
-- [ ] **Saneamiento de Solicitudes Eliminadas**: Toda consulta que adquiera solicitudes de forma global debe filtrar `.neq('estado', 'Eliminada')` para prevenir persistencias indeseadas en planificadores, dashboards o perfiles de apicultores.
+- [ ] **Saneamiento de Solicitudes Eliminadas**: Toda consulta que adquiera solicitudes de forma global debe filtrar `.neq('estado', 'Eliminada')` para prevenir persistencias indeseadas en planificadores, dashboards o perfiles de apicultores. **CRÍTICO**: `getNecesidadesPendientes()` también debe incluir `.neq('estado', 'Eliminada')` como doble seguridad, ya que el `.eq('estado', 'Pendiente')` y el `.neq('estado', 'Eliminada')` son redundantes pero necesarios para prevenir edge cases. El planificador al cargar solicitudes ya asignadas a un viaje en edición también debe filtrar `Eliminadas` explícitamente.
 - [ ] **Desbloqueo de Parada en Proceso**: Una parada con estado DB `'Terminada'` pero sin remitos válidos (`remitos.isEmpty`) no debe considerarse de solo lectura para el chofer; esto permite al chofer completar pesajes pendientes y emitir el remito faltante.
+- [ ] **Modal Overflow (BottomSheet con Teclado)**: Cuando un `showModalBottomSheet` contiene campos de texto, la técnica correcta es: (1) envolver el contenido en `Padding(padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom))`, (2) luego en `SafeArea(top: false)`, (3) luego el `Container` con `constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75)`. NUNCA aplicar el padding del teclado directamente al `Container` sin `maxHeight`.
 - [ ] **Sintaxis Dart**: Mantener `dart analyze` con 0 errores. Evitar llaves de cierre accidentales que corten clases.
 - [ ] **Refresh**: Siempre llamar a `_fetchDetailedData()` o equivalentes después de un `insert/update` para reflejar cambios en la UI.
 - [ ] **Null Safety**: Usar `.maybeSingle()` y verificaciones de nulidad en campos como `localidad` y `nombre` (posibles swaps en DB).
@@ -82,3 +83,18 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 ## 9. Equivalencia de Productos de Terreno (TCM / 1)
 - **Conciliación de Códigos**: Los conductores registran los pesajes de tambores utilizando el código numérico `'1'`, mientras que el sistema administrativo procesa `'TCM'`.
 - **Lógica de Mapeo**: Se implementó una lógica de equivalencia bidireccional en las pantallas y validaciones clave (`remito_registro.dart`, `paradadetalle.dart` y `viaje_detalle.dart`). Ambas claves se consideran idénticas al sumar existencias, consolidar pesos y renderizar la interfaz.
+
+## 10. Permisos de Super-Administrador (hassel00@gmail.com)
+- **Identificación**: El administrador se identifica por su email de Supabase Auth: `hassel00@gmail.com`. Se obtiene en runtime mediante `Supabase.instance.client.auth.currentUser?.email`.
+- **Getter estándar**: En cada página que necesite permisos extendidos usar: `bool get _isAdmin => Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';`
+- **Capacidades exclusivas del Admin**:
+  - Editar y eliminar viajes en **cualquier estado** (incluyendo `Terminado`), a diferencia de otros roles que solo pueden en `Pendiente`/`En Proceso`.
+  - Navegar a paradas de viajes `Terminados` (otros usuarios ven las tarjetas como no-tapeables).
+  - Eliminar remitos individuales de una parada. Al eliminar, el sistema restablece `parada.estado = 'En Proceso'` y `parada.remito_id = null`, dejando la parada editable para regenerar el remito. Método: `SupabaseService().deleteRemito(remitoId, paradaId)`.
+  - En `ParadaDetalleWidget`, `isReadOnly = false` siempre para el admin, independientemente del estado de la parada o el viaje.
+
+## 11. Sincronización con Google Sheets
+- **Estado actual**: La sincronización con Google Sheets es **manual**, no automática. Se realiza ejecutando el script `scratch/sync_sheets_to_supabase.dart` desde la terminal cuando se cargan nuevos apicultores en el Sheet.
+- **Sheet ID**: `1vcg7nmkTfp_AyTTkTOGuGu7k-B2eAAUA_V8P24wa1Es` (hoja `gid=1388406787`).
+- **Mecanismo**: El script descarga el Sheet como CSV y hace `upsert` en la tabla `apicultores` de Supabase.
+- **Pendiente**: Integrar un botón de sincronización manual en la UI del admin, o bien disparar la sincronización en segundo plano al iniciar sesión como `hassel00@gmail.com`.

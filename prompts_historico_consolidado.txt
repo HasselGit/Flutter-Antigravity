@@ -320,22 +320,32 @@ Para usar en Google Antigravity (otra computadora)
 
 CONTRATO Y REQUERIMIENTO DEL DÍA:
 ──────────────────────────
-El usuario solicita realizar tres tareas principales:
+El usuario solicita realizar tareas críticas de estabilidad, visuales y lógica operativa:
 1. Limpieza visual en la UI de 'viaje_detalle.dart' para eliminar la lista de productos/cantidades planificadas (ej. TCM = 5 uni) de cada parada, dejando visibles únicamente los remitos emitidos (Documentos de Conformidad).
 2. Modificar la lógica de solo lectura en 'paradadetalle.dart' para desbloquear aquellas paradas que figuran como Terminadas pero que aún no poseen remitos asociados (remitosList.isEmpty), permitiendo al chofer realizar pesajes y emitir el remito.
 3. Saneamiento profundo de solicitudes eliminadas para que desaparezcan de todas las secciones del sistema (planificador, perfil de apicultor, estadísticas de gerencia y dashboard) mediante la implementación de un Borrado Lógico estableciendo el estado a 'Eliminada' y agregando filtros en las consultas correspondientes.
+4. Soporte completo de Super-Administrador para el usuario 'hassel00@gmail.com' en toda la app, permitiéndole editar y borrar viajes terminados, y eliminar remitos existentes (para poder reactivar paradas y rehacerlas si es necesario).
+5. Corrección visual en el modal de "Agregar Nueva Carga" (carga_detalle.dart) que provocaba desbordamiento (overflow) vertical de la barra amarilla/negra y textos rojos al abrirse el teclado numérico.
 
 RESULTADOS OBTENIDOS:
 ──────────────────────────
-- UI Viaje Detalle: Se eliminó el bloque de renderizado de productos y cantidades planificados en las tarjetas de paradas en 'viaje_detalle.dart'.
+- UI Viaje Detalle: Se eliminó el bloque de renderizado de productos y cantidades planificados en las tarjetas de paradas en 'viaje_detalle.dart', mostrando solo remitos generados.
 - UI Detalle Parada: Se modificó la condición de 'isReadOnly' en 'paradadetalle.dart' basándose en 'remitosList.isEmpty', permitiendo al chofer registrar pesajes y remitos si no se han cargado aún.
 - Borrado Lógico en Backend: Se ajustó 'SupabaseService.deleteSolicitud' para ejecutar un UPDATE de estado a 'Eliminada'.
 - Filtrado de Solicitudes Eliminadas:
   1. Se modificó 'SupabaseService.getAllNecesidades' agregando el filtro '.neq('estado', 'Eliminada')'.
-  2. Se modificó 'SupabaseService.getGerenteStats' agregando el filtro '.neq('estado', 'Eliminada')'.
-  3. Se modificó la consulta en el perfil del apicultor en 'apicultor_detalle.dart' agregando el filtro '.neq('estado', 'Eliminada')'.
-- Documentación: Se actualizó 'ARQUITECTURA_GEOLOGISTICA.md' a la versión 1.3 documentando la nueva estrategia de borrado lógico y el desbloqueo de paradas sin remito.
-- Compilación y Validación: Se corrió 'flutter analyze' con éxito para garantizar 0 errores estáticos.
+  2. Se modificó 'SupabaseService.getNecesidadesPendientes' agregando el filtro '.neq('estado', 'Eliminada')'.
+  3. Se modificó 'SupabaseService.getGerenteStats' agregando el filtro '.neq('estado', 'Eliminada')'.
+  4. Se modificó la consulta en el perfil del apicultor en 'apicultor_detalle.dart' agregando el filtro '.neq('estado', 'Eliminada')'.
+  5. Se modificó en 'planificar_viaje.dart' la carga de necesidades asignadas para filtrar solicitudes eliminadas.
+- Permisos Super-Administrador:
+  - Se habilitó en 'viajes_page.dart', 'viaje_detalle.dart' y 'paradadetalle.dart' el getter `_isAdmin` basado en el correo 'hassel00@gmail.com'.
+  - El administrador ahora puede editar/eliminar viajes finalizados o terminados y navegar a sus paradas de solo lectura.
+  - Se implementó 'SupabaseService.deleteRemito' y se colocó un botón de eliminación en 'paradadetalle.dart' visible solo para el admin, el cual borra el remito, resetea la parada a 'En Proceso' y libera el enlace del remito.
+- Corrección de Overflow en Modal Carga:
+  - En 'carga_detalle.dart', se envolvió el contenido del modal en un `SafeArea` y se aplicó un padding dinámico de `MediaQuery.of(context).viewInsets.bottom` para levantar el formulario cuando el teclado numérico aparece, junto con restricciones de altura máxima `BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75)` y un scroll seguro para evitar cualquier desbordamiento visual.
+- Documentación: Se actualizó 'ARQUITECTURA_GEOLOGISTICA.md' a la versión 1.4 documentando las reglas de Super-Admin, los modales y el flujo de Google Sheets.
+- Compilación y Validación: Se corrió 'flutter analyze' con éxito para garantizar 0 errores estáticos y compilación exitosa.
 
 ================================================================================
 ARCHIVO INCORPORADO: instrucciones_generales.txt
