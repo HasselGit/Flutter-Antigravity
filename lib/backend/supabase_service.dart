@@ -462,6 +462,7 @@ class SupabaseService {
       // 5. Estadísticas de solicitudes (Distribuciones vs Recolecciones) y Totales por Producto
       final solicitudesRaw = await _client.from('solicitudes')
           .select('tipo, estado, producto, cantidad')
+          .neq('estado', 'Eliminada')
           .timeout(const Duration(seconds: 15));
       
       int recoleccionesTotal = 0;
@@ -585,6 +586,7 @@ class SupabaseService {
       final List<dynamic> data = await _client
           .from('solicitudes')
           .select('*, apicultores(*)')
+          .neq('estado', 'Eliminada')
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 15));
       return List<Map<String, dynamic>>.from(data);
@@ -1229,34 +1231,10 @@ class SupabaseService {
 
   Future<void> deleteSolicitud(String id) async {
     try {
-      // 1. Obtener las paradas que tengan este solicitud_id
-      final paradasRes = await _client.from('paradas')
-          .select('id')
-          .eq('solicitud_id', id);
-      
-      final List<dynamic> paradas = paradasRes as List;
-      for (var p in paradas) {
-        final pId = p['id'];
-        if (pId != null) {
-          try {
-            await _client.from('parada_items').delete().eq('parada_id', pId);
-          } catch (_) {}
-          try {
-            await _client.from('pesajes').delete().eq('parada_id', pId);
-          } catch (_) {}
-          try {
-            await _client.from('remitos').delete().eq('parada_id', pId);
-          } catch (_) {}
-          try {
-            await _client.from('paradas').delete().eq('id', pId);
-          } catch (_) {}
-        }
-      }
-      
-      // 2. Borrar la solicitud
-      await _client.from('solicitudes').delete().eq('id', id);
+      // Realizar borrado lógico cambiando el estado de la solicitud a 'Eliminada'
+      await _client.from('solicitudes').update({'estado': 'Eliminada'}).eq('id', id);
     } catch (e) {
-      print('SupabaseService: Error eliminando solicitud en cascada: $e');
+      print('SupabaseService: Error en borrado lógico de solicitud: $e');
       throw 'No se pudo eliminar la solicitud: $e';
     }
   }

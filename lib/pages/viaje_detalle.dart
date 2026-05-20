@@ -435,20 +435,6 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(height: 1, thickness: 0.5),
             ),
-            if (items.isNotEmpty) ...[
-              ...items.map((it) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.inventory_2_rounded, size: 16, color: Color(0xFFC68E17)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(it['producto_codigo'] ?? 'Producto', style: const TextStyle(fontSize: 14, color: Color(0xFF1E352F), fontWeight: FontWeight.w500))),
-                    Text('${it['cantidad'] ?? 0} ${it['unidad'] ?? 'KG'}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF08201A))),
-                  ],
-                ),
-              )).toList(),
-              const SizedBox(height: 8),
-            ],
             if (remitos.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Text(

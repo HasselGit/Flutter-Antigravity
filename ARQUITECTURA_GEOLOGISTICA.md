@@ -1,5 +1,5 @@
 # Master Blueprint: Arquitectura y Lógica de GeoLogística
-**Versión:** 1.2 (19 de Mayo de 2026)
+**Versión:** 1.3 (20 de Mayo de 2026)
 **Objetivo:** Proveer una guía técnica infalible para la reconstrucción o continuación del proyecto por cualquier IA o desarrollador, garantizando 0 retrocesos.
 
 ## 1. Pilares Arquitectónicos
@@ -25,6 +25,7 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 2. `Asignada`: Vinculada a un viaje (parada) pero el viaje no ha iniciado.
 3. `En Curso`: El viaje ha sido iniciado por el chofer.
 4. `Terminada / Finalizada`: Operación completada con remito generado.
+5. `Eliminada` (Borrado Lógico): Para evitar violaciones de integridad referencial histórica o fallos de políticas RLS, la eliminación de una solicitud actualiza su estado a `'Eliminada'`. Las vistas del planificador, estadísticas y perfiles las filtran de forma activa.
 
 ## 3. Estructura de Datos y Relaciones
 - **Viajes -> Paradas**: Un viaje tiene múltiples paradas.
@@ -39,6 +40,8 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 
 ## 5. Prevención de Errores Comunes (Checklist)
 - [ ] **Cascada de Eliminación**: Al borrar un viaje, limpiar primero `carga_items`, luego `cargas`, luego `parada_items`, luego `paradas`, y finalmente el viaje. Liberar solicitudes (`estado = 'Pendiente'`).
+- [ ] **Saneamiento de Solicitudes Eliminadas**: Toda consulta que adquiera solicitudes de forma global debe filtrar `.neq('estado', 'Eliminada')` para prevenir persistencias indeseadas en planificadores, dashboards o perfiles de apicultores.
+- [ ] **Desbloqueo de Parada en Proceso**: Una parada con estado DB `'Terminada'` pero sin remitos válidos (`remitos.isEmpty`) no debe considerarse de solo lectura para el chofer; esto permite al chofer completar pesajes pendientes y emitir el remito faltante.
 - [ ] **Sintaxis Dart**: Mantener `dart analyze` con 0 errores. Evitar llaves de cierre accidentales que corten clases.
 - [ ] **Refresh**: Siempre llamar a `_fetchDetailedData()` o equivalentes después de un `insert/update` para reflejar cambios en la UI.
 - [ ] **Null Safety**: Usar `.maybeSingle()` y verificaciones de nulidad en campos como `localidad` y `nombre` (posibles swaps en DB).

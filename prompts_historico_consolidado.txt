@@ -309,8 +309,36 @@ ARCHIVO: 2026-05-17_prompts.txt
 [2026-05-17 00:24] USER: no estas haciendo lo que te pedi sobre el los archivos que generas cuando hacemos "guardar todo"  necesito saber si todo esta alineado con eso
 
 
+
 ================================================================================
-ARCHIVO INCOPORADO: instrucciones_generales.txt
+ARCHIVO: 2026-05-20_prompts.txt
+================================================================================
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 20/05/2026
+Para usar en Google Antigravity (otra computadora)
+══════════════════════════════════════════════════════════════════
+
+CONTRATO Y REQUERIMIENTO DEL DÍA:
+──────────────────────────
+El usuario solicita realizar tres tareas principales:
+1. Limpieza visual en la UI de 'viaje_detalle.dart' para eliminar la lista de productos/cantidades planificadas (ej. TCM = 5 uni) de cada parada, dejando visibles únicamente los remitos emitidos (Documentos de Conformidad).
+2. Modificar la lógica de solo lectura en 'paradadetalle.dart' para desbloquear aquellas paradas que figuran como Terminadas pero que aún no poseen remitos asociados (remitosList.isEmpty), permitiendo al chofer realizar pesajes y emitir el remito.
+3. Saneamiento profundo de solicitudes eliminadas para que desaparezcan de todas las secciones del sistema (planificador, perfil de apicultor, estadísticas de gerencia y dashboard) mediante la implementación de un Borrado Lógico estableciendo el estado a 'Eliminada' y agregando filtros en las consultas correspondientes.
+
+RESULTADOS OBTENIDOS:
+──────────────────────────
+- UI Viaje Detalle: Se eliminó el bloque de renderizado de productos y cantidades planificados en las tarjetas de paradas en 'viaje_detalle.dart'.
+- UI Detalle Parada: Se modificó la condición de 'isReadOnly' en 'paradadetalle.dart' basándose en 'remitosList.isEmpty', permitiendo al chofer registrar pesajes y remitos si no se han cargado aún.
+- Borrado Lógico en Backend: Se ajustó 'SupabaseService.deleteSolicitud' para ejecutar un UPDATE de estado a 'Eliminada'.
+- Filtrado de Solicitudes Eliminadas:
+  1. Se modificó 'SupabaseService.getAllNecesidades' agregando el filtro '.neq('estado', 'Eliminada')'.
+  2. Se modificó 'SupabaseService.getGerenteStats' agregando el filtro '.neq('estado', 'Eliminada')'.
+  3. Se modificó la consulta en el perfil del apicultor en 'apicultor_detalle.dart' agregando el filtro '.neq('estado', 'Eliminada')'.
+- Documentación: Se actualizó 'ARQUITECTURA_GEOLOGISTICA.md' a la versión 1.3 documentando la nueva estrategia de borrado lógico y el desbloqueo de paradas sin remito.
+- Compilación y Validación: Se corrió 'flutter analyze' con éxito para garantizar 0 errores estáticos.
+
+================================================================================
+ARCHIVO INCORPORADO: instrucciones_generales.txt
 ================================================================================
 
 GE O L O G Í S T I C A

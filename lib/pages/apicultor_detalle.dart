@@ -163,6 +163,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
       final allSolsRes = await client.from('solicitudes')
           .select('*')
           .or(orFilter)
+          .neq('estado', 'Eliminada')
           .order('created_at', ascending: false);
       
       final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes as List);

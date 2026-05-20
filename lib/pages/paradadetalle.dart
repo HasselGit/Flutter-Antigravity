@@ -139,7 +139,9 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   Widget build(BuildContext context) {
     final bool isParadaTerminada = _resolvedParada != null && AppStates.normalize(_resolvedParada!['estado']) == AppStates.terminado;
     final bool isViajeTerminado = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.terminado;
-    final bool isReadOnly = !_isChofer || isParadaTerminada || isViajeTerminado;
+    final List<dynamic> remitosList = _resolvedParada != null ? (_resolvedParada!['remitos'] as List? ?? []) : [];
+    final bool hasNoRemito = remitosList.isEmpty;
+    final bool isReadOnly = !_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado;
 
     return Scaffold(
       backgroundColor: DesignTokens.surface,
