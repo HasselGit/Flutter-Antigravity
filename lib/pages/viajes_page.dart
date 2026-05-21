@@ -48,7 +48,7 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
     try {
       final prefs = await SharedPreferences.getInstance();
       final userRole = prefs.getString('user_puesto');
-      final userEmail = Supabase.instance.client.auth.currentUser?.email ?? '';
+      final userEmail = prefs.getString('user_email') ?? Supabase.instance.client.auth.currentUser?.email ?? '';
       if (mounted) setState(() {
         _userRole = userRole;
         _isAdmin = (userEmail == 'hassel00@gmail.com');

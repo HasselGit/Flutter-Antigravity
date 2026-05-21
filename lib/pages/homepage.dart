@@ -64,6 +64,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   }
 
   String get _displayName => _userName?.isNotEmpty == true ? _userName! : 'Usuario';
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
   String get _initials {
     final parts = _displayName.split(' ').where((s) => s.isNotEmpty).toList();
     if (parts.isEmpty) return 'U';
@@ -200,7 +201,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/depositoHome'),
                           ),
-                        if (_userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO') ...[
+                        if (_isAdmin || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO' || _userRole == 'Compras')
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
                             title: 'Gestión de Viajes',
@@ -209,6 +210,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/viajes'),
                           ),
+                        if (_isAdmin || _userRole == 'Gerente' || _userRole == 'Gerencia' || _userRole == 'Admin' || _userRole == 'CEO')
                           _moduleCard(
                             icon: Icons.dashboard_customize_rounded,
                             title: 'Dashboard',
@@ -217,7 +219,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gerenteHome'),
                           ),
-                        ],
                         if ((_userRole == 'Compras' || _userRole == 'Admin APP') && _userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia')
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
@@ -477,13 +478,16 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                _drawerItem(Icons.dashboard_rounded, 'Dashboard', () => context.push('/gerenteHome')),
+                if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Admin' || _userRole == 'Gerencia')
+                  _drawerItem(Icons.dashboard_rounded, 'Dashboard', () => context.push('/gerenteHome')),
+                if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Gerencia')
+                  _drawerItem(Icons.alt_route_rounded, 'Gestión de Viajes', () => context.push('/viajes')),
                 _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
                 _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
                 _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                 _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
                 _drawerItem(Icons.warehouse_rounded, 'Cargas Depósito', () => context.push('/depositoHome')),
-                if (_userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
+                if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
                   _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),
                 const Divider(),
                 _drawerItem(Icons.group_rounded, 'Apicultores', () => context.push('/apicultores')),

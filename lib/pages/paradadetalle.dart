@@ -31,10 +31,11 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   bool _isEditingQuantities = false;
   bool _isFinishing = false;
   String? _userRole;
+  String? _userEmail;
   Map<String, dynamic>? _resolvedParada;
 
   bool get _isChofer => _userRole == 'Chofer';
-  bool get _isAdmin => Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
 
   @override
   void initState() {
@@ -48,6 +49,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     if (mounted) {
       setState(() {
         _userRole = prefs.getString('user_puesto');
+        _userEmail = prefs.getString('user_email');
       });
     }
   }
@@ -74,9 +76,13 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
         final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
         if (pCode == 'TCM' || pCode == '1') {
           // 1. Corregir unidad si está mal (kg -> uni)
-          if (item['unidad']?.toString().toLowerCase() != 'uni') {
-            await Supabase.instance.client.from('parada_items').update({'unidad': 'uni'}).eq('id', item['id']);
-            item['unidad'] = 'uni';
+          final String unitRaw = (item['unidad'] ?? '').toString();
+          final String unitBase = unitRaw.contains('|') ? unitRaw.split('|').first : unitRaw;
+          if (unitBase.toLowerCase() != 'uni') {
+            final String unitOp = unitRaw.contains('|') ? '|${unitRaw.split('|').last}' : '';
+            final String newUnit = 'uni$unitOp';
+            await Supabase.instance.client.from('parada_items').update({'unidad': newUnit}).eq('id', item['id']);
+            item['unidad'] = newUnit;
           }
           // 2. Reconciliación con pesajes
           if (pesajes.isNotEmpty) {
@@ -140,10 +146,11 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   Widget build(BuildContext context) {
     final bool isParadaTerminada = _resolvedParada != null && AppStates.normalize(_resolvedParada!['estado']) == AppStates.terminado;
     final bool isViajeTerminado = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.terminado;
+    final bool isViajePendiente = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.pendiente;
     final List<dynamic> remitosList = _resolvedParada != null ? (_resolvedParada!['remitos'] as List? ?? []) : [];
     final bool hasNoRemito = remitosList.isEmpty;
-    // El admin tiene acceso total; el chofer puede editar si no hay remito aún en parada terminada
-    final bool isReadOnly = _isAdmin ? false : (!_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado);
+    // El admin tiene acceso total si el viaje comenzó; el chofer puede editar si el viaje comenzó y no hay remito aún en parada terminada. Si no comenzó, es solo lectura para todos.
+    final bool isReadOnly = isViajePendiente || (_isAdmin ? false : (!_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado));
 
     return Scaffold(
       backgroundColor: DesignTokens.surface,
@@ -193,6 +200,28 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (isViajePendiente)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Consulta únicamente. El viaje aún no ha comenzado.',
+                                    style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         _buildHeader(p),
                         const SizedBox(height: 32),
                         _buildItemsSection(isReadOnly),
@@ -534,6 +563,17 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
   }
 
   Widget _buildItemCard(Map<String, dynamic> item, bool isReadOnly) {
+    final String unitRaw = (item['unidad'] ?? 'uni').toString();
+    final parts = unitRaw.split('|');
+    final String unitBase = parts.first;
+    final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+
+    final bool isRecoleccion = opType == 'Recolección';
+    final Color badgeBg = isRecoleccion ? const Color(0xFFFEF3C7) : const Color(0xFFDBEAFE); // Soft Amber vs Soft Blue
+    final Color badgeTextColor = isRecoleccion ? const Color(0xFFD97706) : const Color(0xFF2563EB); // Amber 600 vs Blue 600
+    final IconData badgeIcon = isRecoleccion ? Icons.upload_rounded : Icons.download_rounded;
+    final String badgeLabel = isRecoleccion ? 'RETIRO' : 'ENTREGA';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -546,16 +586,58 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: DesignTokens.surface, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.shopping_bag_rounded, color: DesignTokens.primary, size: 20),
+            decoration: BoxDecoration(
+              color: isRecoleccion ? const Color(0xFFFFFBEB) : const Color(0xFFF0F9FF),
+              borderRadius: BorderRadius.circular(12)
+            ),
+            child: Icon(
+              isRecoleccion ? Icons.upload_rounded : Icons.download_rounded,
+              color: isRecoleccion ? const Color(0xFFD97706) : const Color(0xFF2563EB),
+              size: 20
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item['producto_codigo'] ?? 'Producto', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: DesignTokens.primary)),
-                Text(item['unidad'] ?? 'unidades', style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
+                Row(
+                  children: [
+                    Text(
+                      item['producto_codigo'] ?? 'Producto',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: DesignTokens.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: badgeBg,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(badgeIcon, size: 10, color: badgeTextColor),
+                          const SizedBox(width: 3),
+                          Text(
+                            badgeLabel,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: badgeTextColor,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  unitBase,
+                  style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -741,71 +823,5 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
         ],
       ],
     );
-  }
-
-  Widget _buildInputField(String label, TextEditingController controller, IconData icon) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 20, color: DesignTokens.primary.withOpacity(0.5)),
-        filled: true,
-        fillColor: DesignTokens.surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      ),
-    );
-  }
-
-  Widget _buildDropdownField(String label, String? value, List<String> items, Function(String?) onChanged) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: DesignTokens.surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      ),
-    );
-  }
-
-  Future<void> _finalizarYGenerarRemito(Map<String, dynamic> p) async {
-    final nombre = _receptorNombreController.text.trim();
-    final dni = _receptorDniController.text.trim();
-    
-    if (nombre.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingrese el nombre del responsable')));
-      return;
-    }
-
-    setState(() => _isFinishing = true);
-
-    try {
-      // 1. Sincronizar Stock y Cambiar Estados
-      final vehiculoCodigo = p['viaje_id_codigo'] ?? p['vehiculo_codigo'] ?? 'CAMION-01'; // Fallback if not available
-      // Note: We need the actual vehiculo_codigo. Let's try to fetch it if not in p.
-      String vCode = vehiculoCodigo;
-      if (vCode == 'CAMION-01') {
-        final v = await Supabase.instance.client.from('viajes').select('vehiculo_codigo').eq('id', p['viaje_id']).maybeSingle();
-        if (v != null) vCode = v['vehiculo_codigo'];
-      }
-
-      await SupabaseService().finalizarParada(p['id'], vCode);
-
-      // 2. Navegar a RemitoPage
-      if (mounted) {
-        context.push(
-          '/remito?paradaId=${widget.paradaId}&receptorTipo=${Uri.encodeComponent(_receptorTipo ?? 'Apicultor')}&receptorNombre=${Uri.encodeComponent(nombre)}&receptorDni=${Uri.encodeComponent(dni)}',
-        ).then((_) {
-          if (mounted) setState(() => _isFinishing = false);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isFinishing = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al finalizar: $e'), backgroundColor: Colors.red));
-      }
-    }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
 import '../backend/app_states.dart';
 import '../backend/design_tokens.dart';
@@ -20,6 +21,7 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
   bool _loading = true;
   String? _userRole;
   String? _userId;
+  String? _userEmail;
 
   final _tabs = [AppStates.pendiente, AppStates.enCurso, AppStates.terminado];
   final _tabLabels = ['PENDIENTE', 'EN CURSO', 'TERMINADO'];
@@ -43,6 +45,7 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
       setState(() {
         _userRole = prefs.getString('user_puesto');
         _userId = prefs.getString('user_id');
+        _userEmail = prefs.getString('user_email');
       });
     }
     await _fetchCargas();
@@ -52,8 +55,13 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
     setState(() => _loading = true);
     try {
       final data = await SupabaseService().getCargas();
+      print('CargasPage: Cargas fetched. Count: ${data.length}');
+      for (var c in data) {
+        print('CargasPage: Carga ID=${c['id']}, Codigo=${c['carga_codigo']}, Items=${c['carga_items']} (type: ${c['carga_items']?.runtimeType})');
+      }
       if (mounted) setState(() { _cargas = data; _loading = false; });
     } catch (e) {
+      print('CargasPage: Error fetching cargas: $e');
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -61,8 +69,10 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
   List<Map<String, dynamic>> _cargasPorEstado(String estado) =>
       _cargas.where((c) => (c['estado'] ?? AppStates.pendiente) == estado).toList();
 
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+
   bool get _canCreate =>
-      _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP';
+      _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP';
 
   @override
   Widget build(BuildContext context) {
@@ -182,12 +192,20 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
     int totalTamb = 0;
     for (final item in items) {
       final qty = (item['cantidad'] as num?)?.toDouble() ?? 0;
-      final prod = (item['producto_codigo'] ?? '').toLowerCase();
-      if (prod.contains('tcm') || prod.contains('tambor')) {
-        totalKg += qty * 300; totalTamb += qty.round();
-      } else if (prod.contains('tv') || prod.contains('vacio') || prod.contains('vacío')) {
-        totalKg += qty * 20; totalTamb += qty.round();
-      } else { totalKg += qty; }
+      final prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+      if (prod == 'TCM' || prod.contains('TAMBOR')) {
+        totalKg += qty * 300;
+        totalTamb += qty.round();
+      } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+          prod.contains('VACIO') ||
+          prod.contains('VACÍO')) {
+        totalKg += qty * 20;
+        totalTamb += qty.round();
+      } else if (prod == 'AZ') {
+        totalKg += qty * 50;
+      } else {
+        totalKg += qty;
+      }
     }
 
     return GestureDetector(

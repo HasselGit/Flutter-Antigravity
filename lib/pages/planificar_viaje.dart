@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../backend/design_tokens.dart';
+import '../backend/productos_data.dart';
 
 class PlanificarViajeWidget extends StatefulWidget {
   final String? editId;
@@ -36,6 +37,26 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
   double _totalKg = 0;
   int _totalTambores = 0;
   double _distanciaEstimada = 0;
+
+  bool _isUnitProduct(String? productCode) {
+    if (productCode == null) return false;
+    final codeClean = productCode.trim().toUpperCase();
+    final match = ProductosData.masterCatalog.firstWhere(
+      (p) => p['producto']?.toString().toUpperCase() == codeClean || p['codigo']?.toString() == codeClean,
+      orElse: () => <String, dynamic>{},
+    );
+    if (match.isNotEmpty) {
+      final String unidad = (match['unidad'] ?? '').toString().toLowerCase();
+      return unidad.contains('uni') || unidad.contains('un');
+    }
+    final fallbackCode = codeClean.toLowerCase();
+    return fallbackCode.contains('tcm') || 
+           fallbackCode.contains('trr') || 
+           fallbackCode.contains('tambor') || 
+           fallbackCode.contains('uni') ||
+           fallbackCode == '1' ||
+           fallbackCode == '2';
+  }
 
   @override
   void initState() {
@@ -223,14 +244,17 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     
     for (final Map<String, dynamic> n in _selectedNecesidades) {
       final double cant = (n['cantidad'] ?? 0).toDouble();
-      final String prod = (n['producto'] ?? '').toString().toLowerCase();
+      final String prod = (n['producto'] ?? '').toString().toUpperCase();
       
-      if (prod.contains('tcm') || (prod.contains('miel') && prod.contains('tambor'))) {
+      if (prod == 'TCM' || prod.contains('TAMBOR CON MIEL')) {
         tempKg += cant * 300.0;
         tempTambores += cant.round();
       } 
-      else if ((prod.contains('vacío') || prod.contains('vacio') || prod.contains('tv') || prod.contains('tambor')) 
-                && !prod.contains('cera')) {
+      else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+          prod.contains('VACIO') ||
+          prod.contains('VACÍO') ||
+          prod.contains('TV') ||
+          (prod.contains('TAMBOR') && !prod.contains('CERA'))) {
         tempTambores += cant.round();
         tempKg += cant * 20.0; 
       }
@@ -259,7 +283,12 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     const String baseLocation = 'General Pico, La Pampa, Argentina';
     
     final intermediateLocalities = _selectedNecesidades
-        .map((n) => n['apicultores']?['localidad']?.toString() ?? n['localidad_nombre']?.toString() ?? '')
+        .map((n) {
+          final String localidad = n['apicultores']?['localidad']?.toString() ?? n['localidad_nombre']?.toString() ?? n['localidad']?.toString() ?? '';
+          final String provincia = n['apicultores']?['provincia']?.toString() ?? '';
+          if (localidad.isEmpty) return '';
+          return provincia.isNotEmpty ? '$localidad, $provincia, Argentina' : '$localidad, Argentina';
+        })
         .where((l) => l.isNotEmpty)
         .toSet()
         .toList();
@@ -398,8 +427,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
                   final String localidad = (n['apicultores']?['localidad'] ?? n['localidad_nombre'] ?? n['localidad'] ?? 'Sin Localidad').toString();
                   final String tipo = n['tipo'] ?? 'S/T';
                   
-                  // Simplificar detección de unidad para evitar bloqueos
-                  final bool esUnidades = productoRaw.toLowerCase().contains('tambor') || productoRaw.toLowerCase().contains('un');
+                  final bool esUnidades = _isUnitProduct(productoRaw);
                   final String unidad = esUnidades ? 'Un.' : 'Kg';
                   
                   return Container(

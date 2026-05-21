@@ -195,13 +195,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
             if (prod.isNotEmpty) {
               aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
             }
-            final String prodLower = prod.toLowerCase();
-            if (prodLower.contains('tcm')) {
+            if (prod == 'TCM' || prod.contains('TAMBOR')) {
               totalKg += cant * 300;
               totalTambores += cant.toInt();
-            } else if (prodLower.contains('vacio') || prodLower.contains('vacío') || prodLower.contains('tv')) {
+            } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+                prod.contains('VACIO') ||
+                prod.contains('VACÍO')) {
               totalKg += cant * 20;
               totalTambores += cant.toInt();
+            } else if (prod == 'AZ') {
+              totalKg += cant * 50;
             } else {
               totalKg += cant;
             }
@@ -215,13 +218,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
               if (prod.isNotEmpty) {
                 aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
               }
-              final String prodLower = prod.toLowerCase();
-              if (prodLower.contains('tcm')) {
+              if (prod == 'TCM' || prod.contains('TAMBOR')) {
                 totalKg += cant * 300;
                 totalTambores += cant.toInt();
-              } else if (prodLower.contains('vacio') || prodLower.contains('vacío') || prodLower.contains('tv')) {
+              } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+                  prod.contains('VACIO') ||
+                  prod.contains('VACÍO')) {
                 totalKg += cant * 20;
                 totalTambores += cant.toInt();
+              } else if (prod == 'AZ') {
+                totalKg += cant * 50;
               } else {
                 totalKg += cant;
               }

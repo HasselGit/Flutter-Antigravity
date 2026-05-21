@@ -44,6 +44,12 @@ void main() async {
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
     );
     print('Main: Supabase OK');
+
+    // Limpiar cualquier sesión vieja/stale de Supabase Auth persistida en secure storage
+    try {
+      await Supabase.instance.client.auth.signOut();
+      print('Main: Sesión previa de Supabase Auth cerrada con éxito para asegurar RLS correcto');
+    } catch (_) {}
     
     // Inicialización de Locale en segundo plano para no bloquear el inicio
     initializeDateFormatting('es_AR', null);

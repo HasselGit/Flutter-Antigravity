@@ -20,9 +20,11 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
   List<Map<String, dynamic>> _pendientes = [];
   List<Map<String, dynamic>> _recientes = [];
   Map<String, Map<String, double>> _resumenDetallado = {}; 
+  Map<String, Map<String, double>> _resumenPendiente = {}; 
   Map<String, int> _statusCounts = {};
   bool _isLoading = true;
   double _maxTotal = 1.0;
+  double _maxTotalPendiente = 1.0;
   String? _userRole;
 
   @override
@@ -157,9 +159,9 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         idCandidates.add('A$numericPart');
       }
       final uniqueCandidates = idCandidates.toSet().toList();
-
+ 
       String orFilter = uniqueCandidates.map((id) => 'apicultor_id.eq.$id').join(',');
-
+ 
       final allSolsRes = await client.from('solicitudes')
           .select('*')
           .or(orFilter)
@@ -167,7 +169,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           .order('created_at', ascending: false);
       
       final List<Map<String, dynamic>> allSols = List<Map<String, dynamic>>.from(allSolsRes as List);
-
+ 
       // Enriquecer con remitos y datos de producto de forma ultra segura
       for (var s in allSols) {
         s['remito_codigo'] = null;
@@ -177,7 +179,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         final resolved = _resolveProductInfo(prodRaw.toString());
         s['producto_display'] = resolved['descripcion'];
         s['unidad_display'] = resolved['unidad'];
-
+ 
         try {
           final paradasData = await client.from('paradas')
               .select('id')
@@ -197,7 +199,7 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
           print('Error recuperando remito para apicultor detalle: $e');
         }
       }
-
+ 
       final List<Map<String, dynamic>> activas = allSols.where((s) {
         final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase().trim();
         return estado != 'terminada' && estado != 'terminado' &&
@@ -205,22 +207,23 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                estado != 'completada' && estado != 'completado' &&
                estado != 'cancelada' && estado != 'cancelado';
       }).toList();
-
+ 
       final List<Map<String, dynamic>> recientes = allSols.where((s) {
         final estado = (s['estado'] ?? 'Pendiente').toString().toLowerCase().trim();
         return estado == 'terminada' || estado == 'terminado' ||
                estado == 'finalizada' || estado == 'finalizado' ||
                estado == 'completada' || estado == 'completado';
       }).take(10).toList();
-
+ 
       final Map<String, Map<String, double>> resumen = {};
+      final Map<String, Map<String, double>> resumenPendiente = {};
       final Map<String, int> estadoCounts = {
         'PENDIENTES': 0,
         'ASIGNADAS': 0,
         'EN CURSO': 0,
         'TERMINADAS': 0,
       };
-
+ 
       for (var s in allSols) {
         final prodDisplay = s['producto_display'] ?? s['producto'] ?? 'S/D';
         final cant = double.tryParse(s['cantidad']?.toString() ?? '0') ?? 0;
@@ -228,36 +231,53 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         final String tipo = tipoRaw.toLowerCase().contains('recolecci') ? 'Recolección' : 'Distribución';
         final estado = (s['estado'] ?? 'Pendiente').toString().toUpperCase().trim();
         
-        resumen.putIfAbsent(prodDisplay, () => {});
-        resumen[prodDisplay]![tipo] = (resumen[prodDisplay]![tipo] ?? 0) + cant;
-
+        final bool isCompleted = estado.contains('TERMINADA') || estado.contains('TERMINADO') ||
+                                 estado.contains('FINALIZADA') || estado.contains('FINALIZADO') ||
+                                 estado.contains('COMPLETADA') || estado.contains('COMPLETADO');
+        final bool isCanceled = estado.contains('CANCELADA') || estado.contains('CANCELADO') || estado.contains('ELIMINADA');
+        
+        if (isCompleted) {
+          resumen.putIfAbsent(prodDisplay, () => {});
+          resumen[prodDisplay]![tipo] = (resumen[prodDisplay]![tipo] ?? 0) + cant;
+        } else if (!isCanceled) {
+          resumenPendiente.putIfAbsent(prodDisplay, () => {});
+          resumenPendiente[prodDisplay]![tipo] = (resumenPendiente[prodDisplay]![tipo] ?? 0) + cant;
+        }
+ 
         if (estado.contains('PENDIENTE')) {
           estadoCounts['PENDIENTES'] = (estadoCounts['PENDIENTES'] ?? 0) + 1;
         } else if (estado.contains('ASIGNADA')) {
           estadoCounts['ASIGNADAS'] = (estadoCounts['ASIGNADAS'] ?? 0) + 1;
         } else if (estado.contains('CURSO') || estado.contains('PROCESO')) {
           estadoCounts['EN CURSO'] = (estadoCounts['EN CURSO'] ?? 0) + 1;
-        } else if (estado.contains('TERMINADA') || estado.contains('TERMINADO') ||
-                   estado.contains('FINALIZADA') || estado.contains('FINALIZADO') ||
-                   estado.contains('COMPLETADA') || estado.contains('COMPLETADO')) {
+        } else if (isCompleted) {
           estadoCounts['TERMINADAS'] = (estadoCounts['TERMINADAS'] ?? 0) + 1;
         }
       }
-
-      // Calcular maxTotal para barras de progreso
+ 
+      // Calcular maxTotal para barras de progreso histórico
       double maxT = 1.0;
       for (var prodResumen in resumen.values) {
         double prodTotal = prodResumen.values.fold(0.0, (a, b) => a + b);
         if (prodTotal > maxT) maxT = prodTotal;
       }
-
+      
+      // Calcular maxTotalPendiente para barras de progreso pendiente
+      double maxTPendiente = 1.0;
+      for (var prodResumen in resumenPendiente.values) {
+        double prodTotal = prodResumen.values.fold(0.0, (a, b) => a + b);
+        if (prodTotal > maxTPendiente) maxTPendiente = prodTotal;
+      }
+ 
       if (mounted) {
         setState(() {
           _pendientes = activas;
           _recientes = recientes;
           _resumenDetallado = resumen;
+          _resumenPendiente = resumenPendiente;
           _statusCounts = estadoCounts;
           _maxTotal = maxT;
+          _maxTotalPendiente = maxTPendiente;
           _isLoading = false;
         });
       }
@@ -328,9 +348,17 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
                     ..._pendientes.map((s) => _buildPendienteCard(s)).toList(),
 
                   const SizedBox(height: 40),
+                  _buildSectionHeader('Total Estimado Pendiente', null),
+                  const SizedBox(height: 16),
+                  if (_resumenPendiente.isEmpty)
+                    _buildEmptyState('No hay solicitudes pendientes o en proceso')
+                  else
+                    _buildProductSummaryPendiente(),
+ 
+                  const SizedBox(height: 40),
                   _buildStatusOverview(),
                   const SizedBox(height: 24),
-                  _buildSectionHeader('Resumen por Producto', null),
+                  _buildSectionHeader('Resumen por Producto (Histórico)', null),
                   const SizedBox(height: 16),
                   if (_resumenDetallado.isEmpty)
                     _buildEmptyState('Sin operaciones registradas')
@@ -848,6 +876,100 @@ class _ApicultorDetalleWidgetState extends State<ApicultorDetalleWidget> {
         final totalsByType = entry.value;
         return _buildProductCardDetailed(product, totalsByType);
       }).toList(),
+    );
+  }
+
+  Widget _buildProductSummaryPendiente() {
+    return Column(
+      children: _resumenPendiente.entries.map<Widget>((entry) {
+        final product = entry.key;
+        final totalsByType = entry.value;
+        return _buildProductCardDetailedPendiente(product, totalsByType);
+      }).toList(),
+    );
+  }
+
+  Widget _buildProductCardDetailedPendiente(String product, Map<String, double> totalsByType) {
+    final resolved = _resolveProductInfo(product);
+    final String unitLabel = resolved['unidad'] ?? 'unidades';
+    double total = totalsByType.values.fold(0, (sum, v) => sum + v);
+    IconData icon = Icons.hive_rounded;
+    Color iconColor = const Color(0xFFD97706); // Amber
+    
+    if (product.toLowerCase().contains('tambor')) icon = Icons.inventory_2_rounded;
+    else if (product.toLowerCase().contains('alimento')) icon = Icons.eco_rounded;
+    else if (product.toLowerCase().contains('cera')) icon = Icons.layers_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFEF3C7).withOpacity(0.5)), // Soft amber border
+        boxShadow: [BoxShadow(color: const Color(0xFFD97706).withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: iconColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, size: 22, color: iconColor),
+              ),
+              Row(
+                children: totalsByType.entries.map((t) => Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: t.key.toLowerCase().contains('recolección') || t.key.toLowerCase().contains('entrega') 
+                        ? const Color(0xFFFEF3C7) 
+                        : const Color(0xFFDBEAFE),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${t.key}: ${NumberFormat('#,###', 'es_AR').format(t.value)}',
+                    style: TextStyle(
+                      fontSize: 10, 
+                      fontWeight: FontWeight.bold, 
+                      color: t.key.toLowerCase().contains('recolección') || t.key.toLowerCase().contains('entrega') 
+                          ? const Color(0xFFD97706) 
+                          : const Color(0xFF2563EB)
+                    ),
+                  ),
+                )).toList(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(product.toUpperCase(), style: DesignTokens.labelStyle().copyWith(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(NumberFormat('#,###', 'es_AR').format(total), 
+                style: DesignTokens.headlineStyle().copyWith(fontSize: 28, fontWeight: FontWeight.w900, color: DesignTokens.primary)
+              ),
+              const SizedBox(width: 8),
+              Text('${unitLabel.toLowerCase()} pendientes', style: DesignTokens.bodyStyle().copyWith(fontSize: 14, color: Colors.black26)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: total / _maxTotalPendiente,
+              backgroundColor: DesignTokens.surfaceVariant,
+              valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+              minHeight: 6,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

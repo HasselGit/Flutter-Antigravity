@@ -69,8 +69,13 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
     setState(() => _loading = true);
     try {
       final data = await SupabaseService().getCargaDetalle(widget.cargaId!);
+      print('CargaDetalle: Carga fetched. Data: $data');
+      if (data != null) {
+        print('CargaDetalle: carga_items in map: ${data['carga_items']} (type: ${data['carga_items']?.runtimeType})');
+      }
       if (mounted) setState(() { _carga = data; _loading = false; });
     } catch (e) {
+      print('CargaDetalle: Error loading carga: $e');
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -157,12 +162,20 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
     int estaCargaTamb = 0;
     for (final it in items) {
       final qty = (it['cantidad'] as num?)?.toDouble() ?? 0;
-      final prod = (it['producto_codigo'] ?? '').toLowerCase();
-      if (prod.contains('tcm') || prod.contains('tambor')) {
-        estaCargaKg += qty * 300; estaCargaTamb += qty.round();
-      } else if (prod.contains('tv') || prod.contains('vacio')) {
-        estaCargaKg += qty * 20; estaCargaTamb += qty.round();
-      } else { estaCargaKg += qty; }
+      final prod = (it['producto_codigo'] ?? '').toString().toUpperCase();
+      if (prod == 'TCM' || prod.contains('TAMBOR')) {
+        estaCargaKg += qty * 300;
+        estaCargaTamb += qty.round();
+      } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+          prod.contains('VACIO') ||
+          prod.contains('VACÍO')) {
+        estaCargaKg += qty * 20;
+        estaCargaTamb += qty.round();
+      } else if (prod == 'AZ') {
+        estaCargaKg += qty * 50;
+      } else {
+        estaCargaKg += qty;
+      }
     }
 
     final proyectadoKg = cargaActualKg + estaCargaKg;
@@ -551,6 +564,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                           fontSize: 20, fontWeight: FontWeight.w800, color: DesignTokens.primary)),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         hint: const Text('Producto'),
                         value: selectedProductoCode,
                         decoration: InputDecoration(
@@ -559,8 +573,14 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                                 borderSide: BorderSide.none)),
                         items: _productos.map((p) => DropdownMenuItem<String>(
                           value: p['codigo'].toString(),
-                          child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? ''}',
-                              overflow: TextOverflow.ellipsis),
+                          child: SizedBox(
+                            width: MediaQuery.of(context).size.width - 100,
+                            child: Text(
+                              '${p['codigo'] ?? ''} — ${p['descripcion'] ?? ''}',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
                         )).toList(),
                         onChanged: (v) => setModal(() {
                           selectedProductoCode = v;

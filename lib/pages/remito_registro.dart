@@ -345,6 +345,10 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         final String prodCode = item['producto_codigo'].toString();
         final double qty = (item['cantidad'] as num).toDouble();
         final String unit = item['unidad'].toString();
+        
+        final parts = unit.split('|');
+        final String cleanUnit = parts.first;
+        final String itemOpType = parts.length > 1 ? parts[1] : widget.tipoOperacion;
 
         final originalSolId = _paradaData?['solicitud_id']?.toString();
         
@@ -374,10 +378,11 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
             await Supabase.instance.client.from('solicitudes').update({
               'producto': prodCode,
               'cantidad': qty,
-              'unidad': unit,
+              'unidad': cleanUnit,
+              'tipo': itemOpType,
               'estado': 'Terminada',
             }).eq('id', originalSolId);
-            print('RemitoRegistro: Solicitud original $originalSolId actualizada a Terminada');
+            print('RemitoRegistro: Solicitud original $originalSolId actualizada a Terminada con unidad $cleanUnit y tipo $itemOpType');
           } else {
             // Si es un tercero (multi-remito) o no hay ID original, creamos una solicitud nueva ya finalizada
             final String customSolCode = 'SOL-REM-${widget.paradaId.split('-').first.toUpperCase()}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
@@ -386,12 +391,12 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
               'apicultor_id': _titularId,
               'producto': prodCode,
               'cantidad': qty,
-              'unidad': unit,
-              'tipo': widget.tipoOperacion,
+              'unidad': cleanUnit,
+              'tipo': itemOpType,
               'localidad': _paradaData?['localidad'] ?? '',
               'estado': 'Terminada',
             });
-            print('RemitoRegistro: Solicitud de terceros creada para apicultor $_titularId');
+            print('RemitoRegistro: Solicitud de terceros creada para apicultor $_titularId con unidad $cleanUnit y tipo $itemOpType');
           }
         } catch (err) {
           print('RemitoRegistro: Error al sincronizar con solicitudes: $err');
@@ -1235,22 +1240,80 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
     return 'Chofer Asignado';
   }
 
-  Widget _buildProductsTable() {
+  Widget _buildProductsTableGroup({
+    required String title,
+    required List<Map<String, dynamic>> itemsList,
+    required Color headerBgColor,
+    required Color badgeBgColor,
+    required Color badgeTextColor,
+    required IconData headerIcon,
+    required String operationType,
+  }) {
+    if (itemsList.isEmpty) return const SizedBox.shrink();
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        border: Border.all(color: headerBgColor.withOpacity(0.15), width: 1.5),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: headerBgColor.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Table Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFF08201A), // Dark elegant primary background
-              borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: headerBgColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
             ),
-            child: const Row(
+            child: Row(
+              children: [
+                Icon(headerIcon, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: 'Work Sans',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${itemsList.length} ${itemsList.length == 1 ? 'ITEM' : 'ITEMS'}',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Subheader Row for Columns
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: headerBgColor.withOpacity(0.03),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
@@ -1259,17 +1322,17 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                     fontFamily: 'Work Sans',
                     fontWeight: FontWeight.w800,
                     fontSize: 9,
-                    color: Colors.white,
+                    color: headerBgColor.withOpacity(0.6),
                     letterSpacing: 0.5,
                   ),
                 ),
                 Text(
-                  'CANTIDAD / PESO',
+                  'CANTIDAD REAL',
                   style: TextStyle(
                     fontFamily: 'Work Sans',
                     fontWeight: FontWeight.w800,
                     fontSize: 9,
-                    color: Colors.white,
+                    color: headerBgColor.withOpacity(0.6),
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -1277,21 +1340,25 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
             ),
           ),
           // Table Rows
-          ...List.generate(_availableItems.length, (idx) {
-            final item = _availableItems[idx];
+          ...List.generate(itemsList.length, (idx) {
+            final item = itemsList[idx];
             final id = item['id'].toString();
             final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
             final isTCM = pCode == 'TCM' || pCode == '1';
             final qty = _selectedQuantities[id] ?? 0;
-            final isLast = idx == _availableItems.length - 1;
+            final isLast = idx == itemsList.length - 1;
             final hasMismatch = isTCM && _pesajes.isNotEmpty && qty != _pesajes.length;
 
+            final String unitRaw = (item['unidad'] ?? 'uni').toString();
+            final String unitBase = unitRaw.split('|').first;
+
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: isLast ? Colors.transparent : const Color(0xFFE2E8F0),
+                    color: isLast ? Colors.transparent : headerBgColor.withOpacity(0.08),
+                    width: 1,
                   ),
                 ),
               ),
@@ -1308,16 +1375,16 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                             style: const TextStyle(
                               fontFamily: 'Manrope',
                               fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: Colors.black,
+                              fontSize: 14,
+                              color: Colors.black87,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Planificado: ${item['cantidad']} ${item['unidad']}',
+                            'Planificado: ${item['cantidad']} $unitBase',
                             style: TextStyle(
                               fontFamily: 'Inter',
-                              fontSize: 10,
+                              fontSize: 11,
                               color: Colors.black.withOpacity(0.4),
                               fontWeight: FontWeight.w500,
                             ),
@@ -1335,24 +1402,24 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                               }
                             },
                             child: Container(
-                              padding: const EdgeInsets.all(4),
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: const Color(0xFFF1F5F9),
                                 border: Border.all(color: const Color(0xFFE2E8F0)),
                               ),
-                              child: const Icon(Icons.remove_rounded, size: 14, color: Color(0xFF08201A)),
+                              child: const Icon(Icons.remove_rounded, size: 18, color: Color(0xFF08201A)),
                             ),
                           ),
                           Container(
-                            width: 50,
+                            width: 60,
                             alignment: Alignment.center,
                             child: Text(
                               qty.toStringAsFixed(0),
                               style: const TextStyle(
                                 fontFamily: 'Work Sans',
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
                                 color: Colors.black,
                               ),
                             ),
@@ -1364,13 +1431,13 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                               });
                             },
                             child: Container(
-                              padding: const EdgeInsets.all(4),
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: const Color(0xFFF1F5F9),
                                 border: Border.all(color: const Color(0xFFE2E8F0)),
                               ),
-                              child: const Icon(Icons.add_rounded, size: 14, color: Color(0xFF08201A)),
+                              child: const Icon(Icons.add_rounded, size: 18, color: Color(0xFF08201A)),
                             ),
                           ),
                         ],
@@ -1378,22 +1445,29 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                     ],
                   ),
                   if (hasMismatch) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 12),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Sugerido: ${_pesajes.length} TCM según pesaje de balanza.',
-                            style: const TextStyle(
-                              color: Colors.orange,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 14),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Sugerido: ${_pesajes.length} TCM según pesaje de balanza.',
+                              style: TextStyle(
+                                color: Colors.orange[900],
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ],
@@ -1402,6 +1476,53 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
           }),
         ],
       ),
+    );
+  }
+
+  Widget _buildProductsTable() {
+    final entregas = _availableItems.where((item) {
+      final String unitRaw = (item['unidad'] ?? 'uni').toString();
+      final parts = unitRaw.split('|');
+      final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+      return opType == 'Distribución';
+    }).toList();
+
+    final retiros = _availableItems.where((item) {
+      final String unitRaw = (item['unidad'] ?? 'uni').toString();
+      final parts = unitRaw.split('|');
+      final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+      return opType == 'Recolección';
+    }).toList();
+
+    if (entregas.isEmpty && retiros.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        alignment: Alignment.center,
+        child: const Text('No hay productos para registrar remito.'),
+      );
+    }
+
+    return Column(
+      children: [
+        _buildProductsTableGroup(
+          title: 'Productos Entregados (Distribución)',
+          itemsList: entregas,
+          headerBgColor: const Color(0xFF1E3A8A), // Navy Blue
+          badgeBgColor: const Color(0xFFDBEAFE),
+          badgeTextColor: const Color(0xFF1E40AF),
+          headerIcon: Icons.download_rounded,
+          operationType: 'Distribución',
+        ),
+        _buildProductsTableGroup(
+          title: 'Productos Retirados (Recolección)',
+          itemsList: retiros,
+          headerBgColor: const Color(0xFFB45309), // Amber Brown
+          badgeBgColor: const Color(0xFFFEF3C7),
+          badgeTextColor: const Color(0xFFB45309),
+          headerIcon: Icons.upload_rounded,
+          operationType: 'Recolección',
+        ),
+      ],
     );
   }
 

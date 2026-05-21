@@ -129,6 +129,7 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
           
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             value: _selectedProduct,
             hint: const Text('Buscar Producto...'),
             icon: const Icon(Icons.keyboard_arrow_down_rounded, color: DesignTokens.primary),
@@ -140,7 +141,15 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
             ),
             items: _productos.map((prod) => DropdownMenuItem(
               value: prod['codigo']?.toString(),
-              child: Text(prod['descripcion']?.toString() ?? '--', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              child: SizedBox(
+                width: MediaQuery.of(context).size.width - 100,
+                child: Text(
+                  prod['descripcion']?.toString() ?? '--',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
             )).toList(),
             onChanged: (val) {
               setState(() {
@@ -173,27 +182,37 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
                   if (widget.paradaId != null && _selectedProduct != null) {
                     // 1. Insert Item
                     final bool isTCM = _selectedProduct == 'TCM';
+                    final String baseUnit = isTCM ? 'uni' : (_selectedUnit ?? 'Uni');
                     await Supabase.instance.client.from('parada_items').insert({
                       'parada_id': widget.paradaId,
                       'producto_codigo': _selectedProduct,
                       'cantidad': double.tryParse(_textController.text) ?? 0,
-                      'unidad': isTCM ? 'uni' : (_selectedUnit ?? 'Uni'),
+                      'unidad': '$baseUnit|$_tipoMovimiento',
                     });
 
-                    // 2. Si es Recolección, asegurar que la parada sea Mixta o Recolección
+                    // 2. Asegurar que el tipo de parada refleje la operación actual (puede convertirse en MIXTA)
+                    final parada = await Supabase.instance.client.from('paradas')
+                        .select('tipo')
+                        .eq('id', widget.paradaId!)
+                        .single();
+                    
+                    String currentTipo = (parada['tipo'] ?? '').toString().trim();
+                    String newTipo = currentTipo;
+
                     if (_tipoMovimiento == 'Recolección') {
-                      final parada = await Supabase.instance.client.from('paradas')
-                          .select('tipo')
-                          .eq('id', widget.paradaId!)
-                          .single();
-                      
-                      String currentTipo = (parada['tipo'] ?? '').toString();
                       if (!currentTipo.toLowerCase().contains('recolec') && !currentTipo.toLowerCase().contains('mixta')) {
-                        String newTipo = currentTipo.isEmpty ? 'Recolección' : 'MIXTA';
-                        await Supabase.instance.client.from('paradas')
-                            .update({'tipo': newTipo})
-                            .eq('id', widget.paradaId!);
+                        newTipo = currentTipo.isEmpty ? 'Recolección' : 'MIXTA';
                       }
+                    } else if (_tipoMovimiento == 'Distribución') {
+                      if (!currentTipo.toLowerCase().contains('distrib') && !currentTipo.toLowerCase().contains('mixta')) {
+                        newTipo = currentTipo.isEmpty ? 'Distribución' : 'MIXTA';
+                      }
+                    }
+
+                    if (newTipo != currentTipo) {
+                      await Supabase.instance.client.from('paradas')
+                          .update({'tipo': newTipo})
+                          .eq('id', widget.paradaId!);
                     }
 
                     if (context.mounted) {

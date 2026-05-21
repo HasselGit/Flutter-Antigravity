@@ -20,6 +20,13 @@ class SupabaseService {
     final cleanPass = password.trim();
     try {
       print('SupabaseService: Intentando login para $cleanEmail');
+      
+      // Limpiar cualquier sesión vieja/stale de Supabase Auth
+      try {
+        await _client.auth.signOut();
+        print('SupabaseService: Sesión previa cerrada antes del login manual para garantizar anon RLS');
+      } catch (_) {}
+
       // Buscamos solo por email primero para ser más flexibles
       final profile = await _client.from('profiles')
           .select()
@@ -513,7 +520,7 @@ class SupabaseService {
         }
 
         // Totales por producto
-        if (prod.isNotEmpty) {
+        if (prod.isNotEmpty && normEstado == 'Terminada') {
           if (productTotals.containsKey(prod)) {
             productTotals[prod]!['cantidad'] = (productTotals[prod]!['cantidad'] as double) + qty;
           } else {
@@ -664,27 +671,58 @@ class SupabaseService {
     }
   }
 
+  Future<String> _getCreatorId(Map<String, dynamic> viajeData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localId = prefs.getString('user_id');
+      if (localId != null && localId.isNotEmpty) {
+        return localId;
+      }
+    } catch (_) {}
+    if (viajeData['chofer_id'] != null) {
+      return viajeData['chofer_id'].toString();
+    }
+    try {
+      final firstProfile = await _client.from('profiles').select('id').limit(1).maybeSingle();
+      if (firstProfile != null) {
+        return firstProfile['id'].toString();
+      }
+    } catch (_) {}
+    return 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
+  }
+
   Future<String> createCarga({
     required String viajeId,
     required List<Map<String, dynamic>> items,
     required String createdBy,
   }) async {
+    final String cleanCreatedBy = createdBy.isNotEmpty ? createdBy : 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
     final cargaResp = await _client.from('cargas').insert({
       'carga_codigo': 'CARGA-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
       'viaje_id': viajeId,
       'estado': AppStates.pendiente,
-      'created_by': createdBy,
+      'created_by': cleanCreatedBy,
     }).select('id').single();
     final cargaId = cargaResp['id'] as String;
-    for (final item in items) {
-      await _client.from('carga_items').insert({
-        'carga_id': cargaId,
-        'producto_codigo': item['producto_codigo'],
-        'cantidad': item['cantidad'],
-        'unidad': item['unidad'] ?? 'UN',
-      });
+
+    try {
+      if (items.isNotEmpty) {
+        final itemsToInsert = items.map((item) => {
+          'carga_id': cargaId,
+          'producto_codigo': item['producto_codigo'],
+          'cantidad': (item['cantidad'] as num).toInt(),
+          'unidad': item['unidad'] ?? 'UN',
+        }).toList();
+        await _client.from('carga_items').insert(itemsToInsert);
+      }
+      return cargaId;
+    } catch (e) {
+      // Rollback manual para no dejar cargas huérfanas en la base de datos
+      try {
+        await _client.from('cargas').delete().eq('id', cargaId);
+      } catch (_) {}
+      rethrow;
     }
-    return cargaId;
   }
 
   Future<void> updateCargaEstado(String cargaId, String nuevoEstado) async {
@@ -712,13 +750,17 @@ class SupabaseService {
       int deltaTambores = 0;
       for (final item in items) {
         final qty = (item['cantidad'] as num).toDouble();
-        final prod = (item['producto_codigo'] ?? '').toString().toLowerCase();
-        if (prod.contains('tcm') || prod.contains('tambor')) {
+        final prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+        if (prod == 'TCM' || prod.contains('TAMBOR')) {
           deltaKg += qty * 300;
           deltaTambores += qty.round();
-        } else if (prod.contains('tv') || prod.contains('vacio') || prod.contains('vacío')) {
+        } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+            prod.contains('VACIO') ||
+            prod.contains('VACÍO')) {
           deltaKg += qty * 20;
           deltaTambores += qty.round();
+        } else if (prod == 'AZ') {
+          deltaKg += qty * 50;
         } else {
           deltaKg += qty;
         }
@@ -1094,6 +1136,50 @@ class SupabaseService {
         print('SupabaseService: Error marcando solicitudes como asignadas: $e');
       }
     }
+
+    // Auto-generación de carga si hay distribuciones
+    try {
+      final dists = necesidades.where((n) {
+        final tipo = (n['tipo'] ?? '').toString().toLowerCase();
+        return tipo.contains('dist');
+      }).toList();
+
+      if (dists.isNotEmpty) {
+        final Map<String, double> grouped = {};
+        for (final n in dists) {
+          final prod = (n['producto'] ?? '').toString();
+          if (prod.isNotEmpty) {
+            final double qty = (n['cantidad'] as num?)?.toDouble() ?? 0.0;
+            grouped[prod] = (grouped[prod] ?? 0.0) + qty;
+          }
+        }
+
+        if (grouped.isNotEmpty) {
+          final List<Map<String, dynamic>> itemsToLoad = grouped.entries.map((e) {
+            final lowerProd = e.key.toLowerCase();
+            final esUnidades = lowerProd.contains('tambor') ||
+                lowerProd.contains('insumo') ||
+                lowerProd.contains('alimento') ||
+                lowerProd.contains('tcm') ||
+                lowerProd.contains('tv');
+            return {
+              'producto_codigo': e.key,
+              'cantidad': e.value,
+              'unidad': esUnidades ? 'UN' : 'KG',
+            };
+          }).toList();
+
+          final creatorId = await _getCreatorId(data);
+          await createCarga(
+            viajeId: viajeId,
+            items: itemsToLoad,
+            createdBy: creatorId,
+          );
+        }
+      }
+    } catch (e) {
+      print('SupabaseService: Error en auto-generacion de carga: $e');
+    }
   }
 
   Future<void> updateViajeCompleto({
@@ -1149,6 +1235,66 @@ class SupabaseService {
     } catch (e) {
       print('SupabaseService: Error marcando solicitudes como asignadas en update: $e');
     }
+
+    // 1. Limpiar cargas pendientes previas
+    try {
+      final prevCargas = await _client.from('cargas')
+          .select('id')
+          .eq('viaje_id', viajeId)
+          .eq('estado', AppStates.pendiente);
+      final List<dynamic> cargasList = prevCargas as List<dynamic>;
+      if (cargasList.isNotEmpty) {
+        final List<String> cargaIds = cargasList.map((c) => c['id'].toString()).toList();
+        await _client.from('carga_items').delete().filter('carga_id', 'in', cargaIds);
+        await _client.from('cargas').delete().filter('id', 'in', cargaIds);
+      }
+    } catch (e) {
+      print('SupabaseService: Error eliminando cargas pendientes previas: $e');
+    }
+
+    // 2. Re-generación de carga si hay distribuciones
+    try {
+      final dists = necesidades.where((n) {
+        final tipo = (n['tipo'] ?? '').toString().toLowerCase();
+        return tipo.contains('dist');
+      }).toList();
+
+      if (dists.isNotEmpty) {
+        final Map<String, double> grouped = {};
+        for (final n in dists) {
+          final prod = (n['producto'] ?? '').toString();
+          if (prod.isNotEmpty) {
+            final double qty = (n['cantidad'] as num?)?.toDouble() ?? 0.0;
+            grouped[prod] = (grouped[prod] ?? 0.0) + qty;
+          }
+        }
+
+        if (grouped.isNotEmpty) {
+          final List<Map<String, dynamic>> itemsToLoad = grouped.entries.map((e) {
+            final lowerProd = e.key.toLowerCase();
+            final esUnidades = lowerProd.contains('tambor') ||
+                lowerProd.contains('insumo') ||
+                lowerProd.contains('alimento') ||
+                lowerProd.contains('tcm') ||
+                lowerProd.contains('tv');
+            return {
+              'producto_codigo': e.key,
+              'cantidad': e.value,
+              'unidad': esUnidades ? 'UN' : 'KG',
+            };
+          }).toList();
+
+          final creatorId = await _getCreatorId(viajeData);
+          await createCarga(
+            viajeId: viajeId,
+            items: itemsToLoad,
+            createdBy: creatorId,
+          );
+        }
+      }
+    } catch (e) {
+      print('SupabaseService: Error en re-generacion de carga en update: $e');
+    }
   }
 
   Future<void> createNecesidad(Map<String, dynamic> data) async =>
@@ -1187,9 +1333,21 @@ class SupabaseService {
       final List<Map<String, dynamic>> paradas = List<Map<String, dynamic>>.from(paradasRes as List);
       
       final List<String> solicitudIds = [];
+      final List<String> paradaIds = [];
       for (var p in paradas) {
+        if (p['id'] != null) paradaIds.add(p['id'].toString());
         if (p['solicitud_id'] != null) solicitudIds.add(p['solicitud_id'].toString());
       }
+
+      // 1.5 Borrar remitos vinculados
+      if (paradaIds.isNotEmpty) {
+        try {
+          await _client.from('remitos').delete().inFilter('parada_id', paradaIds);
+        } catch (_) {}
+      }
+      try {
+        await _client.from('remitos').delete().eq('viaje_id', viajeId);
+      } catch (_) {}
 
       // 2. Liberar solicitudes
       if (solicitudIds.isNotEmpty) {
@@ -1292,39 +1450,54 @@ class SupabaseService {
 
   Future<void> finalizarParada(String paradaId, String vehiculoCodigo) async {
     try {
-      // 1. Obtener datos de la parada y sus items actuales
+      // 1. Obtener datos de la parada y sus items actuales (incluyendo unidad para saber la operación)
       final parada = await _client.from('paradas')
-          .select('id, tipo, solicitud_id, parada_items(producto_codigo, cantidad)')
+          .select('id, tipo, solicitud_id, parada_items(producto_codigo, cantidad, unidad)')
           .eq('id', paradaId)
           .maybeSingle();
       
       if (parada == null) throw Exception('Parada no encontrada');
       
       final String tipo = (parada['tipo'] ?? 'Recoleccion').toString();
-      final bool esRecoleccion = tipo.toLowerCase().contains('recolec');
       final items = List<Map<String, dynamic>>.from(parada['parada_items'] ?? []);
       
-      // 2. Calcular impacto en el peso y tambores
-      double deltaKg = 0;
-      int deltaTambores = 0;
+      // 2. Calcular impacto neto en el peso y tambores
+      double netKgChange = 0;
+      int netTamboresChange = 0;
       
       for (final item in items) {
         final double qty = (item['cantidad'] as num?)?.toDouble() ?? 0;
         final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
         
+        // Determinar tipo de operación del ítem
+        final String unitRaw = (item['unidad'] ?? '').toString();
+        final parts = unitRaw.split('|');
+        final String itemOpType = parts.length > 1 ? parts[1] : tipo; // fallback al tipo de parada
+        
+        // Si es Recolección, es un cambio positivo para el camión (+).
+        // Si es Distribución, es un cambio negativo (-).
+        final bool isItemRecoleccion = itemOpType.toLowerCase().contains('recolec') || itemOpType.toLowerCase().contains('retiro');
+        final double sign = isItemRecoleccion ? 1.0 : -1.0;
+        
+        double itemKg = 0;
+        int itemTambores = 0;
+
         // Lógica de pesos (Constantes de negocio)
         if (prod == 'TCM') {
-          deltaKg += qty * 300;
-          deltaTambores += qty.round();
+          itemKg = qty * 300;
+          itemTambores = qty.round();
         } else if (prod.startsWith('T') && (prod.contains('V') || prod.contains('N') || prod.contains('R'))) {
           // Tambores vacíos o nuevos
-          deltaKg += qty * 20;
-          deltaTambores += qty.round();
+          itemKg = qty * 20;
+          itemTambores = qty.round();
         } else if (prod == 'AZ') {
-          deltaKg += qty * 50; // Bolsa x 50kg
+          itemKg = qty * 50; // Bolsa x 50kg
         } else {
-          deltaKg += qty; // Por defecto 1kg por unidad si no es tambor/bolsa
+          itemKg = qty; // Por defecto 1kg por unidad si no es tambor/bolsa
         }
+
+        netKgChange += sign * itemKg;
+        netTamboresChange += (sign * itemTambores).round();
       }
 
       // 3. Actualizar Vehículo
@@ -1337,12 +1510,9 @@ class SupabaseService {
         final double currentKg = (vehiculoData['carga_actual_kg'] as num?)?.toDouble() ?? 0;
         final int currentTamb = (vehiculoData['carga_actual_tambores'] as num?)?.toInt() ?? 0;
         
-        // Si es Recolección, SUMA al camión. Si es Distribución, RESTA.
-        final int sign = esRecoleccion ? 1 : -1;
-        
         await _client.from('vehiculos').update({
-          'carga_actual_kg': (currentKg + sign * deltaKg).clamp(0, 999999),
-          'carga_actual_tambores': (currentTamb + sign * deltaTambores).clamp(0, 999),
+          'carga_actual_kg': (currentKg + netKgChange).clamp(0.0, 999999.0),
+          'carga_actual_tambores': (currentTamb + netTamboresChange).clamp(0, 999),
         }).eq('vehiculo_codigo', vehiculoCodigo);
       }
 

@@ -26,6 +26,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   bool _saving = false;
   String? _userRole;
   String? _userId;
+  String? _userEmail;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     final prefs = await SharedPreferences.getInstance();
     _userRole = prefs.getString('user_puesto');
     _userId = prefs.getString('user_id');
+    _userEmail = prefs.getString('user_email');
     await _loadData();
   }
 
@@ -53,7 +55,8 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   bool get _isChofer => _userRole == 'Chofer';
-  bool get _isAdmin => Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+  bool get _canOperateViaje => _isChofer || _isAdmin;
   bool get _canEditRoute =>
       _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras';
 
@@ -173,8 +176,8 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 ),
               ),
 
-            // BOTONES DE ESTADO PARA CHOFER
-            if (_isChofer) ...[
+            // BOTONES DE ESTADO PARA CHOFER Y ADMINISTRADOR
+            if (_canOperateViaje) ...[
               if (esPendiente && tieneRuta)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 24),
@@ -561,7 +564,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 ),
               ),
             ],
-            if (p['remito_id'] == null && !isViajeTerminado && _isChofer)
+            if (p['remito_id'] == null && !isViajeTerminado && _canOperateViaje)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Row(

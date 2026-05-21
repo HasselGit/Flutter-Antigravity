@@ -265,6 +265,21 @@ class PdfInvoiceGenerator {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(36),
         build: (pw.Context context) {
+          // Segment items into Entregas (Distribución) and Retiros (Recolección)
+          final entregas = items.where((item) {
+            final String unitRaw = (item['unidad'] ?? 'uni').toString();
+            final parts = unitRaw.split('|');
+            final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+            return opType == 'Distribución';
+          }).toList();
+
+          final retiros = items.where((item) {
+            final String unitRaw = (item['unidad'] ?? 'uni').toString();
+            final parts = unitRaw.split('|');
+            final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+            return opType == 'Recolección';
+          }).toList();
+
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -312,33 +327,71 @@ class PdfInvoiceGenerator {
 
               pw.SizedBox(height: 20),
 
-              // Items table
-              pw.Text('DETALLE DE OPERACIÓN DE MATERIALES:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
-              pw.SizedBox(height: 8),
-              pw.TableHelper.fromTextArray(
-                headers: ['Código Producto', 'Cantidad', 'Unidad de Medida', 'Peso Estimado (KG)'],
-                data: items.map((item) {
-                  final qty = item['cantidad']?.toString() ?? '0';
-                  final weight = item['peso_kg'] != null 
-                      ? double.tryParse(item['peso_kg'].toString())?.toStringAsFixed(1) ?? '0.0'
-                      : '0.0';
-                  return [
-                    item['producto_codigo'] ?? '-',
-                    qty,
-                    item['unidad'] ?? 'unidades',
-                    weight,
-                  ];
-                }).toList(),
-                headerDecoration: pw.BoxDecoration(color: primaryColor),
-                headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9),
-                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
-                cellStyle: const pw.TextStyle(fontSize: 9),
-                cellAlignment: pw.Alignment.centerLeft,
-                cellAlignments: {
-                  1: pw.Alignment.centerRight,
-                  3: pw.Alignment.centerRight,
-                },
-              ),
+              // Render Entregas Table
+              if (entregas.isNotEmpty) ...[
+                pw.Text('PRODUCTOS ENTREGADOS (DISTRIBUCIÓN):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColor.fromHex('#1E3A8A'))),
+                pw.SizedBox(height: 6),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Código Producto', 'Cantidad', 'Unidad de Medida', 'Peso Estimado (KG)'],
+                  data: entregas.map((item) {
+                    final qty = item['cantidad']?.toString() ?? '0';
+                    final weight = item['peso_kg'] != null 
+                        ? double.tryParse(item['peso_kg'].toString())?.toStringAsFixed(1) ?? '0.0'
+                        : '0.0';
+                    final String unitRaw = (item['unidad'] ?? 'uni').toString();
+                    final String unitBase = unitRaw.split('|').first;
+                    return [
+                      item['producto_codigo'] ?? '-',
+                      qty,
+                      unitBase,
+                      weight,
+                    ];
+                  }).toList(),
+                  headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#1E3A8A')),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
+                  cellStyle: const pw.TextStyle(fontSize: 9),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellAlignments: {
+                    1: pw.Alignment.centerRight,
+                    3: pw.Alignment.centerRight,
+                  },
+                ),
+                pw.SizedBox(height: 12),
+              ],
+
+              // Render Retiros Table
+              if (retiros.isNotEmpty) ...[
+                pw.Text('PRODUCTOS RETIRADOS (RECOLECCIÓN):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColor.fromHex('#B45309'))),
+                pw.SizedBox(height: 6),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Código Producto', 'Cantidad', 'Unidad de Medida', 'Peso Estimado (KG)'],
+                  data: retiros.map((item) {
+                    final qty = item['cantidad']?.toString() ?? '0';
+                    final weight = item['peso_kg'] != null 
+                        ? double.tryParse(item['peso_kg'].toString())?.toStringAsFixed(1) ?? '0.0'
+                        : '0.0';
+                    final String unitRaw = (item['unidad'] ?? 'uni').toString();
+                    final String unitBase = unitRaw.split('|').first;
+                    return [
+                      item['producto_codigo'] ?? '-',
+                      qty,
+                      unitBase,
+                      weight,
+                    ];
+                  }).toList(),
+                  headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#B45309')),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
+                  cellStyle: const pw.TextStyle(fontSize: 9),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellAlignments: {
+                    1: pw.Alignment.centerRight,
+                    3: pw.Alignment.centerRight,
+                  },
+                ),
+                pw.SizedBox(height: 12),
+              ],
 
               pw.SizedBox(height: 15),
 
@@ -470,6 +523,21 @@ class PdfInvoiceGenerator {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(36),
         build: (pw.Context context) {
+          // Segment items into Entregas (Distribución) and Retiros (Recolección)
+          final entregas = items.where((item) {
+            final String unitRaw = (item['unidad'] ?? 'uni').toString();
+            final parts = unitRaw.split('|');
+            final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+            return opType == 'Distribución';
+          }).toList();
+
+          final retiros = items.where((item) {
+            final String unitRaw = (item['unidad'] ?? 'uni').toString();
+            final parts = unitRaw.split('|');
+            final String opType = parts.length > 1 ? parts[1] : 'Recolección';
+            return opType == 'Recolección';
+          }).toList();
+
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -518,23 +586,55 @@ class PdfInvoiceGenerator {
 
               pw.SizedBox(height: 15),
 
-              // Items summary table
-              pw.Text('RESUMEN DE PRODUCTOS DECLARADOS:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
-              pw.SizedBox(height: 6),
-              pw.TableHelper.fromTextArray(
-                headers: ['Código Producto', 'Cantidad Declarada', 'Unidad de Medida'],
-                data: items.map((item) => [
-                  item['producto_codigo'] ?? '-',
-                  item['cantidad']?.toString() ?? '0',
-                  item['unidad'] ?? 'unidades',
-                ]).toList(),
-                headerDecoration: pw.BoxDecoration(color: primaryColor),
-                headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8),
-                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
-                cellStyle: const pw.TextStyle(fontSize: 8),
-                cellAlignment: pw.Alignment.centerLeft,
-                cellAlignments: {1: pw.Alignment.centerRight},
-              ),
+              // Render Entregas Table
+              if (entregas.isNotEmpty) ...[
+                pw.Text('PRODUCTOS ENTREGADOS (DISTRIBUCIÓN):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColor.fromHex('#1E3A8A'))),
+                pw.SizedBox(height: 6),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Código Producto', 'Cantidad Declarada', 'Unidad de Medida'],
+                  data: entregas.map((item) {
+                    final String unitRaw = (item['unidad'] ?? 'uni').toString();
+                    final String unitBase = unitRaw.split('|').first;
+                    return [
+                      item['producto_codigo'] ?? '-',
+                      item['cantidad']?.toString() ?? '0',
+                      unitBase,
+                    ];
+                  }).toList(),
+                  headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#1E3A8A')),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
+                  cellStyle: const pw.TextStyle(fontSize: 8),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellAlignments: {1: pw.Alignment.centerRight},
+                ),
+                pw.SizedBox(height: 12),
+              ],
+
+              // Render Retiros Table
+              if (retiros.isNotEmpty) ...[
+                pw.Text('PRODUCTOS RETIRADOS (RECOLECCIÓN):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColor.fromHex('#B45309'))),
+                pw.SizedBox(height: 6),
+                pw.TableHelper.fromTextArray(
+                  headers: ['Código Producto', 'Cantidad Declarada', 'Unidad de Medida'],
+                  data: retiros.map((item) {
+                    final String unitRaw = (item['unidad'] ?? 'uni').toString();
+                    final String unitBase = unitRaw.split('|').first;
+                    return [
+                      item['producto_codigo'] ?? '-',
+                      item['cantidad']?.toString() ?? '0',
+                      unitBase,
+                    ];
+                  }).toList(),
+                  headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#B45309')),
+                  headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8),
+                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200))),
+                  cellStyle: const pw.TextStyle(fontSize: 8),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  cellAlignments: {1: pw.Alignment.centerRight},
+                ),
+                pw.SizedBox(height: 12),
+              ],
 
               pw.SizedBox(height: 15),
 

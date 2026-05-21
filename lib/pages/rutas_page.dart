@@ -21,7 +21,9 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
   bool _loading = true;
   String? _error;
   String? _userRole;
+  String? _userEmail;
 
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
 
   @override
   void initState() {
@@ -31,7 +33,12 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
 
   Future<void> _loadRoleAndFetchRutas() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() { _userRole = prefs.getString('user_puesto'); });
+    if (mounted) {
+      setState(() {
+        _userRole = prefs.getString('user_puesto');
+        _userEmail = prefs.getString('user_email');
+      });
+    }
     _fetchRutas();
   }
 
@@ -42,7 +49,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       final userRole = prefs.getString('user_puesto');
       final userId = prefs.getString('user_id');
 
-      print('RutasPage: Iniciando fetch para role: $userRole, userId: $userId');
+      print('RutasPage: Iniciando fetch para role: $userRole, userId: $userId, admin: $_isAdmin');
 
       final data = await SupabaseService().getViajes(userId: userId, role: userRole);
 
@@ -104,7 +111,7 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                         itemBuilder: (ctx, i) => _buildRouteCard(_rutas[i]),
                       ),
                     ),
-      floatingActionButton: (_userRole != null && _userRole != 'Chofer')
+      floatingActionButton: (_isAdmin || (_userRole != null && _userRole != 'Chofer'))
           ? FloatingActionButton.extended(
               onPressed: () => context.push('/planificarViaje'),
               backgroundColor: DesignTokens.secondary,
@@ -225,8 +232,8 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                   ),
                 ],
               ),
-              if ((_userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
-                  (estado == 'Planificado' || estado == 'Pendiente'))
+              if ((_isAdmin || _userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') && 
+                  (_isAdmin || estado == 'Planificado' || estado == 'Pendiente'))
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
