@@ -63,3 +63,28 @@ Hoy resolvimos de raíz el error por el cual la carga `CARGA-7845001` mostraba *
 3. **Ejecutar**: `flutter run`
 4. Al arrancar, el `signOut()` en `main.dart` limpiará automáticamente cualquier JWT stale del emulador.
 5. La carga `CARGA-7845001` mostrará correctamente **TRR x 25** para ambos usuarios.
+
+---
+
+## 📋 Agenda para Mañana — 22 de Mayo, 2026
+
+### 🔴 PRIORIDAD ALTA: Carolina Merlo (Depósito) no puede ver las cargas
+
+**Quién**: Carolina Merlo — rol `Depósito` — accede desde `/depositoHome`.
+
+**Síntoma**: Carolina no puede ver la carga con sus datos (que ahora sí muestra bien para chofer y admin). Desde la pantalla de depósito, la carga aparece vacía o no accesible.
+
+**Causa probable identificada**: `depositohome.dart` línea 43-47 usa `Supabase.instance.client` **directamente** (no pasa por `SupabaseService`) para hacer el query de viajes planificados con sus cargas:
+```dart
+final pendingViajes = await Supabase.instance.client
+    .from('viajes')
+    .select('*, profiles(...), cargas(id, carga_codigo, estado, carga_items(*))')
+    .eq('estado', 'Pendiente')
+```
+Si el dispositivo de Carolina tiene una sesión stale de Supabase Auth, el mismo bug de RLS que afectaba a Mauricio y Hassel también le está bloqueando los `carga_items`. El `signOut()` en `main.dart` debería resolverlo en arranque, pero puede haber un segundo problema: el **perfil de Carolina** puede no tener permisos de RLS en `carga_items` ni siquiera como `anon`.
+
+**Tareas para mañana**:
+1. Verificar el `puesto`/`rol` del perfil de Carolina Merlo en la base de datos (`profiles`).
+2. Revisar si las políticas RLS de `carga_items` y `cargas` permiten el acceso al rol `anon` para usuarios con `puesto = 'Deposito'` o similar.
+3. Si el problema persiste, migrar el query de `depositohome.dart` línea 43-47 para usar `SupabaseService()` en lugar de llamar directamente al cliente de Supabase.
+4. Probar con el perfil de Carolina desde el emulador (email y contraseña en la tabla `profiles`).
