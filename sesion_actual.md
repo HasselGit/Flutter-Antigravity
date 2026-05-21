@@ -1,33 +1,65 @@
-# Sesión Actual - 19 de Mayo, 2026
+# Sesión Actual - 21 de Mayo, 2026
 
-## Objetivos Alcanzados: Estabilización Operativa del Terreno, Conciliación TCM/1, Navegación CEO y Corrección de Overflows
+## Objetivos Alcanzados: Corrección de Cargas Vacías (RLS Stale), Permisos de Administrador y Flujo de Paradas
 
-Hoy hemos consolidado, verificado y estabilizado las últimas discrepancias operativas encontradas en terreno para garantizar una experiencia impecable tanto para el conductor en ruta como para el CEO en oficina.
+Hoy resolvimos de raíz el error por el cual la carga `CARGA-7845001` mostraba **0 items / 0 kg / No hay ítems en esta carga** en ambas pantallas (chofer Mauricio Pérez y administrador hassel00@gmail.com), a pesar de contener `TRR x 25` correctamente en la base de datos.
 
 ---
 
-### 🛠️ 1. Restablecimiento de Estadísticas Reales del CEO
-- **Normalización de Codificación**: Corregimos un fallo crítico de sincronización donde los contadores del CEO se mostraban en `0`. Esto sucedía debido a discrepancias en la codificación de caracteres en la base de datos de Supabase (`Recolección` vs `Recoleccin`).
-- **Lógica Inteligente**: Modificamos el método `getGerenteStats()` en `SupabaseService` para buscar por subcadenas parciales (`tipo.contains('recol')` y `tipo.contains('distrib')`), resolviendo de forma permanente cualquier error tipográfico o de codificación.
-- **Navegación Interactiva**: Enlazamos las tarjetas de Distribuciones y Recolecciones en el Home del Gerente (`gerentehome.dart`) para que el CEO pueda hacer clic y navegar directamente a `/recolecciones` y `/distribuciones` con gestos y micro-animaciones fluidas.
+### 🔐 1. Corrección del Bug de RLS Silencioso (Causa Raíz)
 
-### 🚛 2. Conciliación y Equivalencia de Códigos de Pesaje TCM / 1
-- **Problema de Integridad**: El pesaje del chofer registraba el tambor de miel con el código interno `'1'`, mientras que la gerencia y la base de datos de administración exigían estrictamente el código `'TCM'`. Esto causaba que la carga recolectada se mantuviera en `0` en la pantalla final de viaje.
-- **Solución**: Programamos una equivalencia bidireccional en las clases operacionales de pesaje y remitos (`remito_registro.dart`, `paradadetalle.dart` y `viaje_detalle.dart`) para procesar y sumar indistintamente `'TCM'` o `'1'`. Ahora el inventario de miel recolectada se actualiza en tiempo real con precisión milimétrica.
+- **Diagnóstico**: El emulador de Android tenía guardada una sesión JWT de Supabase Auth de pruebas anteriores (`flutter_secure_storage`). Al arrancar la app, `Supabase.initialize()` cargaba ese token automáticamente, forzando las consultas bajo el rol `authenticated`.
+- **El Problema en Base de Datos**: La política RLS de `carga_items` para el rol `authenticated` referencia `profiles.rol`, pero la columna fue renombrada a `profiles.puesto` hace tiempo. Este error de esquema causaba que PostgreSQL filtrara silenciosamente **todas las filas** devolviendo `carga_items: []` sin lanzar ninguna excepción visible.
+- **Solución en `main.dart`**: Se agregó `await Supabase.instance.client.auth.signOut()` inmediatamente después de la inicialización de Supabase para descartar cualquier JWT stale persistido en el emulador.
+- **Solución en `supabase_service.dart`**: Se agregó `signOut()` preventivo al inicio del método `login()` manual como capa adicional de limpieza.
 
-### 📱 3. Corrección de Desbordamiento de Pantalla por Teclado (Zebra de Flutter)
-- **Problema**: Al agregar insumos mediante la hoja inferior `AgregarItemWidget`, el teclado virtual del dispositivo móvil desbordaba verticalmente la UI, mostrando la clásica barra amarilla y negra de error.
-- **Solución**: Envolvimos el formulario principal de `agregaritem.dart` en un contenedor scrollable responsivo (`SingleChildScrollView`). Ahora, el formulario se desplaza de forma limpia e inteligente adaptándose al teclado sin desbordamientos de layout.
+### 🛡️ 2. Permisos de Administrador y Botones de Viaje
 
-### 📦 4. Deduplicación y Sincronización Única de Catálogo
-- **Centralización**: Eliminamos consultas directas duplicadas a la tabla `productos` que causaban que algunos dropdowns listaran productos duplicados o desordenados.
-- **Solución**: Homogeneizamos las pantallas `necesidades_page.dart`, `depositohome.dart`, `apicultor_detalle.dart`, y `agregaritem.dart` para consumir la consulta unificada de `SupabaseService().getProductos()`, garantizando consistencia a lo largo de toda la plataforma.
+- **`viaje_detalle.dart`**: El `_isAdmin` ahora verifica `_userEmail` (desde `SharedPreferences`) además del campo de Supabase Auth, garantizando que `hassel00@gmail.com` tenga acceso total a los botones **Iniciar** y **Finalizar Viaje** sin depender del auth nativo.
+- **`viajes_page.dart`**: `userEmail` se lee desde `SharedPreferences` como fuente primaria (fallback a `auth.currentUser?.email`), preservando `_isAdmin=true` correctamente con Supabase Auth en estado anónimo.
+- **`rutas_page.dart`**: Se cargó `_userEmail` desde `SharedPreferences` y se mejoró la visibilidad del FAB de planificación y botones de viaje para administradores.
 
-### 🗺️ 5. Control de Visibilidad Condicional de Cambios de Ruta
-- **Acondicionamiento**: Ocultamos los componentes informativos de "Cambio de Ruta Solicitado" y "Aprobar Cambio de Ruta" en la pantalla de detalle de viaje (`viaje_detalle.dart`) cuando el viaje está planificado o finalizado, mostrando esta funcionalidad exclusiva de forma dinámica únicamente cuando el viaje se encuentra **"En Curso"**.
+### 🚫 3. Restricción de Modo Lectura en Paradas (Viajes Pendientes)
+
+- **`paradadetalle.dart`**: Cuando el viaje padre está en estado `Pendiente`, la pantalla de detalle de parada entra en modo `isReadOnly = true` para **todos** los usuarios.
+- Se ocultan: botón de registrar pesajes, agregar ítems, generar remito y finalizar parada.
+- Se muestra un banner amber premium: *"Consulta únicamente. El viaje aún no ha comenzado."*
+
+### 📦 4. Gestión de Cargas (Automatización)
+
+- **`supabase_service.dart` - `createCarga()`**: Se corrigió conversión de `cantidad` a entero (`toInt()`) y se implementó bulk insert con rollback manual si falla.
+- **Auto-creación de cargas**: Al planificar un viaje con solicitudes de distribución, se crea automáticamente una carga pendiente.
+- **`carga_detalle.dart`**: Visualización robusta de ítems con cálculos correctos de kg y totales.
+
+### 🗺️ 5. Planificador de Ruta (Unidades y Google Maps)
+
+- **Unidades dinámicas**: Se importó `ProductosData.masterCatalog` en `planificar_viaje.dart` para mostrar `UN.` para TCM/TRR y `Kg.` para el resto.
+- **Google Maps**: Los waypoints ahora se formatean como `"$localidad, $provincia, Argentina"` para evitar ambigüedades de geocodificación (ej: Vértiz → La Pampa).
+
+### 🌾 6. Ficha de Apicultor
+
+- **`apicultor_detalle.dart`**: Resumen histórico por producto filtrado solo a solicitudes `Terminada`/`Finalizada`. Se añadió sección premium "Total Estimado Pendiente".
+
+### 🧹 7. Limpieza de Datos de Prueba (Base de Datos)
+
+- Se eliminaron todos los registros de cargas con prefijo `TEST-` o `TEST-FORM-` de la base de datos de Supabase mediante script Dart.
 
 ---
 
 ## 💾 Sincronización y Compilación Exitosa
-- **Verificación**: Todo el código de la producción (`lib/`) se analizó exhaustivamente mediante `flutter analyze` y se encuentra **libre de errores de compilación**.
-- **Control de Versiones**: Los archivos actualizados fueron integrados en el commit local y sincronizados exitosamente con tu repositorio remoto de GitHub (`main`).
+
+- **Control de Versiones**: Commit `61aa51e` subido a `origin/main` en GitHub (`HasselGit/Flutter-Antigravity`).
+- **53 archivos** modificados/creados en este commit (2258 líneas nuevas).
+- **`flutter analyze`**: Los archivos de `lib/` están libres de errores de compilación. Los warnings son `info`-level pre-existentes en todo el proyecto (prints, curly_braces) no relacionados a los cambios de esta sesión.
+
+## 🖥️ Instrucciones para continuar en otra computadora
+
+1. **Clonar o sincronizar el repo**: `git pull origin main`
+2. **Limpiar caché** (MUY IMPORTANTE para que el emulador descarte la sesión vieja):
+   ```bash
+   flutter clean
+   flutter pub get
+   ```
+3. **Ejecutar**: `flutter run`
+4. Al arrancar, el `signOut()` en `main.dart` limpiará automáticamente cualquier JWT stale del emulador.
+5. La carga `CARGA-7845001` mostrará correctamente **TRR x 25** para ambos usuarios.

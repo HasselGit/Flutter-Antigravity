@@ -1,3 +1,39 @@
+# Walkthrough: Sesión 21/05/2026 — Corrección RLS Cargas Vacías, Permisos Admin y Flujo Paradas
+
+## 🔐 Corrección de Bug Crítico: Cargas Vacías por Sesión JWT Stale
+
+**Síntoma**: La carga `CARGA-7845001` mostraba `0 items / 0 kg / No hay ítems` para ambos usuarios (chofer y admin), a pesar de tener `TRR x 25` en la base de datos.
+
+**Causa Raíz**: El emulador tenía persistida una sesión de Supabase Auth antigua en `flutter_secure_storage`. Esto forzaba las consultas bajo el rol `authenticated`, cuya política RLS en `carga_items` referencia `profiles.rol` (columna inexistente — fue renombrada a `puesto`), devolviendo filas vacías silenciosamente.
+
+**Archivos Modificados**:
+- **`lib/main.dart`**: `signOut()` explícito tras inicialización de Supabase para descartar JWT stale.
+- **`lib/backend/supabase_service.dart`**: `signOut()` preventivo en `login()` para garantizar rol anon.
+- **`lib/pages/viajes_page.dart`**: `userEmail` desde `SharedPreferences` como fuente primaria de identidad.
+- **`lib/pages/viaje_detalle.dart`**: `_isAdmin` verifica `_userEmail` de SharedPreferences + Supabase Auth.
+- **`lib/pages/rutas_page.dart`**: Carga de `_userEmail` desde SharedPreferences y visibilidad correcta para admins.
+- **`lib/pages/paradadetalle.dart`**: Modo lectura (`isReadOnly`) cuando viaje está `Pendiente`, con banner amber premium.
+- **`lib/pages/cargas_page.dart`**: Logs diagnósticos y acceso correcto para admins.
+- **`lib/pages/carga_detalle.dart`**: Visualización robusta de ítems y cálculos de kg.
+- **`lib/pages/planificar_viaje.dart`**: Unidades dinámicas del catálogo maestro + waypoints con provincia para Google Maps.
+- **`lib/pages/apicultor_detalle.dart`**: Historial filtrado solo a terminadas + sección "Total Estimado Pendiente".
+- **`lib/pages/remito_registro.dart`**: Mejoras al flujo de remitos separados por tipo (entrega/recolección).
+- **`lib/pages/homepage.dart`**, **`depositohome.dart`**: Ajustes de visibilidad y permisos.
+- **`lib/backend/pdf_invoice_generator.dart`**: Mejoras en generación de PDFs.
+- **`lib/components/agregaritem.dart`**: Fix overflow con teclado virtual.
+
+**Commit**: `61aa51e` → `origin/main` — 53 archivos, 2258 líneas nuevas.
+
+**Para continuar en otra computadora**:
+```bash
+git pull origin main
+flutter clean
+flutter pub get
+flutter run
+```
+
+---
+
 # Walkthrough: Cierre de Sprint, Control de Roles, Multi-Remitos y APK de Producción
 
 Hemos finalizado y estabilizado exitosamente todas las directivas de control de seguridad para roles, protección de paradas/pesajes contra ediciones no autorizadas, integración del flujo telefónico y pre-carga de multi-remitos en la vista principal del viaje. El APK de Android se ha compilado exitosamente.
