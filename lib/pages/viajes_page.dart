@@ -145,10 +145,48 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
-          : TabBarView(
-              controller: _tabController,
-              children: _statusKeys.map((s) => _buildTripList(s, theme)).toList(),
-            ),
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Ocurrió un error al cargar los viajes',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            color: DesignTokens.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            color: DesignTokens.primary.withOpacity(0.6),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _fetchViajes,
+                          style: DesignTokens.secondaryButtonStyle,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('REINTENTAR'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : TabBarView(
+                  controller: _tabController,
+                  children: _statusKeys.map((s) => _buildTripList(s, theme)).toList(),
+                ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await context.push('/planificarViaje');
@@ -191,190 +229,232 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   }
 
   Widget _buildTripCard(Map<String, dynamic> v, FlutterFlowTheme theme) {
-    final estado = v['estado'] ?? 'Planificado';
-    final id = v['id']?.toString() ?? '';
-    final codigo = v['viaje_codigo']?.toString() ?? (id.length > 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase());
-    final vehiculo = v['vehiculo_codigo']?.toString() ?? 'Sin vehículo';
-    final fechaPlanRaw = v['fecha_planificada'];
-    final fechaIniRaw = v['fecha_inicio'];
-    final fechaTermRaw = v['fecha_terminado'];
-    final fechaRaw = v['fecha'] ?? v['created_at'];
-    
-    DateTime? fechaToShow;
-    String labelFecha = 'Fecha';
+    try {
+      final estado = v['estado'] ?? 'Planificado';
+      final id = v['id']?.toString() ?? '';
+      final codigo = v['viaje_codigo']?.toString() ?? (id.length > 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase());
+      final vehiculo = v['vehiculo_codigo']?.toString() ?? 'Sin vehículo';
+      final fechaPlanRaw = v['fecha_planificada'];
+      final fechaIniRaw = v['fecha_inicio'];
+      final fechaTermRaw = v['fecha_terminado'];
+      final fechaRaw = v['fecha'] ?? v['created_at'];
+      
+      DateTime? fechaToShow;
+      String labelFecha = 'Fecha';
 
-    if (estado == 'Planificado' || estado == 'Pendiente') {
-      fechaToShow = DateTime.tryParse(fechaPlanRaw?.toString() ?? fechaRaw.toString());
-      labelFecha = 'Fecha Planificada';
-    } else if (estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado') {
-      fechaToShow = DateTime.tryParse(fechaIniRaw?.toString() ?? fechaRaw.toString());
-      labelFecha = 'Iniciado el';
-    } else {
-      fechaToShow = DateTime.tryParse(fechaTermRaw?.toString() ?? fechaRaw.toString());
-      labelFecha = 'Terminado el';
-    }
+      if (estado == 'Planificado' || estado == 'Pendiente') {
+        fechaToShow = DateTime.tryParse(fechaPlanRaw?.toString() ?? fechaRaw?.toString() ?? '');
+        labelFecha = 'Fecha Planificada';
+      } else if (estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado') {
+        fechaToShow = DateTime.tryParse(fechaIniRaw?.toString() ?? fechaRaw?.toString() ?? '');
+        labelFecha = 'Iniciado el';
+      } else {
+        fechaToShow = DateTime.tryParse(fechaTermRaw?.toString() ?? fechaRaw?.toString() ?? '');
+        labelFecha = 'Terminado el';
+      }
 
-    final fechaStr = fechaToShow != null ? DateFormat('dd/MM/yyyy HH:mm').format(fechaToShow) : 'S/D';
-    final dynamic rawChofer = v['chofer'];
-    Map<String, dynamic> chofer = {};
-    if (rawChofer is List && rawChofer.isNotEmpty) {
-      chofer = rawChofer.first;
-    } else if (rawChofer is Map) {
-      chofer = Map<String, dynamic>.from(rawChofer);
-    }
-    final choferNombre = '${chofer['nombre'] ?? 'Sin'} ${chofer['apellido'] ?? 'Asignar'}';
+      final fechaStr = fechaToShow != null ? DateFormat('dd/MM/yyyy HH:mm').format(fechaToShow) : 'S/D';
+      
+      final dynamic rawChofer = v['chofer'];
+      Map<dynamic, dynamic> chofer = {};
+      try {
+        if (rawChofer is List && rawChofer.isNotEmpty) {
+          final first = rawChofer.first;
+          if (first is Map) {
+            chofer = first;
+          }
+        } else if (rawChofer is Map) {
+          chofer = rawChofer;
+        }
+      } catch (e) {
+        print('ViajesPage: Error parsing chofer: $e');
+      }
+      
+      final choferNombre = '${chofer['nombre'] ?? 'Sin'} ${chofer['apellido'] ?? 'Asignar'}';
 
-    Color chipColor;
-    Color chipBg;
-    Color leftBorder;
-    if (estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado') {
-      chipColor = const Color(0xFF7D5700);
-      chipBg = const Color(0xFFFDEFCC);
-      leftBorder = const Color(0xFFFDBE49);
-    } else if (estado == 'Terminado' || estado == 'Finalizado') {
-      chipColor = const Color(0xFF1A6B43);
-      chipBg = const Color(0xFFD4F0E1);
-      leftBorder = const Color(0xFF249689);
-    } else {
-      chipColor = const Color(0xFF1565C0);
-      chipBg = const Color(0xFFD6E4FF);
-      leftBorder = const Color(0xFF1565C0);
-    }
-    
-    return GestureDetector(
-      onTap: () => context.push('/viajedetalle?viajeId=$id'),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                decoration: BoxDecoration(
-                  color: leftBorder,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
+      Color chipColor;
+      Color chipBg;
+      Color leftBorder;
+      if (estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado') {
+        chipColor = const Color(0xFF7D5700);
+        chipBg = const Color(0xFFFDEFCC);
+        leftBorder = const Color(0xFFFDBE49);
+      } else if (estado == 'Terminado' || estado == 'Finalizado') {
+        chipColor = const Color(0xFF1A6B43);
+        chipBg = const Color(0xFFD4F0E1);
+        leftBorder = const Color(0xFF249689);
+      } else {
+        chipColor = const Color(0xFF1565C0);
+        chipBg = const Color(0xFFD6E4FF);
+        leftBorder = const Color(0xFF1565C0);
+      }
+      
+      return GestureDetector(
+        onTap: () => context.push('/viajedetalle?viajeId=$id'),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: leftBorder,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                vehiculo,
-                                style: TextStyle(
-                                  fontFamily: 'Work Sans',
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 9,
-                                  color: Colors.black45,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                codigo,
-                                style: const TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 18,
-                                  color: Color(0xFF08201A),
-                                ),
-                              ),
-                            ],
-                          ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
-                              child: Text(
-                                estado.toUpperCase(),
-                                style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Work Sans'),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    vehiculo,
+                                    style: const TextStyle(
+                                      fontFamily: 'Work Sans',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 9,
+                                      color: Colors.black45,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    codigo,
+                                    style: const TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                      color: Color(0xFF08201A),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
-                            if ((_isAdmin || _userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') &&
-                                (_isAdmin || estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado'))
-                              Row(
-                                children: [
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
+                                  child: Text(
+                                    estado.toUpperCase(),
+                                    style: TextStyle(color: chipColor, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Work Sans'),
+                                  ),
+                                ),
+                                if ((_isAdmin || _userRole == 'Gerente' || _userRole == 'Compras' || _userRole == 'CEO') &&
+                                    (_isAdmin || estado == 'Planificado' || estado == 'Pendiente' || estado == 'En Proceso' || estado == 'En Curso' || estado == 'Cargado')) ...[
+                                  const SizedBox(width: 6),
                                   IconButton(
-                                    icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary),
+                                    icon: const Icon(Icons.edit_note_rounded, color: DesignTokens.primary, size: 20),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
                                     onPressed: () async {
                                       await context.push('/planificarViaje?editId=$id');
                                       _fetchViajes();
                                     },
                                   ),
+                                  const SizedBox(width: 6),
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
                                     onPressed: () => _confirmDelete(id, codigo),
                                   ),
                                 ],
-                              ),
+                              ],
+                            ),
                           ],
                         ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black45),
-                          const SizedBox(width: 6),
-                          Text('$labelFecha: $fechaStr', style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter')),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.person_rounded, size: 14, color: Colors.black45),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Chofer: $choferNombre',
-                              style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter'),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 12),
+                        Row(
                           children: [
-                            const Text(
-                              'VER DETALLE',
-                              style: TextStyle(
-                                color: Color(0xFF08201A),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 11,
-                                fontFamily: 'Work Sans',
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF08201A)),
+                            const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black45),
+                            const SizedBox(width: 6),
+                            Text('$labelFecha: $fechaStr', style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter')),
                           ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.person_rounded, size: 14, color: Colors.black45),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Chofer: $choferNombre',
+                                style: const TextStyle(color: Colors.black45, fontSize: 12, fontFamily: 'Inter'),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'VER DETALLE',
+                                style: TextStyle(
+                                  color: Color(0xFF08201A),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  fontFamily: 'Work Sans',
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF08201A)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    } catch (e, stack) {
+      print('ViajesPage: Error in _buildTripCard: $e\n$stack');
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Error al procesar viaje: ${v['viaje_codigo'] ?? 'S/C'}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade900)),
+            const SizedBox(height: 8),
+            Text(e.toString(), style: TextStyle(color: Colors.red.shade700, fontSize: 12)),
+          ],
+        ),
+      );
+    }
   }
 }

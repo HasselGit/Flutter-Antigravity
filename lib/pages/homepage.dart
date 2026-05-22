@@ -1,11 +1,9 @@
-import '../flutter_flow/flutter_flow_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
-import '../backend/app_states.dart';
 
 class HomePageWidget extends StatefulWidget {
   const HomePageWidget({super.key});
@@ -192,12 +190,12 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_userRole == 'Encargado de Deposito')
+                        if (_userRole == 'Encargado de Deposito' || _userRole == 'Deposito')
                           _moduleCard(
                             icon: Icons.warehouse_rounded,
                             title: 'Depósito',
                             subtitle: 'Cargas y depósito\ncirculante',
-                            bgColor: const Color(0xFF1A4B3A),
+                            bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/depositoHome'),
                           ),
@@ -219,7 +217,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gerenteHome'),
                           ),
-                        if ((_userRole == 'Compras' || _userRole == 'Admin APP') && _userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia')
+                        if ((_userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Deposito' || _userRole == 'Encargado de Deposito') && _userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia')
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Gestión de Cargas',
@@ -228,7 +226,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/cargas'),
                           ),
-                        if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito') ...[
+                        if (_userRole != 'Chofer' && _userRole != 'Encargado de Deposito' && _userRole != 'Deposito') ...[
                           _moduleCard(
                             icon: Icons.assignment_ind_rounded,
                             title: 'Planificador',
@@ -246,7 +244,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
-                        if (_userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia') ...[
+                        if (_userRole != 'CEO' && _userRole != 'Gerente' && _userRole != 'Gerencia' && _userRole != 'Encargado de Deposito' && _userRole != 'Deposito') ...[
                           _moduleCard(
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
@@ -272,14 +270,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gastos'),
                           ),
                         ],
-                        _moduleCard(
-                          icon: Icons.alt_route_rounded,
-                          title: 'Control de Ruta',
-                          subtitle: 'Trayectos activos\nen tiempo real',
-                          bgColor: DesignTokens.primary,
-                          accentColor: DesignTokens.secondary,
-                          onTap: () => context.push('/rutas'),
-                        ),
+                        if (_userRole != 'Encargado de Deposito' && _userRole != 'Deposito')
+                          _moduleCard(
+                            icon: Icons.alt_route_rounded,
+                            title: 'Control de Ruta',
+                            subtitle: 'Trayectos activos\nen tiempo real',
+                            bgColor: DesignTokens.primary,
+                            accentColor: DesignTokens.secondary,
+                            onTap: () => context.push('/rutas'),
+                          ),
                       ],
                     ),
 
@@ -292,12 +291,14 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     ),
                     const SizedBox(height: 12),
 
-                    _quickAction(Icons.inventory_2_rounded, 'Inventario de Productos', 'Gestión de stock e insumos', () => context.push('/productos')),
-                    const SizedBox(height: 10),
-                    _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
-                    const SizedBox(height: 10),
-                    _quickAction(Icons.group_rounded, 'Apicultores', 'Directorio de productores', () => context.push('/apicultores')),
-                    const SizedBox(height: 10),
+                    if (_userRole != 'Encargado de Deposito' && _userRole != 'Deposito') ...[                      
+                      _quickAction(Icons.inventory_2_rounded, 'Inventario de Productos', 'Gestión de stock e insumos', () => context.push('/productos')),
+                      const SizedBox(height: 10),
+                      _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
+                      const SizedBox(height: 10),
+                      _quickAction(Icons.group_rounded, 'Apicultores', 'Directorio de productores', () => context.push('/apicultores')),
+                      const SizedBox(height: 10),
+                    ],
                     _quickAction(Icons.receipt_long_rounded, 'Remitos Digitales', 'Documentos de cierre', () => context.push('/remitosLista')),
                     
                     const SizedBox(height: 40),
@@ -483,14 +484,17 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Gerencia')
                   _drawerItem(Icons.alt_route_rounded, 'Gestión de Viajes', () => context.push('/viajes')),
                 _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
-                _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
-                _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
+                if (_userRole != 'Encargado de Deposito' && _userRole != 'Deposito') ...[
+                  _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
+                  _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
+                ],
                 _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
                 _drawerItem(Icons.warehouse_rounded, 'Cargas Depósito', () => context.push('/depositoHome')),
-                if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP')
+                if (_isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Deposito' || _userRole == 'Encargado de Deposito')
                   _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),
                 const Divider(),
-                _drawerItem(Icons.group_rounded, 'Apicultores', () => context.push('/apicultores')),
+                if (_userRole != 'Encargado de Deposito' && _userRole != 'Deposito')
+                  _drawerItem(Icons.group_rounded, 'Apicultores', () => context.push('/apicultores')),
                 _drawerItem(Icons.receipt_long_rounded, 'Remitos Digitales', () => context.push('/remitosLista')),
               ],
             ),

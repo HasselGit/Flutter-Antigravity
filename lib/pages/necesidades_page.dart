@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
 import '../backend/productos_data.dart';
 import '../backend/design_tokens.dart';
@@ -17,6 +18,7 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
   List<Map<String, dynamic>> _apicultores = [];
   List<Map<String, dynamic>> _productos = [];
   List<Map<String, dynamic>> _filteredNecesidades = [];
+  Map<String, String> _solicitudToViaje = {};
   bool _loading = true;
   String? _error;
   late TabController _tabController;
@@ -45,12 +47,26 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
       final apiData = await service.getApicultores();
       final prodData = await service.getProductos();
 
+      // Consultar relación de solicitud_id a viaje_id desde la tabla paradas
+      final List<dynamic> paradasRaw = await Supabase.instance.client
+          .from('paradas')
+          .select('solicitud_id, viaje_id')
+          .not('solicitud_id', 'is', null);
+
+      final Map<String, String> solToViaje = {};
+      for (var p in paradasRaw) {
+        if (p['solicitud_id'] != null && p['viaje_id'] != null) {
+          solToViaje[p['solicitud_id'].toString()] = p['viaje_id'].toString();
+        }
+      }
+
       if (mounted) {
         setState(() {
           _necesidades = neceData;
           _filteredNecesidades = neceData;
           _apicultores = apiData;
           _productos = List<Map<String, dynamic>>.from(prodData);
+          _solicitudToViaje = solToViaje;
           _loading = false;
         });
       }
@@ -546,7 +562,9 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
           final n = list[index];
           final api = n['apicultores'] ?? {};
           final estado = n['estado'] ?? AppStates.pendiente;
-          
+          final normalizedEstado = AppStates.normalize(estado);
+          final bool canNavigate = (normalizedEstado == AppStates.asignada || normalizedEstado == AppStates.enCurso);
+
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
@@ -556,6 +574,21 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
             ),
             child: ListTile(
               contentPadding: const EdgeInsets.all(16),
+              onTap: canNavigate
+                  ? () {
+                      final viajeId = _solicitudToViaje[n['id'].toString()];
+                      if (viajeId != null) {
+                        context.push('/viajedetalle?viajeId=$viajeId');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('No se pudo encontrar el viaje asociado a esta solicitud'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    }
+                  : null,
               title: Text(
                 '${n['producto']}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Manrope', fontSize: 16),
@@ -584,18 +617,22 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Color(AppStates.stateBgColor(AppStates.normalize(estado))),
+                      color: Color(AppStates.stateBgColor(normalizedEstado)),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      AppStates.normalize(estado).toUpperCase(),
+                      normalizedEstado.toUpperCase(),
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: Color(AppStates.stateTextColor(AppStates.normalize(estado))),
+                        color: Color(AppStates.stateTextColor(normalizedEstado)),
                       ),
                     ),
                   ),
+                  if (canNavigate) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.chevron_right_rounded, color: DesignTokens.primary, size: 20),
+                  ],
                 ],
               ),
             ),

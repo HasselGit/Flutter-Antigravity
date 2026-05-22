@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
+import '../backend/apicultores_data.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -201,8 +202,54 @@ class _RutaDetalleWidgetState extends State<RutaDetalleWidget> {
   }
 
   void _openMap(List<Map<String, dynamic>> paradas) async {
-    final localities = paradas.map((p) => p['localidad']).where((l) => l != null).join('|');
-    final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico&destination=General+Pico&waypoints=$localities&travelmode=driving';
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (paradas.isEmpty) return;
+    
+    final paradasOrdenadas = List<Map<String, dynamic>>.from(paradas);
+    paradasOrdenadas.sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
+
+    final intermediateLocalities = paradasOrdenadas
+        .map((p) {
+          final ubi = (p['ubicacion'] ?? '').toString().trim();
+          final loc = (p['localidad'] ?? '').toString().trim();
+          if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty || loc == 'S/D') {
+            return '';
+          }
+          
+          // Resolver provincia usando el nombre del apicultor (ubicacion)
+          String prov = 'La Pampa';
+          if (ubi.isNotEmpty) {
+            final match = ApicultoresData.fallbackApicultores.firstWhere(
+              (a) => a['nombre']?.toString().toLowerCase().trim() == ubi.toLowerCase(),
+              orElse: () => <String, dynamic>{},
+            );
+            if (match.isNotEmpty && match['provincia'] != null) {
+              prov = match['provincia'].toString().trim();
+            }
+          }
+          return '$loc, $prov, Argentina';
+        })
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    final String origin = Uri.encodeComponent('General Pico, La Pampa, Argentina');
+    final String destination = Uri.encodeComponent('General Pico, La Pampa, Argentina');
+    final String waypoints = intermediateLocalities.isNotEmpty 
+        ? Uri.encodeComponent(intermediateLocalities.join('|'))
+        : '';
+        
+    final url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving';
+    
+    try {
+      final uri = Uri.parse(url);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      try {
+        final uri = Uri.parse(url);
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (_) {}
+    }
   }
 }

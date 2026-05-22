@@ -72,7 +72,7 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
   bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
 
   bool get _canCreate =>
-      _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP';
+      _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Deposito' || _userRole == 'Encargado de Deposito';
 
   @override
   Widget build(BuildContext context) {

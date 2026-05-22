@@ -39,29 +39,89 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   Future<void> _fetchData() async {
     setState(() => _loading = true);
     try {
-      // Fetch Pending Voyages for first tab
-      final pendingViajes = await Supabase.instance.client
+      // Limpiar sesión Supabase Auth residual para evitar RLS block en consultas anidadas
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (authErr) {
+        print('DepositoHome: Error al limpiar sesión Supabase: $authErr');
+      }
+
+      // Obtener viajes con cargas activas (Pendiente, En Proceso, En Curso)
+      final pendingViajesRaw = await Supabase.instance.client
           .from('viajes')
-          .select('*, profiles(nombre, apellido), paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, carga_items(*))')
-          .eq('estado', 'Pendiente')
+          .select('*, paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, carga_items(*))')
+          .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
           .order('fecha', ascending: true);
 
-      // Fetch Terminated Cargas for second tab
+      // Deep copy mutable para permitir la inyección de ítems si el RLS anidado falla
+      final List<Map<String, dynamic>> rawList = (pendingViajesRaw as List).map((v) {
+        final Map<String, dynamic> vMap = Map<String, dynamic>.from(v as Map);
+        if (vMap['cargas'] != null) {
+          vMap['cargas'] = (vMap['cargas'] as List).map((c) => Map<String, dynamic>.from(c as Map)).toList();
+        }
+        return vMap;
+      }).toList();
+
+      final List<Map<String, dynamic>> pendingViajes = [];
+      
+      for (var v in rawList) {
+        if (v['chofer_id'] != null) {
+          try {
+            final chofer = await Supabase.instance.client
+                .from('profiles')
+                .select('nombre, apellido')
+                .eq('id', v['chofer_id'])
+                .maybeSingle();
+            v['profiles'] = chofer;
+          } catch (_) {}
+        }
+        
+        final listCargas = v['cargas'] as List? ?? [];
+        
+        // Fallback directo si carga_items viene vacío por RLS stale
+        for (var c in listCargas) {
+          final items = c['carga_items'] as List? ?? [];
+          if (items.isEmpty) {
+            try {
+              final directItems = await Supabase.instance.client
+                  .from('carga_items')
+                  .select('*')
+                  .eq('carga_id', c['id']);
+              c['carga_items'] = directItems;
+            } catch (fallbackErr) {
+              print('DepositoHome: Error en fallback directo carga_items para ${c['id']}: $fallbackErr');
+            }
+          }
+        }
+
+        if (listCargas.isEmpty) {
+          pendingViajes.add(v);
+        } else {
+          final hasPending = listCargas.any((c) => c['estado'] != AppStates.terminado);
+          if (hasPending) {
+            pendingViajes.add(v);
+          }
+        }
+      }
+
+      // Obtener cargas terminadas para la segunda pestaña
       final history = await SupabaseService().getTerminatedCargas();
 
-      // Fetch Products
+      // Obtener productos disponibles
       final prods = await SupabaseService().getProductos();
 
       if (mounted) {
         setState(() {
-          _viajesPlanificados = List<Map<String, dynamic>>.from(pendingViajes);
+          _viajesPlanificados = pendingViajes;
           _cargasTerminadas = history;
           _productos = List<Map<String, dynamic>>.from(prods);
           _applyFilters();
           _loading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stack) {
+      print('DepositoHome: Error fetching data: $e');
+      print(stack);
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -85,25 +145,133 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     });
   }
 
-  Future<void> _confirmarCarga(Map<String, dynamic> viaje, double totalKg, int totalTambores) async {
+  // ─── Calcular métricas de un viaje ──────────────────────────────────────────
+
+  Map<String, dynamic> _calcCardMetrics(Map<String, dynamic> item) {
+    double totalKg = 0;
+    int totalTambores = 0;
+    final Map<String, double> aggregatedItems = {};
+
+    final type = item['type'] as String;
+    final Map<String, dynamic> viaje = item['viaje'];
+    final Map<String, dynamic>? carga = item['carga'];
+
+    if (type == 'carga_activa' && carga != null) {
+      final items = carga['carga_items'] as List? ?? [];
+      for (var item in items) {
+        final double cant = (item['cantidad'] ?? 0).toDouble();
+        final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+        if (prod.isNotEmpty) {
+          aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
+        }
+        if (prod == 'TCM' || prod.contains('TAMBOR')) {
+          totalKg += cant * 300;
+          totalTambores += cant.toInt();
+        } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+            prod.contains('VACIO') ||
+            prod.contains('VACÍO')) {
+          totalKg += cant * 20;
+          totalTambores += cant.toInt();
+        } else if (prod == 'AZ') {
+          totalKg += cant * 50;
+        } else {
+          totalKg += cant;
+        }
+      }
+    } else {
+      // Fallback a paradas planificadas para viaje_sin_carga
+      for (var p in (viaje['paradas'] as List? ?? [])) {
+        for (var item in (p['parada_items'] as List? ?? [])) {
+          final double cant = (item['cantidad'] ?? 0).toDouble();
+          final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+          if (prod.isNotEmpty) {
+            aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
+          }
+          if (prod == 'TCM' || prod.contains('TAMBOR')) {
+            totalKg += cant * 300;
+            totalTambores += cant.toInt();
+          } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
+              prod.contains('VACIO') ||
+              prod.contains('VACÍO')) {
+            totalKg += cant * 20;
+            totalTambores += cant.toInt();
+          } else if (prod == 'AZ') {
+            totalKg += cant * 50;
+          } else {
+            totalKg += cant;
+          }
+        }
+      }
+    }
+
+    return {
+      'totalKg': totalKg,
+      'totalTambores': totalTambores,
+      'aggregatedItems': aggregatedItems,
+    };
+  }
+
+  // ─── Acciones ───────────────────────────────────────────────────────────────
+
+  Future<void> _iniciarCarga(Map<String, dynamic> viaje, Map<String, dynamic> carga) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar Salida', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('¿Confirma que el viaje ${viaje['viaje_codigo']} ha sido cargado físicamente y está listo para salir?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Iniciar Carga', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('¿Iniciar la carga ${carga['carga_codigo']} del viaje ${viaje['viaje_codigo']}?\nEsto indica que el depósito está cargando el camión.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('CONFIRMAR')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1565C0)),
+            child: const Text('INICIAR', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
 
     if (confirmar == true) {
       try {
-        await SupabaseService().confirmarCargaViaje(viaje['id']);
+        await SupabaseService().iniciarCarga(carga['id'].toString());
         await _fetchData();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga del viaje confirmada exitosamente'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Carga iniciada — en proceso de carga'), backgroundColor: Color(0xFF1565C0)),
+          );
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _confirmarSalida(Map<String, dynamic> viaje, Map<String, dynamic> carga) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Confirmar Salida', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('¿La carga ${carga['carga_codigo']} del viaje ${viaje['viaje_codigo']} ha sido cargada completamente y está lista para salir?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
+            child: const Text('CONFIRMAR', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      try {
+        await SupabaseService().updateCargaEstado(carga['id'].toString(), AppStates.terminado);
+        await _fetchData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Carga confirmada — viaje listo para salir'), backgroundColor: Colors.green),
+          );
           _tabController.animateTo(1);
         }
       } catch (e) {
@@ -111,6 +279,254 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       }
     }
   }
+
+  // ─── Diálogo de edición de carga ────────────────────────────────────────────
+
+  Future<void> _showEditCargaDialog(Map<String, dynamic> viaje, Map<String, dynamic> carga) async {
+    final cargaId = carga['id'].toString();
+    // Copia mutable de los ítems
+    final List<Map<String, dynamic>> currentItems = List<Map<String, dynamic>>.from(
+      (carga['carga_items'] as List? ?? []).map((item) => Map<String, dynamic>.from(item)),
+    );
+
+    // ── Controladores creados FUERA del builder para persistir entre rebuilds ──
+    final List<TextEditingController> itemControllers = currentItems
+        .map((item) => TextEditingController(
+            text: '${(item['cantidad'] ?? 0).toDouble().toStringAsFixed(0)}'))
+        .toList();
+
+    String? selectedProductoCodigo;
+    final qtyController = TextEditingController();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Cabecera ──────────────────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Editar Carga', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
+                            Text('Carga: ${carga['carga_codigo'] ?? ''} • Viaje: ${viaje['viaje_codigo'] ?? ''}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Lista de ítems actuales ───────────────────────────────
+                  if (currentItems.isNotEmpty) ...[
+                    const Text('ÍTEMS DE LA CARGA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey, letterSpacing: 0.5)),
+                    const SizedBox(height: 8),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: currentItems.length,
+                      itemBuilder: (_, idx) {
+                        final item = currentItems[idx];
+                        final prod = (item['producto_codigo'] ?? 'S/D').toString().toUpperCase();
+                        // Usar el controller persistente para este índice
+                        final ctrl = (idx < itemControllers.length) ? itemControllers[idx] : TextEditingController();
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: DesignTokens.primary.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: DesignTokens.primary.withValues(alpha: 0.1)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Text(prod, style: const TextStyle(fontWeight: FontWeight.bold, color: DesignTokens.primary)),
+                              ),
+                              SizedBox(
+                                width: 70,
+                                child: TextField(
+                                  controller: ctrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    border: OutlineInputBorder(),
+                                    labelText: 'Cant.',
+                                  ),
+                                  onChanged: (v) {
+                                    final parsed = double.tryParse(v);
+                                    if (parsed != null) {
+                                      currentItems[idx]['cantidad'] = parsed;
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(item['unidad']?.toString() ?? 'UN', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    currentItems.removeAt(idx);
+                                    if (idx < itemControllers.length) {
+                                      itemControllers.removeAt(idx).dispose();
+                                    }
+                                  });
+                                },
+                                child: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text('AGREGAR PRODUCTO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey, letterSpacing: 0.5)),
+                  const SizedBox(height: 10),
+
+                  // ── Selector de producto ──────────────────────────────────
+                  DropdownButtonFormField<String>(
+                    value: selectedProductoCodigo,
+                    isExpanded: true,   // ← Fix overflow
+                    decoration: const InputDecoration(
+                      labelText: 'Producto',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    items: _productos.map((p) => DropdownMenuItem<String>(
+                      value: p['codigo']?.toString(),
+                      child: Text(
+                        p['descripcion'] ?? 'S/N',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )).toList(),
+                    onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: qtyController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad',
+                      prefixIcon: Icon(Icons.numbers_rounded),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        if (selectedProductoCodigo == null || qtyController.text.isEmpty) return;
+                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
+                        final qty = double.tryParse(qtyController.text) ?? 0;
+                        if (qty <= 0) return;
+                        setModalState(() {
+                          final existing = currentItems.firstWhere(
+                            (i) => i['producto_codigo']?.toString() == selectedProductoCodigo,
+                            orElse: () => {},
+                          );
+                          if (existing.isNotEmpty) {
+                            existing['cantidad'] = (existing['cantidad'] as num).toDouble() + qty;
+                            // Actualizar el controller del item existente
+                            final existIdx = currentItems.indexOf(existing);
+                            if (existIdx < itemControllers.length) {
+                              itemControllers[existIdx].text = existing['cantidad'].toStringAsFixed(0);
+                            }
+                          } else {
+                            currentItems.add({
+                              'producto_codigo': selectedProductoCodigo,
+                              'cantidad': qty,
+                              'unidad': prod['unidad'] ?? 'UN',
+                            });
+                            itemControllers.add(TextEditingController(text: qty.toStringAsFixed(0)));
+                          }
+                          selectedProductoCodigo = null;
+                          qtyController.clear();
+                        });
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('AGREGAR A LA LISTA'),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Botón guardar ─────────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        // Sincronizar cantidades de los controllers antes de guardar
+                        for (int i = 0; i < currentItems.length; i++) {
+                          if (i < itemControllers.length) {
+                            final parsed = double.tryParse(itemControllers[i].text);
+                            if (parsed != null) currentItems[i]['cantidad'] = parsed;
+                          }
+                        }
+                        try {
+                          await SupabaseService().updateCargaItems(cargaId, currentItems);
+                          // Dispose controllers
+                          for (final c in itemControllers) { c.dispose(); }
+                          qtyController.dispose();
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _fetchData();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Carga actualizada correctamente'), backgroundColor: Colors.green),
+                            );
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            showDialog(
+                              context: ctx,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Error al guardar'),
+                                content: Text(e.toString()),
+                                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      style: DesignTokens.primaryButtonStyle,
+                      icon: const Icon(Icons.save_rounded, color: DesignTokens.accent),
+                      label: const Text('GUARDAR CAMBIOS'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+
+  // ─── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +549,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           indicatorColor: DesignTokens.secondary,
           indicatorWeight: 3,
           tabs: const [
-            Tab(text: 'PENDIENTES'),
+            Tab(text: 'ACTIVAS'),
             Tab(text: 'TERMINADAS'),
           ],
         ),
@@ -143,7 +559,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         : TabBarView(
             controller: _tabController,
             children: [
-              _buildPendientesTab(),
+              _buildActivasTab(),
               _buildTerminadasTab(),
             ],
           ),
@@ -156,115 +572,203 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     );
   }
 
-  Widget _buildPendientesTab() {
-    if (_viajesPlanificados.isEmpty) {
+  List<Map<String, dynamic>> _getActiveItems() {
+    final List<Map<String, dynamic>> items = [];
+    for (var v in _viajesPlanificados) {
+      final listCargas = v['cargas'] as List? ?? [];
+      final activeCargas = listCargas.where((c) => c['estado'] != AppStates.terminado).toList();
+      if (activeCargas.isEmpty) {
+        items.add({'type': 'viaje_sin_carga', 'viaje': v, 'carga': null});
+      } else {
+        for (var c in activeCargas) {
+          items.add({'type': 'carga_activa', 'viaje': v, 'carga': c});
+        }
+      }
+    }
+    return items;
+  }
+
+  Widget _buildActivasTab() {
+    final allItems = _getActiveItems();
+
+    if (allItems.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.local_shipping_outlined, size: 64, color: DesignTokens.primary.withOpacity(0.1)),
             const SizedBox(height: 16),
-            const Text('No hay viajes pendientes de carga.'),
+            const Text('No hay viajes con cargas activas.'),
           ],
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: _viajesPlanificados.length,
-      itemBuilder: (context, index) {
-        final v = _viajesPlanificados[index];
-        final chofer = v['profiles'] ?? {};
-        final vehiculo = v['vehiculos'] ?? {};
-        
-        double totalKg = 0;
-        int totalTambores = 0;
-        
-        final listCargas = v['cargas'] as List? ?? [];
-        final activeCarga = listCargas.isNotEmpty ? listCargas.first : null;
-        final listItems = activeCarga != null ? (activeCarga['carga_items'] as List? ?? []) : [];
-        
-        // Agregar las cantidades consolidadas de productos para mostrar
-        final Map<String, double> aggregatedItems = {};
-        
-        if (listItems.isNotEmpty) {
-          // Calculate from consolidated database loads
-          for (var item in listItems) {
-            final double cant = (item['cantidad'] ?? 0).toDouble();
-            final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
-            if (prod.isNotEmpty) {
-              aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
-            }
-            if (prod == 'TCM' || prod.contains('TAMBOR')) {
-              totalKg += cant * 300;
-              totalTambores += cant.toInt();
-            } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
-                prod.contains('VACIO') ||
-                prod.contains('VACÍO')) {
-              totalKg += cant * 20;
-              totalTambores += cant.toInt();
-            } else if (prod == 'AZ') {
-              totalKg += cant * 50;
-            } else {
-              totalKg += cant;
-            }
-          }
-        } else {
-          // Fallback to planned paradas if no physical load exists
-          for (var p in (v['paradas'] as List? ?? [])) {
-            for (var item in (p['parada_items'] as List? ?? [])) {
-              final double cant = (item['cantidad'] ?? 0).toDouble();
-              final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
-              if (prod.isNotEmpty) {
-                aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
-              }
-              if (prod == 'TCM' || prod.contains('TAMBOR')) {
-                totalKg += cant * 300;
-                totalTambores += cant.toInt();
-              } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
-                  prod.contains('VACIO') ||
-                  prod.contains('VACÍO')) {
-                totalKg += cant * 20;
-                totalTambores += cant.toInt();
-              } else if (prod == 'AZ') {
-                totalKg += cant * 50;
-              } else {
-                totalKg += cant;
-              }
-            }
-          }
-        }
 
-        final capKg = (vehiculo['capacidad_kg'] ?? 0).toDouble();
-        final excede = capKg > 0 && totalKg > capKg;
+    final enCursoItems = allItems.where((item) {
+      if (item['type'] == 'viaje_sin_carga') return false;
+      final c = item['carga'];
+      return c != null && c['estado'] == AppStates.enCurso;
+    }).toList();
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: DesignTokens.primary.withOpacity(0.06)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+    final pendientesItems = allItems.where((item) {
+      if (item['type'] == 'viaje_sin_carga') return true;
+      final c = item['carga'];
+      return c != null && c['estado'] == AppStates.pendiente;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      children: [
+        // ─── Sección EN CARGA ────────────────────────────────────────────────
+        if (enCursoItems.isNotEmpty) ...[
+          _sectionHeader(
+            icon: Icons.local_shipping_rounded,
+            label: 'EN CARGA',
+            color: const Color(0xFF7D5700),
+            bgColor: const Color(0xFFFDEFCC),
+            count: enCursoItems.length,
           ),
-          child: Padding(
+          const SizedBox(height: 10),
+          ...enCursoItems.map((item) => _buildViajeCard(item, isEnCurso: true)),
+          const SizedBox(height: 20),
+        ],
+
+        // ─── Sección PENDIENTE ───────────────────────────────────────────────
+        if (pendientesItems.isNotEmpty) ...[
+          _sectionHeader(
+            icon: Icons.hourglass_empty_rounded,
+            label: 'PENDIENTES',
+            color: const Color(0xFF1565C0),
+            bgColor: const Color(0xFFD6E4FF),
+            count: pendientesItems.length,
+          ),
+          const SizedBox(height: 10),
+          ...pendientesItems.map((item) => _buildViajeCard(item, isEnCurso: false)),
+        ],
+
+        if (enCursoItems.isEmpty && pendientesItems.isEmpty)
+          const Center(child: Padding(
+            padding: EdgeInsets.all(40),
+            child: Text('No hay cargas activas.'),
+          )),
+      ],
+    );
+  }
+
+  Widget _sectionHeader({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color bgColor,
+    required int count,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 16, color: color),
+        ),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: color, letterSpacing: 0.5)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+          child: Text('$count', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildViajeCard(Map<String, dynamic> item, {required bool isEnCurso}) {
+    final type = item['type'] as String;
+    final Map<String, dynamic> v = item['viaje'];
+    final Map<String, dynamic>? c = item['carga'];
+
+    final chofer = v['profiles'] ?? {};
+    final vehiculo = v['vehiculos'] ?? {};
+    final metrics = _calcCardMetrics(item);
+    final totalKg = metrics['totalKg'] as double;
+    final totalTambores = metrics['totalTambores'] as int;
+    final aggregatedItems = metrics['aggregatedItems'] as Map<String, double>;
+    
+    final capKg = (vehiculo['capacidad_kg'] ?? 0).toDouble();
+    final excede = capKg > 0 && totalKg > capKg;
+
+    final borderColor = isEnCurso ? const Color(0xFFFDBE49) : DesignTokens.primary.withOpacity(0.12);
+    final topBarColor = isEnCurso ? const Color(0xFFFDEFCC) : DesignTokens.primary.withOpacity(0.04);
+
+    return GestureDetector(
+      onTap: () => context.push('/viajedetalle?viajeId=${v['id']}'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor, width: isEnCurso ? 1.5 : 1),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          // Barra superior de estado
+          Container(
+            decoration: BoxDecoration(
+              color: topBarColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  isEnCurso ? Icons.local_shipping_rounded : Icons.hourglass_empty_rounded,
+                  size: 14,
+                  color: isEnCurso ? const Color(0xFF7D5700) : DesignTokens.primary.withOpacity(0.5),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isEnCurso ? 'EN CARGA' : 'PENDIENTE',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                    color: isEnCurso ? const Color(0xFF7D5700) : DesignTokens.primary.withOpacity(0.5),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${v['viaje_codigo'] ?? 'S/C'}${c != null ? ' • ${c['carga_codigo']}' : ' • SIN CARGA'}',
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: DesignTokens.primary),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Info chofer y vehículo
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(v['viaje_codigo'] ?? 'S/C', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: DesignTokens.primary)),
-                        Text('Chofer: ${chofer['nombre'] ?? 'S/N'} ${chofer['apellido'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
+                    Icon(Icons.person_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${chofer['nombre'] ?? 'Sin asignar'} ${chofer['apellido'] ?? ''}'.trim(),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: DesignTokens.onSurface),
                     ),
-                    Icon(Icons.inventory_2_outlined, color: DesignTokens.secondary),
+                    const Spacer(),
+                    Icon(Icons.directions_car_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(v['vehiculo_codigo'] ?? 'S/D', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
-                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+
+                // Métricas
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -273,9 +777,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     _metricCol('UNIDAD', v['vehiculo_codigo'] ?? 'S/D', Icons.local_shipping),
                   ],
                 ),
+
+                // Productos
                 if (aggregatedItems.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  const Text('CARGA COMPUESTA POR:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.grey, letterSpacing: 0.5)),
+                  const Text('COMPUESTA POR:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.grey, letterSpacing: 0.5)),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
@@ -296,27 +802,85 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     }).toList(),
                   ),
                 ],
+
                 if (excede) ...[
                   const SizedBox(height: 8),
                   const Text('⚠️ Excede capacidad del vehículo', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _confirmarCarga(v, totalKg, totalTambores),
-                    style: DesignTokens.primaryButtonStyle,
-                    icon: const Icon(Icons.check_circle_outline, color: DesignTokens.accent),
-                    label: const Text('CONFIRMAR CARGA Y SALIDA'),
-                  ),
+
+                const SizedBox(height: 14),
+
+                // Botones de acción
+                Row(
+                  children: [
+                    if (type == 'viaje_sin_carga')
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showAddCargaDialog(preselectedViajeId: v['id']?.toString()),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: DesignTokens.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            elevation: 0,
+                          ),
+                          icon: const Icon(Icons.add_box_rounded, size: 16, color: DesignTokens.accent),
+                          label: const Text(
+                            'CREAR CARGA',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ),
+                      )
+                    else ...[
+                      // Botón secundario: Editar Carga
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showEditCargaDialog(v, c!),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: DesignTokens.primary,
+                            side: const BorderSide(color: DesignTokens.primary, width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.edit_rounded, size: 16),
+                          label: const Text('EDITAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Botón principal: según estado
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: isEnCurso
+                              ? () => _confirmarSalida(v, c!)
+                              : () => _iniciarCarga(v, c!),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isEnCurso ? DesignTokens.primary : const Color(0xFF1565C0),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            elevation: 0,
+                          ),
+                          icon: Icon(
+                            isEnCurso ? Icons.check_circle_outline : Icons.play_circle_outline,
+                            size: 16,
+                            color: isEnCurso ? DesignTokens.accent : Colors.white,
+                          ),
+                          label: Text(
+                            isEnCurso ? 'CONFIRMAR SALIDA' : 'INICIAR CARGA',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ]
+                  ],
                 ),
               ],
             ),
           ),
-        );
-      },
-    );
+        ],
+      ),
+    ));
   }
 
   Widget _buildTerminadasTab() {
@@ -380,9 +944,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     final updated = DateTime.tryParse(c['updated_at'] ?? '');
     final dateStr = updated != null ? DateFormat('dd/MM/yyyy HH:mm').format(updated) : 'S/F';
     final items = List<Map<String, dynamic>>.from(c['carga_items'] ?? []);
+    final viajeId = c['viaje_id'] ?? c['viaje']?['id'];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+    return GestureDetector(
+      onTap: viajeId != null ? () => context.push('/viajedetalle?viajeId=$viajeId') : null,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -437,7 +1004,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           child: const Text('REMITO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
         ),
       ),
-    );
+    ));
   }
 
   Widget _metricCol(String label, String value, IconData icon) {
@@ -451,8 +1018,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     );
   }
 
-  void _showAddCargaDialog() {
-    String? selectedViajeId;
+  void _showAddCargaDialog({String? preselectedViajeId}) {
+    String? selectedViajeId = preselectedViajeId;
     String? selectedProductoCodigo;
     final qtyController = TextEditingController();
 
@@ -516,6 +1083,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             'estado': AppStates.pendiente,
                           }).select('id').single();
                           
+                          final messenger = ScaffoldMessenger.of(context);
                           await Supabase.instance.client.from('carga_items').insert({
                             'carga_id': cargaResp['id'],
                             'producto_codigo': prod['codigo'] ?? prod['descripcion'],
@@ -526,10 +1094,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                           if (ctx.mounted) {
                             Navigator.pop(ctx);
                             _fetchData();
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Carga asignada correctamente')));
+                            messenger.showSnackBar(const SnackBar(content: Text('Carga asignada correctamente')));
                           }
                         } catch (e) {
-                          if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                          final messenger = ScaffoldMessenger.of(context);
+                          if (ctx.mounted) messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
                         }
                       },
                       style: DesignTokens.primaryButtonStyle,

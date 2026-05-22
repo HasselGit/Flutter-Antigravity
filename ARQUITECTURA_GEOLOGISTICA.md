@@ -1,5 +1,5 @@
 # Master Blueprint: Arquitectura y Lógica de GeoLogística
-**Versión:** 1.4 (20 de Mayo de 2026)
+**Versión:** 1.5 (22 de Mayo de 2026)
 **Objetivo:** Proveer una guía técnica infalible para la reconstrucción o continuación del proyecto por cualquier IA o desarrollador, garantizando 0 retrocesos.
 
 ## 1. Pilares Arquitectónicos
@@ -98,3 +98,26 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Sheet ID**: `1vcg7nmkTfp_AyTTkTOGuGu7k-B2eAAUA_V8P24wa1Es` (hoja `gid=1388406787`).
 - **Mecanismo**: El script descarga el Sheet como CSV y hace `upsert` en la tabla `apicultores` de Supabase.
 - **Pendiente**: Integrar un botón de sincronización manual en la UI del admin, o bien disparar la sincronización en segundo plano al iniciar sesión como `hassel00@gmail.com`.
+
+## 12. Salvaguarda de Cargas Vacías y Doble Capa RLS (Supabase)
+- **Problema de JWT Stale**: El uso de emuladores y pruebas repetidas puede persistir tokens de Supabase Auth nativos obsoletos en `flutter_secure_storage`. Esto fuerza las consultas relacionales del backend bajo el rol `authenticated`, activando filtros RLS que silencian las filas de `carga_items` y muestran "0 items / 0 kg" de forma errónea (ej. `CARGA-7845001`).
+- **Limpieza Preventiva en UI**: En pantallas críticas de depósito (`depositohome.dart`), se ejecuta `await Supabase.instance.client.auth.signOut()` de manera preventiva en la inicialización (`_fetchData()`) para limpiar el hilo local de tokens persistidos obsoletos y asegurar llamadas con rol público.
+- **Fallback Directo en Consultas**: Los métodos de `SupabaseService` (`getViajeDetalle`, `getTerminatedCargas`, `getCargas`, `getCargaDetalle`) incorporan una doble capa de seguridad: si la consulta relacional con joins devuelve una lista vacía de `carga_items`, se realiza una consulta directa específica a `carga_items` filtrada por `carga_id` para recuperar y re-inyectar los datos reales.
+
+## 13. Geolocalización e Inteligencia de Direcciones en Google Maps
+- **Direcciones Físicas en Waypoints**: Para evitar búsquedas fallidas y crashes en Google Maps causados por enviar nombres de apicultores como puntos de parada (ej: "No results for General Pico, La Pampa"), se reestructuró la codificación de waypoints.
+- **Formato Estándar**: Las URLs de mapas se generan estrictamente bajo el formato limpio: `"$localidad, $provincia, Argentina"`.
+- **Resolución Dinámica de Provincia**: Se implementó una lógica de fallback de provincias. Para cada parada, el sistema busca el nombre del apicultor en `ApicultoresData.fallbackApicultores`. Si existe coincidencia, se extrae su provincia física real; de lo contrario, se asume `'La Pampa'` por defecto.
+- **Lanzamiento de Mapas Nativo**: La URL con waypoints codificados en URI se dispara utilizando `launchUrl` en modo `LaunchMode.externalApplication`, forzando la apertura de la aplicación nativa del dispositivo.
+
+## 14. Navegación a Detalle de Viaje desde Necesidades (`/necesidades`)
+- **Acceso de Auditoría y Roles**: Para permitir que roles no operacionales (CEO, Depósito, Compras) inspeccionen los recorridos y pesajes de viaje de forma fluida, se habilitó la navegación desde el listado de necesidades.
+- **Mapeo de Relaciones**: Durante `_fetchData()` en `necesidades_page.dart`, se consulta la tabla `paradas` para mapear de forma reactiva `solicitud_id -> viaje_id` en el mapa de lookup `_solicitudToViaje`.
+- **Interactividad Premium**: Las tarjetas de necesidades en estado `'Asignada'` o `'En Curso'` muestran un chevron colorido (`DesignTokens.primary`) e implementan un `onTap` que redirige a `/viajedetalle?viajeId=X`.
+- **Control de Solo Lectura**: La vista `/viajedetalle` evalúa dinámicamente si el rol del usuario no es operativo para ocultar todos los botones de acción física, previniendo crashes y manipulaciones indebidas.
+
+## 15. Prevención de Crashes de Tamaño Infinito en Flex Grids
+- **Regla de Restricción de Ancho en Row/Column**: Los errores de desbordamiento gráfico (`RenderFlex` overflow o box constraints error) ocurren al anidar filas o columnas flexibles sin delimitar sus tamaños.
+- **Solución en Tarjetas de Viaje (`viajes_page.dart`)**:
+  1. Configurar siempre `mainAxisSize: MainAxisSize.min` en filas de botones de acción o elementos anidados del lado derecho.
+  2. Envolver columnas o textos descriptivos del lado izquierdo en widgets `Expanded` y aplicar control de overflow mediante `overflow: TextOverflow.ellipsis` para evitar desbordamientos en pantallas estrechas.

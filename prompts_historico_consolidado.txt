@@ -348,6 +348,61 @@ RESULTADOS OBTENIDOS:
 - Compilación y Validación: Se corrió 'flutter analyze' con éxito para garantizar 0 errores estáticos y compilación exitosa.
 
 ================================================================================
+ARCHIVO: 2026-05-21_prompts.txt
+================================================================================
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 21/05/2026
+Para usar en Google Antigravity (otra computadora)
+══════════════════════════════════════════════════════════════════
+
+CONTRATO Y REQUERIMIENTO DEL DÍA:
+──────────────────────────
+El usuario solicita corregir fallos operacionales críticos de control de roles, preservación de datos e inmutabilidad tras finalizar viajes:
+1. Asegurar que las cantidades de parada_items no se restablezcan a 0 tras firmar el remito, permitiendo visualizar los datos reales en el Detalle de Viaje.
+2. Configurar la visualización interactiva y compartición directa de PDFs de remitos mediante el plugin printing (PdfPreview y Printing.sharePdf).
+3. Resolver discrepancias de códigos de producto: unificar el conteo y pesaje reconociendo tanto 'TCM' como el número '1' de forma transparente.
+4. Diseñar etiquetas dinámicas de "MIXTA" en el badge de operaciones cuando una parada combina entregas (Distribución) y retiros (Recolección).
+5. Habilitar la redirección nativa a Google Maps con waypoints ordenados secuencialmente a través de launchUrl externa.
+6. Reemplazar la sección duplicada "PRODUCTOS" por "CARGAS" en choferhome.dart.
+
+RESULTADOS OBTENIDOS:
+──────────────────────────
+- Preservación de Cantidades: Se comentó la limpieza en caliente de la DB en remito_registro.dart para conservar las existencias en terreno.
+- Visor de PDF e Intercambio Nativo: Se reemplazaron botones inactivos en viaje_detalle.dart por flujos interactivos de PdfPreview y Printing.sharePdf.
+- Unificación TCM / 1: Se implementó la equivalencia bidireccional de códigos en remito_registro.dart, paradadetalle.dart y viaje_detalle.dart.
+- Operaciones Mixtas: Se codificó la validación analítica de inventario para actualizar badges a "MIXTA" en tiempo real.
+- Google Maps Nativo: Se optimizó launchUrl con LaunchMode.externalApplication eliminando validaciones restrictivas de canLaunchUrl.
+- Ajuste Home Chofer: Se sustituyó el botón "PRODUCTOS" por acceso directo a "/cargas" en choferhome.dart.
+- Limpieza de Sintaxis: Se eliminaron bloques duplicados y obsoletos en depositohome.dart garantizando compillaciones exitosas.
+
+================================================================================
+ARCHIVO: 2026-05-22_prompts.txt
+================================================================================
+══════════════════════════════════════════════════════════════════
+GEOLOGISTICA — PROMPTS DEL DÍA 22/05/2026
+Para usar en Google Antigravity (otra computadora)
+══════════════════════════════════════════════════════════════════
+
+CONTRATO Y REQUERIMIENTO DEL DÍA:
+──────────────────────────
+El usuario solicita estabilizar flujos de carga del rol depósito (Carolina Merlo), habilitar navegación de solo lectura para roles gerenciales/administrativos, y corregir errores de renderizado gráfico de pantalla en blanco:
+1. Corregir "0 items / 0 kg" en CARGA-7845001 en depósito ejecutando signOut() al inicio de _fetchData() en depositohome.dart y doble capa de fallbacks en SupabaseService.
+2. Habilitar que roles administrativos/gerenciales puedan acceder al detalle de viaje en modo de solo lectura pulsando tarjetas en necesidades_page.dart y depositohome.dart.
+3. Corregir desbordamientos RenderFlex (pantalla en blanco) al visualizar /viajes para usuarios Compras/CEO.
+4. Estructurar tarjetas de depósito aplanadas por carga en lugar de agrupar por viaje.
+5. Corregir la pérdida de persistencia de controllers de textos al abrir teclados virtuales.
+6. Resolver waypoints de Google Maps con direcciones físicas de localidad y provincia en lugar de nombres de apicultores.
+
+RESULTADOS OBTENIDOS:
+──────────────────────────
+- Solución RLS en Cargas: Se limpió JWT persistido stale en depositohome.dart e implementó direct queries redundantes en SupabaseService.
+- Navegación Lectora: Se mapeó paradas de solicitudes en necesidades_page.dart para redirigir a /viajedetalle de forma inoperativa (segura).
+- Fix Layout Flex: Se reestructuró _buildTripCard en viajes_page.dart limitando el row secundario con MainAxisSize.min y envolviendo descripciones en Expanded conellipsis text.
+- Estructura Aplanada de Cargas: Se aplanó las tarjetas de depósito usando _getActiveItems() y se hoisteó itemControllers fuera del StatefulBuilder.
+- Geolocalización de Waypoints: Se formatearon waypoints como "$localidad, $provincia, Argentina" buscando la provincia en ApicultoresData.fallbackApicultores.
+- Documentación: Se actualizó ARQUITECTURA_GEOLOGISTICA.md a v1.5 y task.md a completado.
+
+================================================================================
 ARCHIVO INCORPORADO: instrucciones_generales.txt
 ================================================================================
 

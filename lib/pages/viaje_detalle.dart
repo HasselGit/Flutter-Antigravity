@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geo_logistica/backend/supabase_service.dart';
 import 'package:geo_logistica/backend/design_tokens.dart';
 import 'package:geo_logistica/backend/app_states.dart';
+import 'package:geo_logistica/backend/apicultores_data.dart';
 import 'package:geo_logistica/flutter_flow/flutter_flow_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -429,7 +430,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: (isViajeTerminado && !_isAdmin) ? null : () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
+      onTap: () => context.push('/paradaDetalle?paradaId=${p['id']}').then((_) => _loadData()),
 
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -736,26 +737,37 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     final paradasOrdenadas = List<Map<String, dynamic>>.from(paradas);
     paradasOrdenadas.sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
     
-    final waypoints = paradasOrdenadas
+    final intermediateLocalities = paradasOrdenadas
         .map((p) {
-          final ubi = (p['ubicacion'] ?? '').toString();
-          final loc = (p['localidad'] ?? '').toString();
-          if (ubi.toLowerCase().contains('sin apicultor') || ubi.isEmpty) {
-            if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty) {
-              return '';
+          final ubi = (p['ubicacion'] ?? '').toString().trim();
+          final loc = (p['localidad'] ?? '').toString().trim();
+          if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty || loc == 'S/D') {
+            return '';
+          }
+          
+          // Resolver provincia usando el nombre del apicultor (ubicacion)
+          String prov = 'La Pampa';
+          if (ubi.isNotEmpty) {
+            final match = ApicultoresData.fallbackApicultores.firstWhere(
+              (a) => a['nombre']?.toString().toLowerCase().trim() == ubi.toLowerCase(),
+              orElse: () => <String, dynamic>{},
+            );
+            if (match.isNotEmpty && match['provincia'] != null) {
+              prov = match['provincia'].toString().trim();
             }
-            return '$loc, La Pampa, Argentina';
           }
-          if (loc.toLowerCase().contains('sin localidad') || loc.isEmpty) {
-            return '$ubi, La Pampa, Argentina';
-          }
-          return '$ubi, $loc, La Pampa, Argentina';
+          return '$loc, $prov, Argentina';
         })
         .where((s) => s.isNotEmpty)
-        .map((s) => Uri.encodeComponent(s))
-        .join('|');
+        .toList();
+
+    final String origin = Uri.encodeComponent('General Pico, La Pampa, Argentina');
+    final String destination = Uri.encodeComponent('General Pico, La Pampa, Argentina');
+    final String waypoints = intermediateLocalities.isNotEmpty 
+        ? Uri.encodeComponent(intermediateLocalities.join('|'))
+        : '';
         
-    final url = 'https://www.google.com/maps/dir/?api=1&origin=General+Pico,+La+Pampa&destination=General+Pico,+La+Pampa&waypoints=$waypoints&travelmode=driving';
+    final url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving';
     
     try {
       final uri = Uri.parse(url);

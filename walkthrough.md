@@ -162,3 +162,87 @@ Hemos corregido con precisión absoluta las últimas discrepancias y optimizado 
 ### 5. Visibilidad Condicional de Cambios de Ruta (`viaje_detalle.dart`)
 - **Problema**: El texto y las opciones de aprobación de *"Aprobar Cambio de Ruta"* y *"Cambio Solicitado"* se mostraban para viajes finalizados o planificados, cuando solo es relevante durante el transcurso activo del viaje.
 - **Solución**: Añadimos una validación condicional que renderiza este módulo de forma exclusiva cuando el estado del viaje es estrictamente `En Curso`, limpiando visualmente la pantalla de detalle para el resto de los estados.
+
+---
+
+## 🗺️ Geolocalización Precisa y Soporte de Roles de Depósito (Sesión 22/05/2026)
+
+Hemos estabilizado y corregido de forma definitiva los dos problemas reportados en las pruebas de campo:
+
+### 1. Estabilización de Perfiles y Soporte de Roles en Depósito (`homepage.dart` y `depositohome.dart`)
+- **Problema**: El dashboard de la página de inicio excluía a los usuarios que poseían el rol alfanumérico `'Deposito'` (Carolina Merlo), mostrando tarjetas de Planificador administrativas en su lugar y limitando su operatividad. Adicionalmente, consultas relacionales directas a perfiles en Supabase fallaban debido a esquemas de llaves foráneas no expuestas.
+- **Solución**:
+  - Actualizamos `homepage.dart` para que reconozca tanto `'Encargado de Deposito'` como `'Deposito'` como roles equivalentes autorizados para la interfaz de depósito.
+  - Se corrigió la consulta directa de viajes en `depositohome.dart` resolviendo el chofer secuencialmente en un bucle seguro para evitar el error `PostgrestException (PGRST200)`.
+  - Se optimizó la geolocalización y los waypoints de Google Maps en `viaje_detalle.dart` y `ruta_detalle.dart` para utilizar direcciones limpias e inteligentes de `"$localidad, $provincia, Argentina"`.
+
+---
+
+## 🧭 Acceso y Layout de Viajes para Rol Compras (León Castellanos - Sesión 22/05/2026)
+
+Hemos estabilizado y corregido de forma definitiva el problema reportado de pantalla en blanco para el rol de Compras al acceder a la Gestión de Viajes:
+
+### 1. Resolución de Error de Layout Crítico en Tarjetas de Viaje (`viajes_page.dart`)
+- **Problema**: Cuando un usuario con rol de `Compras`, `Gerente`, `CEO` o `Admin` ingresaba a la pantalla de Gestión de Viajes (`/viajes`), la página se renderizaba completamente en blanco. Esto se debía a un error fatal de diseño en Flutter en la función `_buildTripCard`: se estaba agregando un widget `Row` secundario (para los botones de editar y borrar) directamente dentro de los elementos hijos del `Row` principal de la tarjeta sin configurar `mainAxisSize: MainAxisSize.min`. Al no estar restringido su ancho y renderizarse dentro de otro `Row` con distribución `spaceBetween`, causaba una excepción crítica de tamaño infinito (`RenderFlex` overflow/box constraints error) que crasheaba el renderizado completo de la lista.
+- **Solución**:
+  - Reestructuramos la tarjeta para agrupar el Chip de estado y los botones de acción en un `Row` secundario compacto en el lado derecho, configurando explícitamente `mainAxisSize: MainAxisSize.min`.
+  - Envolvimos la columna izquierda de detalles del viaje en un widget `Expanded` con `overflow: TextOverflow.ellipsis` en el código del viaje para evitar cualquier desbordamiento horizontal en pantallas estrechas.
+  - Esto no sólo soluciona el crash fatal y la pantalla en blanco de forma definitiva para todos los puestos administrativos, sino que además mejora enormemente la visualización y alineación estética de las tarjetas bajo un diseño premium y responsivo de `DesignTokens`.
+
+### 2. Verificación de Compilación y Calidad
+- Ejecutamos `flutter analyze` en la terminal para confirmar que la base de código no presenta errores estáticos ni de sintaxis en los archivos involucrados, garantizando la total estabilidad de la aplicación.
+
+---
+
+## 📦 Solución de Cargas Pendientes, Consolidación de Depósito (Carolina Merlo) y Limpieza de Código
+
+Hemos estabilizado y corregido de forma definitiva los problemas de visualización de cargas múltiples pendientes de depósito y hemos optimizado completamente la base de código del proyecto:
+
+### 1. Panel de Depósito Responsivo e Individualizado
+* **Problema:** Anteriormente, el panel agrupaba estrictamente las tarjetas de depósito por viaje, lo que significaba que si un viaje contenía múltiples cargas activas o pendientes (como `V-2105-906`), Carolina solo podía visualizar e interactuar con la primera, bloqueando la confirmación individualizada de la segunda.
+* **Solución:**
+  * Refactorizamos `depositohome.dart` introduciendo la estructura de mapeo aplanada `_getActiveItems()`. Ahora las tarjetas se generan de manera individual y detallada **por cada carga activa** (o viaje-carga), permitiendo acciones y flujos independientes para cada una.
+  * Agregamos soporte para `viaje_sin_carga` renderizando botones directos de creación de carga con pre-selección automática en el diálogo modal.
+  * Modificamos los flujos operacionales `_iniciarCarga` y `_confirmarSalida` para que operen granularmente por el ID exacto de la carga (`carga['id']`) en lugar de transicionar todo el viaje completo.
+
+### 2. Sincronización y Persistencia de Ediciones de Cargas
+* **Problema:** En el diálogo de edición de carga, los `TextEditingController` de cada fila del modal se re-creaban dentro de la lógica del constructor del State, lo que hacía que al escribir una cantidad se borrara la entrada tras cualquier reconstrucción de Flutter y causaba que los cambios no se guardaran. Asimismo, el selector de productos sufría de overflow horizontal en ciertas resoluciones de pantalla.
+* **Solución:**
+  * Extrajimos la lista de controladores de texto de las cantidades de la carga `itemControllers` **fuera de la declaración del StatefulBuilder**, persistiendo su estado e ingresos intactos durante toda la sesión interactiva.
+  * Incorporamos la propiedad `isExpanded: true` y control de desbordamiento de texto en el dropdown del modal para asegurar un diseño impecable libre de desbordamientos visuales.
+  * El guardado de cantidades actualiza de manera transparente y consistente la base de datos de Supabase.
+
+### 3. Limpieza de Fragmento Duplicado
+* **Problema:** Se detectó que un bloque redundante de botones de acción de carga e inicio de viaje (`EDITAR`, `INICIAR CARGA` y `CONFIRMAR SALIDA`) quedó huérfano entre las líneas 851 y 891 de `depositohome.dart` durante refactorizaciones anteriores, lo que corrompía la estructura gramatical de la clase y lanzaba errores sintácticos severos en cascada en las declaraciones de funciones y vistas subsiguientes.
+* **Solución:**
+  * Removimos limpiamente el fragmento huérfano.
+  * Validamos de manera dirigida y general que la aplicación completa compila sin un solo error de compilación (`error -`) o warning crítico en ningún archivo.
+
+---
+
+## 🧭 Estabilización Final: RLS Redundante, Navegación Lectora y Geolocalización (Sesión 22/05/2026 - Tarde)
+
+Hemos consolidado las últimas correcciones en el flujo de datos del backend y la navegación de auditoría entre dashboards:
+
+### 1. Resolución de Cargas Vacías por RLS JWT Stale (`SupabaseService` y `depositohome.dart`)
+* **Problema**: El visor de cargas para el rol Depósito (Carolina Merlo) en `CARGA-7845001` devolvía un listado vacío ("0 items / 0 kg") a pesar de tener registros correctos en la base de datos de Supabase. Esto se debía a la presencia de tokens persistidos nativos stale en Secure Storage, activando silenciosamente filtros RLS en PostgreSQL sobre esquemas que buscan perfiles.
+* **Solución Doble Capa**:
+  - **Limpieza en Caliente**: Agregamos `await Supabase.instance.client.auth.signOut()` de forma preventiva al inicio de `_fetchData()` en `depositohome.dart`. Esto limpia cualquier sesión residual del dispositivo y asegura que la aplicación consuma datos públicos.
+  - **Doble Consulta Fallback**: En `supabase_service.dart`, rediseñamos las consultas en `getViajeDetalle`, `getTerminatedCargas`, `getCargas` y `getCargaDetalle` de modo que, si el fetch relacional con joins no devuelve ítems de carga por silenciamiento RLS, se ejecuta inmediatamente una sub-consulta directa filtrada por `carga_id` a la tabla `carga_items` para recomponer la información en la UI.
+
+### 2. Navegación a Detalle de Viaje desde Necesidades (`necesidades_page.dart`)
+* **Problema**: Los usuarios con roles corporativos y administrativos no podían auditar el recorrido del viaje asignado a una necesidad desde su dashboard de forma rápida.
+* **Solución**:
+  - Mapeamos de forma reactiva `solicitud_id -> viaje_id` consultando la tabla de `paradas` durante la inicialización de datos en `necesidades_page.dart` (`_solicitudToViaje`).
+  - Habilitamos el tap en las tarjetas en estado `'Asignada'` o `'En Curso'` (con indicador visual premium `chevron_right_rounded` en color `DesignTokens.primary`) para redirigir directamente al detalle del viaje a través de `context.push('/viajedetalle?viajeId=X')`.
+  - La pantalla `/viajedetalle` hereda correctamente la sesión y bloquea la interactividad de edición para puestos no operativos.
+
+### 3. Geolocalización de Waypoints mediante Direcciones Físicas Inteligentes (`viaje_detalle.dart` y `ruta_detalle.dart`)
+* **Problema**: Google Maps fallaba la visualización de rutas al enviarse el nombre del apicultor (ej. "Garavagno Francisco Andres") en vez de una dirección física o georreferenciada.
+* **Solución**:
+  - Eliminamos el uso directo de nombres y construimos una cadena limpia de geocodificación: `"$localidad, $provincia, Argentina"`.
+  - Para obtener la provincia correcta de cada parada de forma dinámica en tiempo de ejecución, implementamos una búsqueda inteligente comparando el nombre del apicultor de la parada con `ApicultoresData.fallbackApicultores`. Si no se encuentra, se utiliza `'La Pampa'` por defecto.
+  - El string resultante es codificado de forma segura en la URL y se lanza en modo nativo externo para la aplicación oficial de mapas en el celular.
+
+
+

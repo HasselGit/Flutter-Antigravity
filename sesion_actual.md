@@ -1,90 +1,60 @@
-# Sesión Actual - 21 de Mayo, 2026
+# Sesión Actual - 22 de Mayo, 2026
 
-## Objetivos Alcanzados: Corrección de Cargas Vacías (RLS Stale), Permisos de Administrador y Flujo de Paradas
+## Objetivos Alcanzados: Estabilización de Roles en Depósito, Geolocalización en Google Maps y Navegación Lectura de Necesidades
 
-Hoy resolvimos de raíz el error por el cual la carga `CARGA-7845001` mostraba **0 items / 0 kg / No hay ítems en esta carga** en ambas pantallas (chofer Mauricio Pérez y administrador hassel00@gmail.com), a pesar de contener `TRR x 25` correctamente en la base de datos.
+Hoy resolvimos de raíz varios problemas críticos reportados durante las pruebas en terreno y consolidamos la arquitectura general de navegación y control de datos.
 
 ---
 
-### 🔐 1. Corrección del Bug de RLS Silencioso (Causa Raíz)
+### 🔐 1. Corrección en Depósito (Carolina Merlo) y Cargas Vacías (CARGA-7845001)
 
-- **Diagnóstico**: El emulador de Android tenía guardada una sesión JWT de Supabase Auth de pruebas anteriores (`flutter_secure_storage`). Al arrancar la app, `Supabase.initialize()` cargaba ese token automáticamente, forzando las consultas bajo el rol `authenticated`.
-- **El Problema en Base de Datos**: La política RLS de `carga_items` para el rol `authenticated` referencia `profiles.rol`, pero la columna fue renombrada a `profiles.puesto` hace tiempo. Este error de esquema causaba que PostgreSQL filtrara silenciosamente **todas las filas** devolviendo `carga_items: []` sin lanzar ninguna excepción visible.
-- **Solución en `main.dart`**: Se agregó `await Supabase.instance.client.auth.signOut()` inmediatamente después de la inicialización de Supabase para descartar cualquier JWT stale persistido en el emulador.
-- **Solución en `supabase_service.dart`**: Se agregó `signOut()` preventivo al inicio del método `login()` manual como capa adicional de limpieza.
+- **Diagnóstico**: La carga `CARGA-7845001` de Carolina Merlo (rol `Deposito`) mostraba "0 items / 0 kg" en `/depositoHome` a pesar de que en la base de datos contenía 24 unidades de `TRC` (`carga_items`). Esto ocurría debido a políticas RLS de Supabase que filtraban los ítems cuando la sesión cargaba un token expirado o corrupto de auth nativo.
+- **Solución - SignOut Preventivo**: Se añadió `await Supabase.instance.client.auth.signOut()` al inicio de `_fetchData()` en `depositohome.dart` para garantizar que la sesión stale se limpie en caliente y trabaje con el cliente público libre de RLS obsoleto.
+- **Solución - Fallback Directo de Consulta**: En `supabase_service.dart`, agregamos una capa de seguridad redundante: si la consulta relacional con joins de Supabase devuelve `carga_items` vacío, el servicio realiza una consulta directa específica `_client.from('carga_items').select('*').eq('carga_id', c['id'])` y re-inyecta los datos. Este doble mecanismo (SignOut + Fallback) resolvió instantáneamente la carga vacía.
+- **Visualización Detallada**: Permitimos hacer clic en las tarjetas de cargas de depósito para navegar fluidamente a `/viajedetalle?viajeId=...`.
 
-### 🛡️ 2. Permisos de Administrador y Botones de Viaje
+### 🧭 2. Navegación a Detalle de Viaje desde Necesidades (`/necesidades`)
 
-- **`viaje_detalle.dart`**: El `_isAdmin` ahora verifica `_userEmail` (desde `SharedPreferences`) además del campo de Supabase Auth, garantizando que `hassel00@gmail.com` tenga acceso total a los botones **Iniciar** y **Finalizar Viaje** sin depender del auth nativo.
-- **`viajes_page.dart`**: `userEmail` se lee desde `SharedPreferences` como fuente primaria (fallback a `auth.currentUser?.email`), preservando `_isAdmin=true` correctamente con Supabase Auth en estado anónimo.
-- **`rutas_page.dart`**: Se cargó `_userEmail` desde `SharedPreferences` y se mejoró la visibilidad del FAB de planificación y botones de viaje para administradores.
+- **Objetivo**: Permitir que roles no operativos (Compras, Depósito, CEO, etc.) puedan auditar el detalle de los viajes activos o asignados directamente desde la pantalla de necesidades.
+- **Implementación**:
+  - En `necesidades_page.dart`, al recuperar la información del backend en `_fetchData()`, consultamos la tabla `paradas` para mapear `solicitud_id -> viaje_id` de forma reactiva (`_solicitudToViaje`).
+  - Habilitamos el callback `onTap` de las tarjetas para las necesidades en estado `'Asignada'` o `'En Curso'` (o `'En Proceso'`).
+  - Al tocarlas, resuelven el ID del viaje correspondiente y navegan al usuario a `/viajedetalle?viajeId=$viajeId`.
+  - Agregamos un indicador visual premium (Icono `Icons.chevron_right_rounded` coloreado con `DesignTokens.primary`) que denota clickabilidad a los usuarios.
+  - La pantalla `/viajedetalle` evalúa correctamente el rol para renderizar vistas solo de lectura (sin botones operativos de modificación) evitando excepciones y crashes de UI.
 
-### 🚫 3. Restricción de Modo Lectura en Paradas (Viajes Pendientes)
+### 🗺️ 3. Geolocalización y Waypoints Precisos en Google Maps
 
-- **`paradadetalle.dart`**: Cuando el viaje padre está en estado `Pendiente`, la pantalla de detalle de parada entra en modo `isReadOnly = true` para **todos** los usuarios.
-- Se ocultan: botón de registrar pesajes, agregar ítems, generar remito y finalizar parada.
-- Se muestra un banner amber premium: *"Consulta únicamente. El viaje aún no ha comenzado."*
+- **Problema**: El botón "Ver Recorrido Completo" abría Google Maps con el nombre del apicultor (ej. "Garavagno Francisco Andres") como waypoint en vez de la dirección/localidad real, provocando búsquedas fallidas y la advertencia *"No results for General Pico, La Pampa"*.
+- **Solución en `viaje_detalle.dart` y `ruta_detalle.dart`**:
+  - Reestructuramos la función `_openMap` eliminando el uso directo de `p['ubicacion']`.
+  - Ahora se procesa la dirección limpia e inteligente combinando `"$localidad, $provincia, Argentina"`.
+  - Para obtener la provincia correcta de cada parada de forma dinámica, implementamos una búsqueda interactiva en `ApicultoresData.fallbackApicultores` basándonos en el nombre del apicultor (ubicación). Si no se encuentra, se utiliza `'La Pampa'` por defecto.
+  - Codificamos los waypoints de forma robusta usando `Uri.encodeComponent(waypoints)` y se habilitó la redirección directa por `launchUrl` nativo abriendo la app real del dispositivo.
 
-### 📦 4. Gestión de Cargas (Automatización)
+### 🛡️ 4. Estabilización de Layout en Gestión de Viajes (`/viajes` - León Castellanos)
 
-- **`supabase_service.dart` - `createCarga()`**: Se corrigió conversión de `cantidad` a entero (`toInt()`) y se implementó bulk insert con rollback manual si falla.
-- **Auto-creación de cargas**: Al planificar un viaje con solicitudes de distribución, se crea automáticamente una carga pendiente.
-- **`carga_detalle.dart`**: Visualización robusta de ítems con cálculos correctos de kg y totales.
+- **Síntoma**: El rol de Compras y otros roles corporativos experimentaban una pantalla en blanco y crash total de renderizado al ingresar a la Gestión de Viajes.
+- **Causa Raíz**: Un error fatal de desbordamiento (`RenderFlex` overflow) en `_buildTripCard` en `viajes_page.dart` debido a un Row anidado con botones de edición y eliminación sin limitación de ancho dentro de otro Row de distribución flexible.
+- **Solución**:
+  - Restringimos el Row secundario de edición configurando explícitamente `mainAxisSize: MainAxisSize.min`.
+  - Envolvimos la columna izquierda de información de viaje en un widget `Expanded` con control de overflow de texto (`TextOverflow.ellipsis`).
+  - Se resolvió definitivamente el crash gráfico, garantizando un diseño premium y adaptativo.
 
-### 🗺️ 5. Planificador de Ruta (Unidades y Google Maps)
+### 📦 5. Estructura Aplanada y Persistencia en Cargas
 
-- **Unidades dinámicas**: Se importó `ProductosData.masterCatalog` en `planificar_viaje.dart` para mostrar `UN.` para TCM/TRR y `Kg.` para el resto.
-- **Google Maps**: Los waypoints ahora se formatean como `"$localidad, $provincia, Argentina"` para evitar ambigüedades de geocodificación (ej: Vértiz → La Pampa).
-
-### 🌾 6. Ficha de Apicultor
-
-- **`apicultor_detalle.dart`**: Resumen histórico por producto filtrado solo a solicitudes `Terminada`/`Finalizada`. Se añadió sección premium "Total Estimado Pendiente".
-
-### 🧹 7. Limpieza de Datos de Prueba (Base de Datos)
-
-- Se eliminaron todos los registros de cargas con prefijo `TEST-` o `TEST-FORM-` de la base de datos de Supabase mediante script Dart.
+- **Estructuración Aplanada**: Refactorizamos el dashboard de depósito en `depositohome.dart` utilizando el método `_getActiveItems()` para aplanar y separar las tarjetas de depósito individualmente por carga en lugar de agruparlas rígidamente por viaje. Esto permite iniciar y confirmar cargas concurrentes de forma aislada.
+- **Persistencia en Modales de Edición**: Corregimos el reinicio involuntario de los inputs de texto al aparecer el teclado, hoisting los `TextEditingController` fuera del builder reactivo.
 
 ---
 
 ## 💾 Sincronización y Compilación Exitosa
 
-- **Control de Versiones**: Commit `61aa51e` subido a `origin/main` en GitHub (`HasselGit/Flutter-Antigravity`).
-- **53 archivos** modificados/creados en este commit (2258 líneas nuevas).
-- **`flutter analyze`**: Los archivos de `lib/` están libres de errores de compilación. Los warnings son `info`-level pre-existentes en todo el proyecto (prints, curly_braces) no relacionados a los cambios de esta sesión.
+- **Control de Versiones**: Commits listos para subir a `origin/main` en `HasselGit/Flutter-Antigravity`.
+- **flutter analyze**: Los archivos en `lib/` están completamente limpios de errores de compilación estáticos. Todos los warnings son alertas del linter deprecados o pre-existentes que no bloquean la ejecución ni causan crashes.
 
-## 🖥️ Instrucciones para continuar en otra computadora
+## 🖥️ Instrucciones para continuar
 
-1. **Clonar o sincronizar el repo**: `git pull origin main`
-2. **Limpiar caché** (MUY IMPORTANTE para que el emulador descarte la sesión vieja):
-   ```bash
-   flutter clean
-   flutter pub get
-   ```
+1. **Sincronizar**: `git pull origin main`
+2. **Limpiar Caché**: `flutter clean && flutter pub get`
 3. **Ejecutar**: `flutter run`
-4. Al arrancar, el `signOut()` en `main.dart` limpiará automáticamente cualquier JWT stale del emulador.
-5. La carga `CARGA-7845001` mostrará correctamente **TRR x 25** para ambos usuarios.
-
----
-
-## 📋 Agenda para Mañana — 22 de Mayo, 2026
-
-### 🔴 PRIORIDAD ALTA: Carolina Merlo (Depósito) no puede ver las cargas
-
-**Quién**: Carolina Merlo — rol `Depósito` — accede desde `/depositoHome`.
-
-**Síntoma**: Carolina no puede ver la carga con sus datos (que ahora sí muestra bien para chofer y admin). Desde la pantalla de depósito, la carga aparece vacía o no accesible.
-
-**Causa probable identificada**: `depositohome.dart` línea 43-47 usa `Supabase.instance.client` **directamente** (no pasa por `SupabaseService`) para hacer el query de viajes planificados con sus cargas:
-```dart
-final pendingViajes = await Supabase.instance.client
-    .from('viajes')
-    .select('*, profiles(...), cargas(id, carga_codigo, estado, carga_items(*))')
-    .eq('estado', 'Pendiente')
-```
-Si el dispositivo de Carolina tiene una sesión stale de Supabase Auth, el mismo bug de RLS que afectaba a Mauricio y Hassel también le está bloqueando los `carga_items`. El `signOut()` en `main.dart` debería resolverlo en arranque, pero puede haber un segundo problema: el **perfil de Carolina** puede no tener permisos de RLS en `carga_items` ni siquiera como `anon`.
-
-**Tareas para mañana**:
-1. Verificar el `puesto`/`rol` del perfil de Carolina Merlo en la base de datos (`profiles`).
-2. Revisar si las políticas RLS de `carga_items` y `cargas` permiten el acceso al rol `anon` para usuarios con `puesto = 'Deposito'` o similar.
-3. Si el problema persiste, migrar el query de `depositohome.dart` línea 43-47 para usar `SupabaseService()` en lugar de llamar directamente al cliente de Supabase.
-4. Probar con el perfil de Carolina desde el emulador (email y contraseña en la tabla `profiles`).
