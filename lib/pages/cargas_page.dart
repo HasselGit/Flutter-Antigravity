@@ -69,10 +69,42 @@ class _CargasPageWidgetState extends State<CargasPageWidget>
   List<Map<String, dynamic>> _cargasPorEstado(String estado) =>
       _cargas.where((c) => (c['estado'] ?? AppStates.pendiente) == estado).toList();
 
-  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _userRole == 'Administrador' || _userRole == 'Admin' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+  String _normalizeRole(String? role) {
+    if (role == null) return '';
+    return role.toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .trim();
+  }
 
-  bool get _canCreate =>
-      _isAdmin || _userRole == 'Gerente' || _userRole == 'CEO' || _userRole == 'Compras' || _userRole == 'Admin APP' || _userRole == 'Deposito' || _userRole == 'Encargado de Deposito';
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || _normalizeRole(_userRole).contains('admin') || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+
+  bool get _isDeposito {
+    final r = _normalizeRole(_userRole);
+    final email = (_userEmail ?? '').toLowerCase();
+    return r.contains('deposito') || email.contains('cmerlo') || email.contains('csantana');
+  }
+
+  bool get _isManagement {
+    final r = _normalizeRole(_userRole);
+    final email = (_userEmail ?? '').toLowerCase();
+    return r.contains('compras') || 
+           r.contains('gerente') || 
+           r.contains('gerencia') || 
+           r.contains('ceo') || 
+           r.contains('director') || 
+           _isAdmin || 
+           email.contains('hespinosa') || 
+           email.contains('mparedes') || 
+           email.contains('gparedes') || 
+           email.contains('lcastellanos') || 
+           email.contains('rsteierd');
+  }
+
+  bool get _canCreate => _isAdmin || _isManagement || _isDeposito;
 
   @override
   Widget build(BuildContext context) {

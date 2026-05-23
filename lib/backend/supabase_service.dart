@@ -119,20 +119,32 @@ class SupabaseService {
   }
 
   Future<Map<String, dynamic>?> getViajeDetalle(dynamic viajeId) async {
+    print('SupabaseService: getViajeDetalle convocado para viajeId: $viajeId');
     try {
-      final viaje = await _client.from('viajes')
-          .select('id, viaje_codigo, vehiculo_codigo, chofer_id, estado, fecha, fecha_planificada, fecha_inicio, fecha_terminado, descripcion')
+      // 1. Consulta por wildcard (*) para inmunidad absoluta contra cambios de columnas
+      final viajeRaw = await _client.from('viajes')
+          .select('*')
           .eq('id', viajeId).maybeSingle();
-      if (viaje == null) return null;
+      
+      if (viajeRaw == null) {
+        print('SupabaseService: No se encontró ningún viaje con ID $viajeId');
+        return null;
+      }
+      final Map<String, dynamic> viaje = Map<String, dynamic>.from(viajeRaw);
+      
       viaje['estado'] = AppStates.normalize(viaje['estado']);
       if (viaje['chofer_id'] != null) {
         try {
           final chofer = await _client.from('profiles')
               .select('nombre, apellido').eq('id', viaje['chofer_id']).maybeSingle();
           viaje['chofer'] = chofer;
-        } catch (_) {}
+        } catch (choferErr) {
+          print('SupabaseService: Error cargando chofer: $choferErr');
+        }
       }
+      
       try {
+        print('SupabaseService: Intentando consulta de rutas para viajeId: $viajeId');
         final rutas = await _client.from('rutas')
             .select('*, paradas(*, parada_items(*), remitos(*))')
             .eq('viaje_id', viajeId).order('created_at');
@@ -143,11 +155,22 @@ class SupabaseService {
 
         List<dynamic> paradasDirectas = [];
         if (paradasVaciasEnRutas) {
-          // El FK ruta_id → rutas.id no está registrado en PostgREST schema cache.
-          // Obtenemos las paradas directamente por viaje_id y las asignamos a sus rutas.
-          paradasDirectas = await _client.from('paradas')
-              .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
-              .eq('viaje_id', viajeId).order('orden_secuencia');
+          print('SupabaseService: Join anidado de paradas en rutas vacío, intentando consulta directa de paradas...');
+          try {
+            paradasDirectas = await _client.from('paradas')
+                .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
+                .eq('viaje_id', viajeId).order('orden_secuencia');
+          } catch (paradasDirectasErr) {
+            print('SupabaseService: Error en paradasDirectas con remitos(*): $paradasDirectasErr. Reintentando sin remitos(*)...');
+            try {
+              paradasDirectas = await _client.from('paradas')
+                  .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+                  .eq('viaje_id', viajeId).order('orden_secuencia');
+            } catch (pDirectasErr2) {
+              print('SupabaseService: Error crítico en paradasDirectas simplificado: $pDirectasErr2');
+              paradasDirectas = [];
+            }
+          }
 
           // Mutar las rutas asignando sus paradas
           for (var r in rutas) {
@@ -176,14 +199,46 @@ class SupabaseService {
           allParadas.addAll(paradasDirectas);
         }
         viaje['paradas'] = allParadas..sort((a, b) => (a['orden_secuencia'] ?? 0).compareTo(b['orden_secuencia'] ?? 0));
-      } catch (_) { 
+      } catch (rutasErr) { 
+        print('SupabaseService: Error en consulta de rutas ($rutasErr). Corriendo fallback directo a paradas...');
         // Fallback a paradas directas si no hay rutas aún
-        final paradas = await _client.from('paradas')
-            .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
-            .eq('viaje_id', viajeId).order('orden_secuencia');
-        viaje['paradas'] = paradas;
+        try {
+          final paradas = await _client.from('paradas')
+              .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
+              .eq('viaje_id', viajeId).order('orden_secuencia');
+          viaje['paradas'] = paradas;
+        } catch (paradasErr) {
+          print('SupabaseService: Error en paradas fallback con remitos(*): $paradasErr. Reintentando sin remitos(*)...');
+          try {
+            final paradas = await _client.from('paradas')
+                .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+                .eq('viaje_id', viajeId).order('orden_secuencia');
+            viaje['paradas'] = paradas;
+          } catch (paradasErr2) {
+            print('SupabaseService: Fallback directo a paradas falló de forma crítica: $paradasErr2');
+            viaje['paradas'] = [];
+          }
+        }
       }
 
+
+
+      // Auto-synchronize paradas that have remitos but are still in 'Pendiente' or 'En Proceso' state
+      try {
+        final List<dynamic> paradasList = viaje['paradas'] ?? [];
+        for (var p in paradasList) {
+          final String estado = AppStates.normalize(p['estado']);
+          final List<dynamic> remitos = p['remitos'] as List? ?? [];
+          if (remitos.isNotEmpty && estado != AppStates.terminado) {
+            final String vehiculoCodigo = viaje['vehiculo_codigo']?.toString() ?? 'CAMION-01';
+            await finalizarParada(p['id'].toString(), vehiculoCodigo);
+            p['estado'] = AppStates.terminado;
+            print('SupabaseService: Auto-finalizada parada ${p['id']} que tenía remito.');
+          }
+        }
+      } catch (e) {
+        print('SupabaseService: Error en auto-finalización de parada: $e');
+      }
 
       // ENRICHMENT OF PARADA_ITEMS WITH COMPLETED SOLICITUDES
       try {
@@ -870,6 +925,11 @@ class SupabaseService {
     }
   }
 
+  Future<void> deleteCarga(String cargaId) async {
+    await _client.from('carga_items').delete().eq('carga_id', cargaId);
+    await _client.from('cargas').delete().eq('id', cargaId);
+  }
+
   Future<void> updateCargaEstado(String cargaId, String nuevoEstado) async {
     await _client.from('cargas').update({
       'estado': nuevoEstado,
@@ -1341,17 +1401,56 @@ class SupabaseService {
     required List<Map<String, dynamic>> necesidades,
   }) async {
     await _client.from('viajes').update(viajeData).eq('id', viajeId);
-    final paradasActuales = await _client.from('paradas').select('id').eq('viaje_id', viajeId);
-    final ids = (paradasActuales as List).map((p) => p['id']).toList();
+    // 1. Obtener la ruta del viaje para no perder la asociación
+    String? rutaId;
+    try {
+      final rutaResp = await _client.from('rutas')
+          .select('id')
+          .eq('viaje_id', viajeId)
+          .order('created_at')
+          .limit(1)
+          .maybeSingle();
+      if (rutaResp != null) {
+        rutaId = rutaResp['id']?.toString();
+      }
+    } catch (e) {
+      print('SupabaseService: Error obteniendo ruta en updateViajeCompleto: $e');
+    }
+
+    // 2. Obtener las paradas actuales para liberar sus solicitudes asociadas a 'Pendiente'
+    final paradasActuales = await _client.from('paradas')
+        .select('id, solicitud_id')
+        .eq('viaje_id', viajeId);
+    
+    final List<dynamic> paradasActualesList = paradasActuales as List<dynamic>;
+    final ids = paradasActualesList.map((p) => p['id']).toList();
+    final List<String> oldSolicitudIds = paradasActualesList
+        .where((p) => p['solicitud_id'] != null)
+        .map((p) => p['solicitud_id'].toString())
+        .toList();
+
+    // 3. Resetear el estado de las solicitudes anteriores a 'Pendiente'
+    if (oldSolicitudIds.isNotEmpty) {
+      try {
+        await _client.from('solicitudes')
+            .update({'estado': AppStates.pendiente})
+            .filter('id', 'in', oldSolicitudIds);
+      } catch (e) {
+        print('SupabaseService: Error liberando solicitudes anteriores en update: $e');
+      }
+    }
+
     if (ids.isNotEmpty) {
       await _client.from('parada_items').delete().filter('parada_id', 'in', ids);
     }
     await _client.from('paradas').delete().eq('viaje_id', viajeId);
+    
     int seq = 1;
     for (final nec in necesidades) {
       final String rawTipo = (nec['tipo'] ?? 'Recolección').toString();
       final String tipoFixed = rawTipo.contains('istribu') ? 'Distribucion' : 'Recoleccion';
-      final paradaResp = await _client.from('paradas').insert({
+      
+      final Map<String, dynamic> paradaInsert = {
         'viaje_id': viajeId,
         'ubicacion': nec['apicultores']?['nombre'] ?? nec['apicultor'] ?? 'Sin Nombre',
         'tipo': tipoFixed,
@@ -1359,7 +1458,12 @@ class SupabaseService {
         'orden_secuencia': seq++,
         'localidad': nec['apicultores']?['localidad'] ?? nec['localidad'] ?? 'S/D',
         'solicitud_id': nec['id'],
-      }).select('id').single();
+      };
+      if (rutaId != null) {
+        paradaInsert['ruta_id'] = rutaId;
+      }
+
+      final paradaResp = await _client.from('paradas').insert(paradaInsert).select('id').single();
       try {
         final String producto = nec['producto']?.toString() ?? '';
         final String lowerProd = producto.toLowerCase();

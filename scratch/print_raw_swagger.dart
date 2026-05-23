@@ -9,21 +9,10 @@ void main() async {
     final response = await request.close();
     final responseBody = await response.transform(utf8.decoder).join();
     
-    final Map<String, dynamic> spec = jsonDecode(responseBody);
-    final paths = spec['paths'] as Map<String, dynamic>? ?? {};
-    final definitions = spec['definitions'] as Map<String, dynamic>? ?? {};
-
-    print('--- Endpoints / Tables Exponentiados ---');
-    for (var key in paths.keys) {
-      if (key != '/') {
-        print('Path: $key');
-      }
-    }
-    
-    print('\n--- Definitions / Schemas ---');
-    for (var key in definitions.keys) {
-      print('Definition: $key');
-    }
+    // Save to a scratch file so we can read it easily
+    final file = File('scratch/swagger_raw.json');
+    await file.writeAsString(responseBody);
+    print('Raw swagger spec length: ${responseBody.length} saved to scratch/swagger_raw.json');
   } catch (e) {
     print('Error: $e');
   } finally {

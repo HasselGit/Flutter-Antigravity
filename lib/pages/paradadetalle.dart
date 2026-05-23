@@ -56,46 +56,71 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
 
   Future<Map<String, dynamic>?> _fetchParadaData() async {
     if (widget.paradaId == null) return null;
-    final data = await Supabase.instance.client
-        .from('paradas')
-        .select('*, parada_items(*), remitos(*), pesajes(*), viajes(vehiculo_codigo, viaje_codigo, estado)')
-        .eq('id', widget.paradaId!)
-        .maybeSingle();
-    
-    if (data != null) {
-      if (mounted) {
-        setState(() {
-          _resolvedParada = data;
-        });
-      }
-      final items = List<Map<String, dynamic>>.from(data['parada_items'] ?? []);
-      final pesajes = List<Map<String, dynamic>>.from(data['pesajes'] ?? []);
+    try {
+      final data = await Supabase.instance.client
+          .from('paradas')
+          .select('*, parada_items(*), remitos(*), pesajes(*), viajes(vehiculo_codigo, viaje_codigo, estado)')
+          .eq('id', widget.paradaId!)
+          .maybeSingle();
       
-      // Corrección de unidades TCM y Reconciliación
-      for (var item in items) {
-        final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
-        if (pCode == 'TCM' || pCode == '1') {
-          // 1. Corregir unidad si está mal (kg -> uni)
-          final String unitRaw = (item['unidad'] ?? '').toString();
-          final String unitBase = unitRaw.contains('|') ? unitRaw.split('|').first : unitRaw;
-          if (unitBase.toLowerCase() != 'uni') {
-            final String unitOp = unitRaw.contains('|') ? '|${unitRaw.split('|').last}' : '';
-            final String newUnit = 'uni$unitOp';
-            await Supabase.instance.client.from('parada_items').update({'unidad': newUnit}).eq('id', item['id']);
-            item['unidad'] = newUnit;
-          }
-          // 2. Reconciliación con pesajes
-          if (pesajes.isNotEmpty) {
-            final realQty = pesajes.length.toDouble();
-            if ((item['cantidad'] as num).toDouble() != realQty) {
-              await Supabase.instance.client.from('parada_items').update({'cantidad': realQty}).eq('id', item['id']);
-              item['cantidad'] = realQty;
+      if (data != null) {
+        if (mounted) {
+          setState(() {
+            _resolvedParada = data;
+          });
+        }
+        
+        final List<Map<String, dynamic>> items = [];
+        if (data['parada_items'] is List) {
+          for (var it in data['parada_items']) {
+            if (it is Map) {
+              items.add(Map<String, dynamic>.from(it));
             }
           }
         }
+        
+        final List<Map<String, dynamic>> pesajes = [];
+        if (data['pesajes'] is List) {
+          for (var pe in data['pesajes']) {
+            if (pe is Map) {
+              pesajes.add(Map<String, dynamic>.from(pe));
+            }
+          }
+        }
+        
+        // Corrección de unidades TCM y Reconciliación envuelta en try-catch RLS
+        try {
+          for (var item in items) {
+            final String pCode = (item['producto_codigo'] ?? '').toString().trim().toUpperCase();
+            if (pCode == 'TCM' || pCode == '1') {
+              // 1. Corregir unidad si está mal (kg -> uni)
+              final String unitRaw = (item['unidad'] ?? '').toString();
+              final String unitBase = unitRaw.contains('|') ? unitRaw.split('|').first : unitRaw;
+              if (unitBase.toLowerCase() != 'uni') {
+                final String unitOp = unitRaw.contains('|') ? '|${unitRaw.split('|').last}' : '';
+                final String newUnit = 'uni$unitOp';
+                await Supabase.instance.client.from('parada_items').update({'unidad': newUnit}).eq('id', item['id']);
+                item['unidad'] = newUnit;
+              }
+              // 2. Reconciliación con pesajes
+              if (pesajes.isNotEmpty) {
+                final realQty = pesajes.length.toDouble();
+                if ((item['cantidad'] as num).toDouble() != realQty) {
+                  await Supabase.instance.client.from('parada_items').update({'cantidad': realQty}).eq('id', item['id']);
+                  item['cantidad'] = realQty;
+                }
+              }
+            }
+          }
+        } catch (mutError) {
+          print('ParadaDetalle: Error en reconciliación en caliente RLS (omitido): $mutError');
+        }
       }
+      return data;
+    } catch (e) {
+      print('ParadaDetalle: Error al cargar datos de la parada: $e');
+      return null;
     }
-    return data;
   }
 
   TextEditingController _getController(String id, String initialValue) {
@@ -144,10 +169,24 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Normalización de viajes (soporta Map, List o null)
+    dynamic viajesRaw = _resolvedParada != null ? _resolvedParada!['viajes'] : null;
+    Map<String, dynamic> viajeAsociado = {};
+    if (viajesRaw is Map) {
+      viajeAsociado = Map<String, dynamic>.from(viajesRaw);
+    } else if (viajesRaw is List && viajesRaw.isNotEmpty) {
+      viajeAsociado = Map<String, dynamic>.from(viajesRaw.first);
+    }
+
     final bool isParadaTerminada = _resolvedParada != null && AppStates.normalize(_resolvedParada!['estado']) == AppStates.terminado;
-    final bool isViajeTerminado = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.terminado;
-    final bool isViajePendiente = _resolvedParada != null && _resolvedParada!['viajes'] != null && AppStates.normalize(_resolvedParada!['viajes']['estado']) == AppStates.pendiente;
-    final List<dynamic> remitosList = _resolvedParada != null ? (_resolvedParada!['remitos'] as List? ?? []) : [];
+    final bool isViajeTerminado = viajeAsociado.isNotEmpty && AppStates.normalize(viajeAsociado['estado']) == AppStates.terminado;
+    final bool isViajePendiente = viajeAsociado.isNotEmpty && AppStates.normalize(viajeAsociado['estado']) == AppStates.pendiente;
+    
+    final List<dynamic> remitosList = [];
+    if (_resolvedParada != null && _resolvedParada!['remitos'] is List) {
+      remitosList.addAll(_resolvedParada!['remitos']);
+    }
+    
     final bool hasNoRemito = remitosList.isEmpty;
     // El admin tiene acceso total si el viaje comenzó; el chofer puede editar si el viaje comenzó y no hay remito aún en parada terminada. Si no comenzó, es solo lectura para todos.
     final bool isReadOnly = isViajePendiente || (_isAdmin ? false : (!_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado));
@@ -250,8 +289,14 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     final localidad = p['localidad'] ?? 'S/D';
     final apicultorId = p['apicultor_id']?.toString();
 
-    final List<dynamic> rawPesajes = p['pesajes'] as List? ?? [];
-    final List<Map<String, dynamic>> pesajes = List<Map<String, dynamic>>.from(rawPesajes);
+    final List<Map<String, dynamic>> pesajes = [];
+    if (p['pesajes'] is List) {
+      for (var pe in p['pesajes']) {
+        if (pe is Map) {
+          pesajes.add(Map<String, dynamic>.from(pe));
+        }
+      }
+    }
 
     // Obtener viaje_codigo del viaje asociado
     return FutureBuilder<dynamic>(
@@ -808,7 +853,14 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               child: OutlinedButton(
                 onPressed: () async {
                   setState(() => _isFinishing = true);
-                  final String vehiculoCodigo = p['viajes']?['vehiculo_codigo']?.toString() ?? 'CAMION-01';
+                  dynamic viajesRaw = p['viajes'];
+                  Map<String, dynamic> viajeAsociado = {};
+                  if (viajesRaw is Map) {
+                    viajeAsociado = Map<String, dynamic>.from(viajesRaw);
+                  } else if (viajesRaw is List && viajesRaw.isNotEmpty) {
+                    viajeAsociado = Map<String, dynamic>.from(viajesRaw.first);
+                  }
+                  final String vehiculoCodigo = viajeAsociado['vehiculo_codigo']?.toString() ?? 'CAMION-01';
                   await SupabaseService().finalizarParada(widget.paradaId!, vehiculoCodigo);
                   if (mounted) context.pop();
                 },

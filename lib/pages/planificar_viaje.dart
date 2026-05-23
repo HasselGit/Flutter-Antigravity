@@ -90,11 +90,8 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
         if (viaje != null && viaje['paradas'] != null) {
           final List<String> solIds = [];
           for (var p in (viaje['paradas'] as List)) {
-            final items = p['parada_items'] as List?;
-            if (items != null && items.isNotEmpty) {
-              for (var item in items) {
-                if (item['solicitud_id'] != null) solIds.add(item['solicitud_id'].toString());
-              }
+            if (p['solicitud_id'] != null) {
+              solIds.add(p['solicitud_id'].toString());
             }
           }
           if (solIds.isNotEmpty) {

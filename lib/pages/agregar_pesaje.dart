@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import '../backend/design_tokens.dart';
 
 /// Pantalla de Agregar Pesaje — asociada a una parada de recolección
@@ -32,6 +33,29 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
   final List<String> _deletedTamborIds = [];
   bool _saving = false;
   bool _loadingExisting = true;
+
+  Future<void> _scanBarcode() async {
+    try {
+      final String barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
+        '#08201A', // Primary forest green color from DesignTokens
+        'Cancelar',
+        true,
+        ScanMode.BARCODE,
+      );
+      if (barcodeScanRes != '-1' && barcodeScanRes.isNotEmpty) {
+        setState(() {
+          _senasaController.text = barcodeScanRes;
+        });
+        // Auto focus the bruto input after scanning successfully
+        FocusScope.of(context).nextFocus();
+      }
+    } catch (e) {
+      debugPrint('Error scanning barcode: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al escanear: $e. Ingrese el código a mano.')),
+      );
+    }
+  }
 
   // Controladores del formulario de nuevo tambor
   final _senasaController = TextEditingController();
@@ -83,6 +107,11 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
           }));
           _loadingExisting = false;
         });
+
+        // Auto trigger the barcode scan on load!
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scanBarcode();
+        });
       }
     } catch (e) {
       if (mounted) setState(() => _loadingExisting = false);
@@ -110,6 +139,13 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
     _brutoController.clear();
     _taraController.clear();
     FocusScope.of(context).unfocus();
+
+    // Auto-trigger barcode scanner for the NEXT drum!
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _scanBarcode();
+      }
+    });
   }
 
   void _eliminarTambor(int index) {
@@ -290,10 +326,22 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
             // Código SENASA
             TextFormField(
               controller: _senasaController,
-              decoration: _inputDecoration('CÓDIGO SENASA (11 DÍGITOS)', Icons.qr_code_rounded),
+              decoration: _inputDecoration(
+                'CÓDIGO SENASA (11 DÍGITOS)',
+                Icons.qr_code_rounded,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, color: DesignTokens.secondary),
+                  onPressed: _scanBarcode,
+                  tooltip: 'Escanear Código de Barras',
+                ),
+              ),
               keyboardType: TextInputType.number,
               maxLength: 11,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Requerido';
+                if (v.trim().length != 11) return 'Debe tener 11 dígitos';
+                return null;
+              },
             ),
             const SizedBox(height: 12),
 
@@ -368,11 +416,12 @@ class _AgregarPesajeWidgetState extends State<AgregarPesajeWidget> {
     );
   }
 
-  InputDecoration _inputDecoration(String label, IconData icon) {
+  InputDecoration _inputDecoration(String label, IconData icon, {Widget? suffixIcon}) {
     return InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black38),
       prefixIcon: Icon(icon, size: 18, color: DesignTokens.primary.withOpacity(0.4)),
+      suffixIcon: suffixIcon,
       filled: true,
       fillColor: const Color(0xFFF7F7F7),
       counterText: '',

@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../backend/design_tokens.dart';
 import '../backend/pdf_invoice_generator.dart';
+import '../backend/apicultores_data.dart';
 
 class RemitoPageWidget extends StatefulWidget {
   final String paradaId;
@@ -64,24 +65,37 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
 
       // NEW: Try to find apicultor_id by name (ubicacion) to link the remito correctly
       String? apiId;
+      String? apiTelefono;
       try {
         final api = await Supabase.instance.client
             .from('apicultores')
-            .select('id, apicultor_codigo')
+            .select('id, apicultor_codigo, telefono')
             .eq('nombre', parada['ubicacion'] ?? '')
             .maybeSingle();
         apiId = api?['apicultor_codigo'] ?? api?['id'];
+        apiTelefono = api?['telefono']?.toString();
       } catch (_) {}
+      
+      if (apiTelefono == null || apiTelefono.trim().isEmpty) {
+        final String searchName = (parada['ubicacion'] ?? '').toString().toLowerCase().trim();
+        final match = ApicultoresData.fallbackApicultores.firstWhere(
+          (a) => a['nombre'].toString().toLowerCase().trim() == searchName,
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty && match['telefono'] != null) {
+          apiTelefono = match['telefono'].toString();
+        }
+      }
       
       _paradaData = parada;
       if (apiId != null) _paradaData!['apicultor_id'] = apiId;
+      if (apiTelefono != null) _paradaData!['apicultor_telefono'] = apiTelefono;
 
       final itemsRaw = await Supabase.instance.client
           .from('parada_items')
           .select('id, producto_codigo, cantidad, unidad, peso_kg')
           .eq('parada_id', widget.paradaId);
       
-      _paradaData = parada;
       _items = List<Map<String, dynamic>>.from(itemsRaw);
 
       final viajeId = parada['viaje_id'];
@@ -100,14 +114,97 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     }
   }
 
-  Future<void> _shareWhatsApp(String pdfUrl) async {
-    final String text = 'Hola, le envío el Remito Digital de la operación: $pdfUrl';
-    final String url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+  String _cleanPhoneNumber(String phone) {
+    String cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleaned.isEmpty) return '';
+    // Si tiene 10 dígitos (ej. celular de Argentina sin prefijo internacional), agregar 549
+    if (cleaned.length == 10) {
+      cleaned = '549$cleaned';
     }
+    return cleaned;
+  }
+
+  Future<void> _shareWhatsApp(String pdfUrl) async {
+    final apicultorPhone = _paradaData?['apicultor_telefono']?.toString() ?? '';
+    final apicultorNombre = _paradaData?['ubicacion']?.toString() ?? 'Cliente';
+    await _shareWhatsAppToNumber(apicultorPhone, pdfUrl, apicultorNombre);
+  }
+
+  Future<void> _shareWhatsAppToNumber(String rawPhone, String pdfUrl, String recipientLabel) async {
+    final String cleanPhone = _cleanPhoneNumber(rawPhone);
+    final String humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
+    final String text = 'Hola $recipientLabel, le envío el Remito Digital de la operación ($humanId) de la plataforma GeoLogística: $pdfUrl';
+    
+    String url;
+    if (cleanPhone.isNotEmpty) {
+      url = 'https://wa.me/$cleanPhone?text=${Uri.encodeComponent(text)}';
+    } else {
+      url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
+    }
+    
+    try {
+      final uri = Uri.parse(url);
+      bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+      if (!launched) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir WhatsApp en la aplicación ni en el navegador.')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error launching WhatsApp, trying platformDefault: $e');
+      try {
+        final uri = Uri.parse(url);
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        if (!launched) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo abrir el enlace de WhatsApp.')),
+          );
+        }
+      } catch (e2) {
+        debugPrint('Second failure launching: $e2');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir WhatsApp: $e2')),
+        );
+      }
+    }
+  }
+
+  Widget _buildRoleShareChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _generarYCompartirPDF() async {
@@ -172,10 +269,13 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
       await Supabase.instance.client.from('remitos').insert({
         'parada_id': widget.paradaId,
-        'apicultor_id': _paradaData?['apicultor_id'], // LINK TO APICULTOR
+        'viaje_id': _paradaData?['viaje_id'],
         'pdf_url': pdfUrl,
-        'remito_codigo': humanId,
-        'estado': 'Emitido',
+        'numero_remito': humanId,
+        'tipo': tipoOperacion,
+        'fecha': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        'persona_nombre': receptorNombre,
+        'persona_dni': receptorDni,
       });
 
       // Update parada and solicitud status
@@ -198,7 +298,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('Remito Emitido', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: const Text('El remito digital de cliente ha sido generado y guardado correctamente.'),
+            content: const Text('El remito digital ha sido generado y guardado correctamente.'),
             actionsAlignment: MainAxisAlignment.center,
             actions: [
               Column(
@@ -230,22 +330,72 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'ENVIAR POR WHATSAPP A:',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: DesignTokens.primary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('ENVIAR POR WHATSAPP'),
+                      icon: const Icon(Icons.person_pin_circle_rounded, size: 20, color: Colors.white),
+                      label: Text(_paradaData?['apicultor_telefono']?.toString().isNotEmpty == true 
+                          ? 'RECEPTOR (${_paradaData!['apicultor_telefono']})' 
+                          : 'RECEPTOR'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF25D366), 
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
                       ),
                       onPressed: () {
-                        _shareWhatsApp(pdfUrl);
+                        final phone = _paradaData?['apicultor_telefono']?.toString() ?? '';
+                        final name = _paradaData?['ubicacion']?.toString() ?? 'Cliente';
+                        _shareWhatsAppToNumber(phone, pdfUrl, name);
                       },
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _buildRoleShareChip(
+                        label: 'COMPRAS',
+                        icon: Icons.business_center_rounded,
+                        color: const Color(0xFF1E293B),
+                        onPressed: () => _shareWhatsAppToNumber('5492302456789', pdfUrl, 'Compras'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'DEPÓSITO',
+                        icon: Icons.warehouse_rounded,
+                        color: const Color(0xFF0D9488),
+                        onPressed: () => _shareWhatsAppToNumber('5492302987654', pdfUrl, 'Depósito'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'CEO',
+                        icon: Icons.star_rounded,
+                        color: const Color(0xFFB45309),
+                        onPressed: () => _shareWhatsAppToNumber('5492302123456', pdfUrl, 'CEO'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'GERENTE',
+                        icon: Icons.account_box_rounded,
+                        color: const Color(0xFF64748B),
+                        onPressed: () => _shareWhatsAppToNumber('5492302654321', pdfUrl, 'Gerente'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   TextButton(

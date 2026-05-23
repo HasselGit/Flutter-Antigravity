@@ -5,21 +5,21 @@ import 'package:intl/intl.dart';
 
 class PdfInvoiceGenerator {
   // Brand colors
-  static final PdfColor primaryColor = PdfColor.fromHex('#1E293B'); // Slate 800 (Professional Slate)
-  static final PdfColor accentColor = PdfColor.fromHex('#D97706');  // Amber 600 (Honey Gold)
-  static final PdfColor secondaryColor = PdfColor.fromHex('#0D9488'); // Teal 600 (Logistics Teal)
+  static final PdfColor primaryColor = PdfColor.fromHex('#08201A'); // Deep Forest (Main Primary)
+  static final PdfColor accentColor = PdfColor.fromHex('#C68E17');  // Honey Gold (Secondary/Accent)
+  static final PdfColor secondaryColor = PdfColor.fromHex('#1A6B43'); // Success Green
   static final PdfColor backgroundColor = PdfColor.fromHex('#F8FAFC'); // Cool Grey 50
   static final PdfColor borderColor = PdfColor.fromHex('#E2E8F0');     // Cool Grey 200
 
   // 1. Geomiel Hexagonal Honeycomb Logo Vector Builder (Fallback)
   static pw.Widget _buildGeomielLogo() {
     return pw.Container(
-      width: 38,
-      height: 38,
+      width: 72,
+      height: 72,
       decoration: pw.BoxDecoration(
         color: PdfColor.fromHex('#FFFBEB'), // Amber 50
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-        border: pw.Border.all(color: accentColor, width: 2),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(14)),
+        border: pw.Border.all(color: accentColor, width: 2.5),
       ),
       alignment: pw.Alignment.center,
       child: pw.Stack(
@@ -29,21 +29,21 @@ class PdfInvoiceGenerator {
           pw.Text(
             'G',
             style: pw.TextStyle(
-              fontSize: 18,
+              fontSize: 36,
               fontWeight: pw.FontWeight.bold,
               color: accentColor,
             ),
           ),
           // Small decorative dots to simulate cells
           pw.Positioned(
-            top: 2,
-            right: 2,
-            child: pw.Container(width: 4, height: 4, decoration: pw.BoxDecoration(color: accentColor, shape: pw.BoxShape.circle)),
+            top: 4,
+            right: 4,
+            child: pw.Container(width: 6, height: 6, decoration: pw.BoxDecoration(color: accentColor, shape: pw.BoxShape.circle)),
           ),
           pw.Positioned(
-            bottom: 2,
-            left: 2,
-            child: pw.Container(width: 4, height: 4, decoration: pw.BoxDecoration(color: accentColor, shape: pw.BoxShape.circle)),
+            bottom: 4,
+            left: 4,
+            child: pw.Container(width: 6, height: 6, decoration: pw.BoxDecoration(color: accentColor, shape: pw.BoxShape.circle)),
           ),
         ],
       ),
@@ -56,9 +56,9 @@ class PdfInvoiceGenerator {
       width: 32,
       height: 32,
       decoration: pw.BoxDecoration(
-        color: PdfColor.fromHex('#F0FDFA'), // Teal 50
+        color: PdfColor.fromHex('#FFFBEB'), // Amber 50
         shape: pw.BoxShape.circle,
-        border: pw.Border.all(color: secondaryColor, width: 2),
+        border: pw.Border.all(color: accentColor, width: 2), // Honey Gold border
       ),
       alignment: pw.Alignment.center,
       child: pw.Stack(
@@ -68,7 +68,7 @@ class PdfInvoiceGenerator {
             width: 14,
             height: 14,
             decoration: pw.BoxDecoration(
-              color: secondaryColor,
+              color: primaryColor, // Deep Forest Green core
               shape: pw.BoxShape.circle,
             ),
           ),
@@ -90,8 +90,8 @@ class PdfInvoiceGenerator {
     pw.Widget geomielLogoWidget;
     if (logoBytes != null && logoBytes.isNotEmpty) {
       geomielLogoWidget = pw.Container(
-        width: 50,
-        height: 50,
+        width: 110, // Agrandado considerablemente
+        height: 90,
         alignment: pw.Alignment.center,
         child: pw.Image(pw.MemoryImage(logoBytes), fit: pw.BoxFit.contain),
       );
@@ -114,9 +114,9 @@ class PdfInvoiceGenerator {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      'GEOMIEL',
+                      'GEOMIEL S.A.',
                       style: pw.TextStyle(
-                        fontSize: 22,
+                        fontSize: 24,
                         fontWeight: pw.FontWeight.bold,
                         color: accentColor,
                         letterSpacing: 1.2,
@@ -169,7 +169,7 @@ class PdfInvoiceGenerator {
             pw.Text(
               docTitle.toUpperCase(),
               style: pw.TextStyle(
-                fontSize: 18,
+                fontSize: 22,
                 fontWeight: pw.FontWeight.bold,
                 color: primaryColor,
               ),
@@ -284,7 +284,7 @@ class PdfInvoiceGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Branded Header
-              _buildHeader('REMITO DIGITAL DE CLIENTE', 'GeoLogística Verified', logoBytes),
+              _buildHeader('REMITO - $humanId', 'GeoLogística Verified', logoBytes),
 
               // Metadata section
               _buildMetadataCard([
@@ -542,11 +542,11 @@ class PdfInvoiceGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Branded Header
-              _buildHeader('REMITO DE BASCULA Y CONFORMIDAD', 'Certificado Geomiel', logoBytes),
+              _buildHeader('REMITO - $humanId', 'Certificado Geomiel S.A.', logoBytes),
 
               // Metadata section
               _buildMetadataCard([
-                ['Comprobante:', humanId, 'Fecha de Pesaje:', fecha],
+                ['Comprobante:', humanId, 'Fecha de Emisión:', fecha],
                 ['Tipo de Operación:', tipoOperacion, 'Vehículo Asignado:', vehiculoCodigo ?? 'S/D'],
                 ['Código de Viaje:', viajeCodigo ?? 'S/D', 'ID de Parada:', paradaId.split('-').first.toUpperCase()],
               ]),
@@ -640,7 +640,7 @@ class PdfInvoiceGenerator {
 
               // Weighing details (drum balance scales)
               if (pesajes.isNotEmpty) ...[
-                pw.Text('DESGLOSE DE PESAJE DE TAMBORES (BALANZA DE CAMPO):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
+                pw.Text('DESGLOSE DE PESAJE DE TAMBORES:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
                 pw.SizedBox(height: 6),
                 pw.TableHelper.fromTextArray(
                   headers: ['N° Tambor', 'Código SENASA de Origen', 'Peso Bruto (KG)', 'Tara Promedio (KG)', 'Peso Neto Real (KG)'],
@@ -708,8 +708,8 @@ class PdfInvoiceGenerator {
                 ),
                 child: pw.Center(
                   child: pw.Text(
-                    'Este remito digital de báscula física certifica que los pesos indicados arriba fueron reconciliados\n'
-                    'y verificados en balanza oficial de campo del vehículo de transporte de la plataforma GeoLogística de Geomiel.',
+                    'Este remito digital certifica que la mercadería indicada arriba fue reconciliada\n'
+                    'y verificada en la plataforma GeoLogística de Geomiel S.A.',
                     textAlign: pw.TextAlign.center,
                     style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
                   ),
@@ -737,7 +737,7 @@ class PdfInvoiceGenerator {
                         ),
                       ),
                       pw.SizedBox(height: 2),
-                      pw.Text('Validación de pesaje: $fecha', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey500)),
+                      pw.Text('Validación de remito: $fecha', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey500)),
                     ],
                   ),
                   pw.Column(

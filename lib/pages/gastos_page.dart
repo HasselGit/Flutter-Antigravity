@@ -325,74 +325,153 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
                   ),
-                  const SizedBox(height: 20),
-
-                   // Sección de Foto (Ahora funcional)
-                   InkWell(
-                     onTap: () async {
-                       final ImagePicker picker = ImagePicker();
-                       final XFile? image = await picker.pickImage(source: ImageSource.camera);
-                       if (image != null) {
-                         setModalState(() => pickedFile = image);
-                       }
-                     },
-                     child: Container(
-                       width: double.infinity,
-                       padding: const EdgeInsets.all(16),
-                       decoration: BoxDecoration(
-                         color: DesignTokens.surface,
-                         borderRadius: BorderRadius.circular(12),
-                         border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
-                       ),
-                       child: pickedFile != null 
-                         ? Column(
+                  const SizedBox(height: 20),                    // Sección de Foto (Ahora funcional y robusta con fallback)
+                    InkWell(
+                      onTap: () async {
+                        showModalBottomSheet(
+                          context: ctx,
+                          backgroundColor: Colors.white,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                          ),
+                          builder: (sheetCtx) => SafeArea(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Adjuntar Foto de Ticket',
+                                    style: TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: DesignTokens.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  ListTile(
+                                    leading: const Icon(Icons.camera_alt_rounded, color: DesignTokens.primary),
+                                    title: const Text('Tomar Foto con Cámara'),
+                                    onTap: () async {
+                                      Navigator.pop(sheetCtx);
+                                      try {
+                                        final ImagePicker picker = ImagePicker();
+                                        final XFile? image = await picker.pickImage(
+                                          source: ImageSource.camera,
+                                          imageQuality: 70,
+                                        );
+                                        if (image != null) {
+                                          setModalState(() => pickedFile = image);
+                                        }
+                                      } catch (e) {
+                                        print('Camera pick error: $e');
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('No se pudo abrir la cámara: $e. Puede seleccionar una imagen desde su galería.'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  const Divider(),
+                                  ListTile(
+                                    leading: const Icon(Icons.photo_library_rounded, color: DesignTokens.primary),
+                                    title: const Text('Seleccionar de Galería'),
+                                    onTap: () async {
+                                      Navigator.pop(sheetCtx);
+                                      try {
+                                        final ImagePicker picker = ImagePicker();
+                                        final XFile? image = await picker.pickImage(
+                                          source: ImageSource.gallery,
+                                          imageQuality: 70,
+                                        );
+                                        if (image != null) {
+                                          setModalState(() => pickedFile = image);
+                                        }
+                                      } catch (e) {
+                                        print('Gallery pick error: $e');
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('No se pudo abrir la galería: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: DesignTokens.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                        ),
+                        child: pickedFile != null 
+                          ? Column(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(File(pickedFile!.path), height: 100, width: double.infinity, fit: BoxFit.cover),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text('FOTO ADJUNTADA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                                const Text('Toca para cambiar', style: TextStyle(fontSize: 10, color: Colors.black26)),
+                              ],
+                            )
+                          : Column(
+                             mainAxisAlignment: MainAxisAlignment.center,
                              children: [
-                               ClipRRect(
-                                 borderRadius: BorderRadius.circular(8),
-                                 child: Image.file(File(pickedFile!.path), height: 100, width: double.infinity, fit: BoxFit.cover),
-                               ),
+                               const Icon(Icons.add_a_photo_rounded, size: 32, color: DesignTokens.primary),
                                const SizedBox(height: 8),
-                               const Text('FOTO ADJUNTADA', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
-                               const Text('Toca para cambiar', style: TextStyle(fontSize: 10, color: Colors.black26)),
-                             ],
-                           )
-                         : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.add_a_photo_rounded, size: 32, color: DesignTokens.primary),
-                              const SizedBox(height: 8),
-                              Text(pickedFile == null ? 'ADJUNTAR FOTO' : 'CAMBIAR FOTO', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
-                             ],
-                           ),
-                     ),
-                   ),
+                               Text(pickedFile == null ? 'ADJUNTAR FOTO' : 'CAMBIAR FOTO', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: DesignTokens.primary)),
+                              ],
+                            ),
+                      ),
+                    ),
 
-                  const SizedBox(height: 28),
-                  
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _savingGasto ? null : () async {
-                        if (amountController.text.isEmpty) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
-                          return;
-                        }
-                        setModalState(() => _savingGasto = true);
-                        try {
-                          String? publicUrl;
-                          if (pickedFile != null) {
-                            final bytes = await pickedFile!.readAsBytes();
-                            final ext = p.extension(pickedFile!.path);
-                            final fileName = 'gasto_${DateTime.now().millisecondsSinceEpoch}$ext';
-                            
-                            await Supabase.instance.client.storage.from('gastos').uploadBinary(
-                              fileName, 
-                              bytes,
-                              fileOptions: const FileOptions(contentType: 'image/jpeg'),
-                            );
-                            publicUrl = Supabase.instance.client.storage.from('gastos').getPublicUrl(fileName);
-                          }
+                   const SizedBox(height: 28),
+                   
+                   SizedBox(
+                     width: double.infinity,
+                     height: 56,
+                     child: ElevatedButton(
+                       onPressed: _savingGasto ? null : () async {
+                         if (amountController.text.isEmpty) {
+                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
+                           return;
+                         }
+                         setModalState(() => _savingGasto = true);
+                         try {
+                           String? publicUrl;
+                           if (pickedFile != null) {
+                             final bytes = await pickedFile!.readAsBytes();
+                             final ext = p.extension(pickedFile!.path);
+                             final fileName = 'gasto_${DateTime.now().millisecondsSinceEpoch}$ext';
+                             
+                             try {
+                               await Supabase.instance.client.storage.from('gastos').uploadBinary(
+                                 fileName, 
+                                 bytes,
+                                 fileOptions: const FileOptions(contentType: 'image/jpeg'),
+                               );
+                             } catch (uploadErr) {
+                               print('Storage upload failure: $uploadErr');
+                               throw Exception(
+                                 'No se pudo subir la foto del ticket a Supabase.\n'
+                                 'Por favor verifique que exista el bucket de almacenamiento "gastos" con acceso público.'
+                               );
+                             }
+                             publicUrl = Supabase.instance.client.storage.from('gastos').getPublicUrl(fileName);
+                           }
 
                           final prefs = await SharedPreferences.getInstance();
                           final userId = prefs.getString('user_id');

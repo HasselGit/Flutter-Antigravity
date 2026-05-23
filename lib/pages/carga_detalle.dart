@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../backend/supabase_service.dart';
 import '../backend/app_states.dart';
 import '../backend/design_tokens.dart';
@@ -21,6 +22,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   bool _saving = false;
   String? _userRole;
   String? _userId;
+  String? _userEmail;
 
   // Para nueva carga
   List<Map<String, dynamic>> _viajes = [];
@@ -37,13 +39,24 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
 
   Future<void> _initPage() async {
     final prefs = await SharedPreferences.getInstance();
-    _userRole = prefs.getString('user_puesto');
-    _userId = prefs.getString('user_id');
+    if (mounted) {
+      setState(() {
+        _userRole = prefs.getString('user_puesto');
+        _userId = prefs.getString('user_id');
+        _userEmail = prefs.getString('user_email');
+      });
+    }
     if (widget.isNew) {
       await _loadCatalogos();
       if (mounted) setState(() => _loading = false);
     } else {
       await _loadCarga();
+      try {
+        _productos = await SupabaseService().getProductos();
+        if (mounted) setState(() {});
+      } catch (e) {
+        print('CargaDetalle: Error cargando productos: $e');
+      }
     }
   }
 
@@ -80,8 +93,52 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
     }
   }
 
-  bool get _isDeposito => _userRole == 'Encargado de Deposito' || _userRole == 'Deposito';
-  bool get _canChangeEstado => _isDeposito;
+  String _normalizeRole(String? role) {
+    if (role == null) return '';
+    return role.toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .trim();
+  }
+
+  bool get _isAdmin => _userEmail == 'hassel00@gmail.com' || Supabase.instance.client.auth.currentUser?.email == 'hassel00@gmail.com';
+
+  bool get _isDeposito {
+    final r = _normalizeRole(_userRole);
+    final email = (_userEmail ?? '').toLowerCase();
+    return r.contains('deposito') || email.contains('cmerlo') || email.contains('csantana');
+  }
+
+  bool get _isManagement {
+    final r = _normalizeRole(_userRole);
+    final email = (_userEmail ?? '').toLowerCase();
+    return r.contains('compras') || 
+           r.contains('gerente') || 
+           r.contains('gerencia') || 
+           r.contains('ceo') || 
+           r.contains('director') || 
+           _isAdmin || 
+           email.contains('hespinosa') || 
+           email.contains('mparedes') || 
+           email.contains('gparedes') || 
+           email.contains('lcastellanos') || 
+           email.contains('rsteierd');
+  }
+
+  bool get _canChangeEstado {
+    if (_carga == null) return false;
+    final estado = AppStates.normalize(_carga!['estado'] ?? '');
+    if (_isDeposito) {
+      return estado == AppStates.pendiente || estado == AppStates.enCurso;
+    }
+    if (_isManagement) {
+      return estado == AppStates.pendiente;
+    }
+    return false;
+  }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
     if (widget.cargaId == null) return;
@@ -216,7 +273,18 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
           ],
 
           // ── ÍTEMS DE CARGA ────────────────────────────────────────────────
-          _labelText('ÍTEMS DE LA CARGA'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _labelText('ÍTEMS DE LA CARGA'),
+              if (_canChangeEstado)
+                TextButton.icon(
+                  onPressed: () => _showEditCargaDialog(),
+                  icon: const Icon(Icons.edit_rounded, size: 16, color: DesignTokens.primary),
+                  label: const Text('Editar', style: TextStyle(color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
           const SizedBox(height: 10),
           if (items.isEmpty)
             _emptyCard('No hay ítems en esta carga')
@@ -224,8 +292,8 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
             ...items.map((it) => _itemCard(it)).toList(),
           const SizedBox(height: 24),
 
-          // ── BOTONES DE ACCIÓN (solo Depósito) ─────────────────────────────
-          if (_canChangeEstado) ...[
+          // ── BOTONES DE ACCIÓN ─────────────────────────────────────────────
+          if (_isDeposito && _canChangeEstado) ...[
             if (estado == AppStates.pendiente)
               _actionButton(
                 label: 'INICIAR CARGA',
@@ -240,22 +308,36 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                 color: excede ? Colors.orange : const Color(0xFF1A6B43),
                 onPressed: _saving ? null : () => _confirmarTerminar(excede),
               ),
-            if (estado == AppStates.terminado)
-              Container(
-                width: double.infinity, padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFD4F0E1), borderRadius: BorderRadius.circular(14)),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: Color(0xFF1A6B43)),
-                    SizedBox(width: 10),
-                    Text('Carga completada — Depósito actualizado',
-                        style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A6B43))),
-                  ],
-                ),
+            const SizedBox(height: 16),
+          ],
+
+          if (_isManagement && estado == AppStates.pendiente) ...[
+            _actionButton(
+              label: 'ELIMINAR CARGA',
+              icon: Icons.delete_forever_rounded,
+              color: Colors.redAccent,
+              onPressed: _saving ? null : () => _confirmarEliminarCarga(),
+            ),
+            const SizedBox(height: 40),
+          ] else if (_isDeposito && _canChangeEstado) ...[
+            const SizedBox(height: 40),
+          ],
+          if (estado == AppStates.terminado) ...[
+            Container(
+              width: double.infinity, padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFD4F0E1), borderRadius: BorderRadius.circular(14)),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF1A6B43)),
+                  SizedBox(width: 10),
+                  Text('Carga completada — Depósito actualizado',
+                      style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A6B43))),
+                ],
               ),
+            ),
             const SizedBox(height: 40),
           ],
         ]),
@@ -281,6 +363,55 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       if (ok != true) return;
     }
     await _cambiarEstado(AppStates.terminado);
+  }
+
+  Future<void> _confirmarEliminarCarga() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Eliminar Carga', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text('Esta acción eliminará de forma permanente esta carga y todos sus ítems. ¿Confirmar eliminación?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCELAR'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ELIMINAR', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      setState(() => _saving = true);
+      try {
+        await SupabaseService().deleteCarga(widget.cargaId!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Carga eliminada correctamente'),
+            backgroundColor: Colors.redAccent,
+          ));
+          context.pop();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error al eliminar: $e'),
+            backgroundColor: Colors.red,
+          ));
+        }
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+    }
   }
 
   Widget _sectionHeader(String codigo, String estado, String viajeCode,
@@ -619,6 +750,278 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                     ],
                   ),
                 ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showEditCargaDialog() async {
+    if (widget.cargaId == null || _carga == null) return;
+    final cargaId = widget.cargaId!;
+    
+    // Copia mutable de los ítems
+    final List<Map<String, dynamic>> currentItems = List<Map<String, dynamic>>.from(
+      (_carga!['carga_items'] as List? ?? []).map((item) => Map<String, dynamic>.from(item)),
+    );
+
+    // Controladores persistentes
+    final List<TextEditingController> itemControllers = currentItems
+        .map((item) => TextEditingController(
+            text: '${(item['cantidad'] ?? 0).toDouble().toStringAsFixed(0)}'))
+        .toList();
+
+    String? selectedProductoCodigo;
+    final qtyController = TextEditingController();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+          return Padding(
+            padding: EdgeInsets.only(bottom: bottomInset, top: 24, left: 24, right: 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Cabecera
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Editar Carga', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
+                            Text('Carga: ${_carga!['carga_codigo'] ?? ''}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Lista de ítems actuales
+                  if (currentItems.isNotEmpty) ...[
+                    const Text('ÍTEMS DE LA CARGA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey, letterSpacing: 0.5)),
+                    const SizedBox(height: 8),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: currentItems.length,
+                      itemBuilder: (_, idx) {
+                        final item = currentItems[idx];
+                        final ctrl = (idx < itemControllers.length) ? itemControllers[idx] : TextEditingController();
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: DesignTokens.primary.withOpacity(0.04),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: DesignTokens.primary.withOpacity(0.12)),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _productos.any((p) => p['codigo']?.toString() == item['producto_codigo']?.toString())
+                                          ? item['producto_codigo']?.toString()
+                                          : null,
+                                      hint: const Text('Prod.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                      isExpanded: true,
+                                      style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold, color: DesignTokens.primary, fontSize: 13),
+                                      icon: const Icon(Icons.arrow_drop_down, size: 18, color: DesignTokens.primary),
+                                      items: _productos.map((p) {
+                                        final code = p['codigo']?.toString() ?? '';
+                                        return DropdownMenuItem<String>(
+                                          value: code,
+                                          child: Text(code, overflow: TextOverflow.ellipsis),
+                                        );
+                                      }).toList(),
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          setModalState(() {
+                                            item['producto_codigo'] = v;
+                                            final catalogProd = _productos.firstWhere((p) => p['codigo']?.toString() == v, orElse: () => {});
+                                            if (catalogProd.isNotEmpty) {
+                                              item['unidad'] = catalogProd['unidad'] ?? 'UN';
+                                            }
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 70,
+                                child: TextField(
+                                  controller: ctrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    border: OutlineInputBorder(),
+                                    labelText: 'Cant.',
+                                  ),
+                                  onChanged: (v) {
+                                    final parsed = double.tryParse(v);
+                                    if (parsed != null) {
+                                      currentItems[idx]['cantidad'] = parsed;
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(item['unidad']?.toString() ?? 'UN', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    currentItems.removeAt(idx);
+                                    if (idx < itemControllers.length) {
+                                      itemControllers.removeAt(idx).dispose();
+                                    }
+                                  });
+                                },
+                                child: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text('AGREGAR PRODUCTO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey, letterSpacing: 0.5)),
+                  const SizedBox(height: 10),
+
+                  // Selector de producto
+                  DropdownButtonFormField<String>(
+                    value: selectedProductoCodigo,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Producto',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    items: _productos.map((p) => DropdownMenuItem<String>(
+                      value: p['codigo']?.toString(),
+                      child: Text(
+                        p['descripcion'] ?? 'S/N',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )).toList(),
+                    onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: qtyController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad',
+                      prefixIcon: Icon(Icons.numbers_rounded),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        if (selectedProductoCodigo == null || qtyController.text.isEmpty) return;
+                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
+                        final qty = double.tryParse(qtyController.text) ?? 0;
+                        if (qty <= 0) return;
+                        setModalState(() {
+                          final existing = currentItems.firstWhere(
+                            (i) => i['producto_codigo']?.toString() == selectedProductoCodigo,
+                            orElse: () => {},
+                          );
+                          if (existing.isNotEmpty) {
+                            existing['cantidad'] = (existing['cantidad'] as num).toDouble() + qty;
+                            final existIdx = currentItems.indexOf(existing);
+                            if (existIdx < itemControllers.length) {
+                              itemControllers[existIdx].text = existing['cantidad'].toStringAsFixed(0);
+                            }
+                          } else {
+                            currentItems.add({
+                              'producto_codigo': selectedProductoCodigo,
+                              'cantidad': qty,
+                              'unidad': prod['unidad'] ?? 'UN',
+                            });
+                            itemControllers.add(TextEditingController(text: qty.toStringAsFixed(0)));
+                          }
+                          selectedProductoCodigo = null;
+                          qtyController.clear();
+                        });
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('AGREGAR A LA LISTA'),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Botón guardar
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        for (int i = 0; i < currentItems.length; i++) {
+                          if (i < itemControllers.length) {
+                            final parsed = double.tryParse(itemControllers[i].text);
+                            if (parsed != null) currentItems[i]['cantidad'] = parsed;
+                          }
+                        }
+                        try {
+                          await SupabaseService().updateCargaItems(cargaId, currentItems);
+                          for (final c in itemControllers) { c.dispose(); }
+                          qtyController.dispose();
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          await _loadCarga();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Carga actualizada correctamente'), backgroundColor: Colors.green),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.save_rounded),
+                      label: const Text('GUARDAR CAMBIOS'),
+                      style: DesignTokens.primaryButtonStyle,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
               ),
             ),
           );

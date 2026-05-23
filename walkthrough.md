@@ -244,5 +244,78 @@ Hemos consolidado las últimas correcciones en el flujo de datos del backend y l
   - Para obtener la provincia correcta de cada parada de forma dinámica en tiempo de ejecución, implementamos una búsqueda inteligente comparando el nombre del apicultor de la parada con `ApicultoresData.fallbackApicultores`. Si no se encuentra, se utiliza `'La Pampa'` por defecto.
   - El string resultante es codificado de forma segura en la URL y se lanza en modo nativo externo para la aplicación oficial de mapas en el celular.
 
+---
+
+# Walkthrough: Estabilización del Planificador de Rutas y Restauración de Paradas (Sesión 23/05/2026)
+
+Hemos diagnosticado, corregido de forma definitiva y validado los inconvenientes en el planificador de rutas que provocaban la pérdida de paradas al guardar o editar viajes, además de restaurar en terreno los datos del viaje `V-2105-906`.
+
+### 1. Resolución de la Pérdida de Paradas en Edición (`planificar_viaje.dart`)
+* **Problema**: Cuando un viaje planificado con paradas existentes se abría en el Planificador de Rutas para realizar ajustes o agregar/quitar solicitudes, el listado de solicitudes previamente seleccionadas aparecía vacío (en `0`). Al hacer clic en *"GUARDAR CAMBIOS"*, el sistema interpretaba que se habían deseleccionado todas las paradas, ejecutando un borrado físico completo de las paradas en la base de datos, dejando el viaje y la ruta sin paradas asociadas (pantalla vacía).
+* **Causa Raíz**: En `_fetchData`, la lógica intentaba buscar el `solicitud_id` iterando dentro de la lista de ítems de parada (`parada_items`), pero esta columna reside directamente en la tabla principal de `paradas`. Al fallar esta coincidencia, las solicitudes asignadas no se agregaban a `_selectedNecesidades`, cargando una lista de selección vacía por defecto.
+* **Solución**: Refactorizamos el método en `planificar_viaje.dart` para extraer de manera directa y segura la vinculación desde `p['solicitud_id']` en el nivel raíz de la parada, garantizando que al editar un viaje, todas las solicitudes asignadas se pre-carguen de forma correcta en la UI.
+
+### 2. Conservación de `ruta_id` y Liberación de Solicitudes (`supabase_service.dart`)
+* **Problemas**: 
+  1. Durante la actualización del viaje en `updateViajeCompleto`, las nuevas paradas se recreaban con `ruta_id` en `null`, perdiendo el enlace directo con la ruta del viaje y requiriendo mecanismos de fallback para renderizarse.
+  2. Al quitar solicitudes de un viaje en el planificador, el estado de las solicitudes anteriores no se restablecía a `'Pendiente'`, dejándolas en el limbo como `'Asignada'` pero sin parada vinculada.
+* **Solución**:
+  - **Recuperación de Ruta**: Implementamos una pre-consulta en `updateViajeCompleto` que recupera el `ruta_id` de la ruta existente del viaje para asignarlo en la creación de las nuevas paradas, manteniendo la consistencia de la base de datos.
+  - **Liberación de Solicitudes Desvinculadas**: Agregamos un bloque transaccional en `updateViajeCompleto` que recopila los `solicitud_id` de las paradas eliminadas y actualiza automáticamente su estado de `'Asignada'` a `'Pendiente'` antes de insertar el nuevo conjunto, asegurando la coherencia completa del inventario de solicitudes.
+
+### 3. Restauración Exitosa de Datos en Terreno (Viaje `V-2105-906`)
+* **Acción Correctiva**: Detectamos que el viaje `V-2105-906` tenía 3 solicitudes asignadas en estado `'Asignada'` en la base de datos (Eduardo Tamame, Francisco Garavagno y Fabio Acosta) pero con 0 paradas reales debido al bug mencionado. Ejecutamos un script de restauración en caliente que pre-cargó correctamente las 3 paradas y sus respectivos items y unidades enlazados al viaje `ebcbcae8-e802-4733-9e0e-639d3861f29c` y su ruta `R-V-2105-906-01`.
+* **Resultado**: El viaje recuperó instantáneamente toda su hoja de ruta y operación sin que el usuario tenga que recrearlo desde cero.
+
+### 4. Calidad del Código y Compilación
+* **Validación Estática**: Ejecutamos `flutter analyze` en los archivos modificados (`lib/pages/planificar_viaje.dart` y `lib/backend/supabase_service.dart`) confirmando **cero errores de compilación**.
+
+### 5. Visualización de Requerimientos (Producto y Cantidad) en la Tarjeta de Parada (`viaje_detalle.dart`)
+* **Problema**: Las tarjetas de paradas en el detalle del viaje mostraban la secuencia, ubicación, localidad y tipo de operación, pero no renderizaban el producto y cantidad asignados de la solicitud original. Esto era inconsistente con el diseño del *Plan Logístico de la Ruta*, que sí los muestra detalladamente.
+* **Solución**: Refactorizamos `_buildParadaItem` en `lib/pages/viaje_detalle.dart` para renderizar el listado dinámico de **"REQUERIMIENTOS"** (con formato premium usando `DesignTokens.secondary` y estilos de tipografía coordinados con el tema raíz) justo debajo del divisor principal de la tarjeta de la parada. Esto asegura que el operario visualice inmediatamente el producto (por ejemplo, `TCM`, `TRR`) y la cantidad solicitada en la vista general del viaje.
+
+### 6. Control Selectivo de Estados de Carga por Rol (`carga_detalle.dart`)
+* **Problema**: Se requería que la modificación de estados de una carga (de *Pendiente* a *En Curso*, y de *En Curso* a *Terminado*) estuviera restringida específicamente según el rol y nivel operacional del usuario actual para evitar transiciones accidentales o indebidas.
+* **Solución**:
+  - Refactorizamos la lógica del getter `_canChangeEstado` en `lib/pages/carga_detalle.dart` para aplicar las siguientes reglas estrictas de negocio:
+    1. **Área de Depósito** (`Encargado de Deposito` o `Deposito`): Puede transicionar cargas que estén activas en estados **`Pendiente`** y **`En Curso`**.
+    2. **Área de Gestión/Decisión** (`Compras`, `Gerente`, `Gerencia` o `CEO`): Puede transicionar y autorizar el inicio de cargas **únicamente** mientras estén en estado **`Pendiente`** (pre-operativo).
+    3. Para cualquier otro estado o combinación de roles, los botones de acción quedan deshabilitados/ocultos.
+  - Extrajimos el contenedor de estado `"Carga completada — Depósito actualizado"` del bloque de botones interactivos, de modo que cualquier rol pueda visualizar de forma uniforme y responsiva el resumen informativo cuando la carga ha sido finalizada con éxito.
+
+### 7. Edición Completa de Ítems de Carga Pendiente para Compras, CEO, Gerente y Depósito (`carga_detalle.dart`)
+* **Problema**: A pesar de tener permisos de transición de estado, los usuarios con roles corporativos y administrativos (**Compras**, **CEO**, **Gerente**) así como los de **Depósito** no tenían una forma de editar o modificar el inventario de ítems (productos y cantidades) de una carga existente desde su pantalla de detalle general, obligándolos a recurrir al dashboard específico de depósito.
+* **Solución**:
+  - Refactorizamos `_buildDetalle()` en `lib/pages/carga_detalle.dart` para renderizar de forma condicional un botón premium de **"Editar"** en el encabezado de la sección *"ÍTEMS DE LA CARGA"*, gobernado por el validador estricto `_canChangeEstado`.
+  - Esto habilita que los usuarios autorizados según el estado de la carga (ej. **Compras**, **CEO** y **Gerente** cuando la carga está estrictamente **`Pendiente`**; y **Depósito** cuando la carga está en **`Pendiente`** o **`En Curso`**) puedan abrir un panel modal responsivo.
+  - Implementamos e integramos el diálogo modal `_showEditCargaDialog()` que cuenta con controladores de texto persistentes, selector de productos optimizado libre de desbordamientos y guardado directo y transaccional mediante `updateCargaItems` en Supabase.
+  - Aseguramos que la carga del catálogo de productos `_productos` se ejecute de forma asíncrona en `_initPage()` para que el diálogo de edición tenga los productos totalmente disponibles desde el primer clic.
+
+
+### 8. Normalización de Roles Robusta en Todo el Sistema (Cmerlo / Depósito, Compras, CEO, Gerente)
+* **Problema**: El visor de edición de carga y la visualización de tarjetas de módulos en la página principal (`homepage.dart`) y listado de cargas (`cargas_page.dart`) fallaban para algunos usuarios de depósito (Carolina Merlo) y administrativos (CEO, Compras, Gerencia) debido a comparaciones de cadenas directas y sensibles a acentuación en el dispositivo local (ej. `_userRole == 'Encargado de Deposito'` fallaba si SharedPreferences guardaba `'Encargado de Depósito'`). Además, el guardado inicial en memoria de SharedPreferences no gatillaba reactividad instantánea en el detalle de la carga.
+* **Solución**:
+  - **Helpers de Normalización y Fallback**: Migramos todos los chequeos de rol directo en `homepage.dart` y `cargas_page.dart` a métodos normalizados con remoción de acentos (`replaceAll('á', 'a')...`), trim, y comparación de sub-strings, respaldados por listas de coincidencia de emails directos en caliente (ej. `email.contains('cmerlo')` para Depósito).
+  - **Sincronización Reactiva**: Añadimos llamadas explícitas a `setState` en la inicialización asíncrona de variables de sesión en `_initPage` de `carga_detalle.dart` para asegurar que el cambio e inyección de variables de SharedPreferences en memoria reconstruya la UI y el validador `_canChangeEstado` se ejecute con 100% de coherencia.
+  - **Compilación Exitosa**: Ejecutamos `flutter analyze` en los tres archivos modificados, confirmando **cero errores de compilación estática**.
+
+
+### 9. Edición de Productos y Cantidades Simultánea en el Detalle y Dashboard (`carga_detalle.dart` y `depositohome.dart`)
+* **Problema**: Anteriormente, los ítems de carga existentes en el modal de edición solo permitían modificar su cantidad o ser eliminados para poder agregar un producto diferente, lo cual entorpecía y ralentizaba el flujo operativo en terreno si se deseaba rectificar tanto el producto como la cantidad de forma directa.
+* **Solución**:
+  - **Dropdown de Selección de Producto por Fila**: Reemplazamos la etiqueta de texto estática del código del producto (`Text(prod)`) en cada fila de ítems por un `DropdownButton` interactivo, integrado con el catálogo completo de `_productos` disponibles.
+  - **Sincronización Inteligente de Unidades**: Al cambiar el producto del menú desplegable de la fila, el sistema actualiza automáticamente el campo `producto_codigo` y reasigna la `unidad` adecuada (ej. `KG`, `UN`) basándose en el catálogo cargado, sincronizando el estado interno reactivamente para el guardado transaccional.
+  - **Diseño unificado**: Aplicamos este mismo selector e interactividad en los modales de edición del detalle general (`carga_detalle.dart`) y del panel de depósito (`depositohome.dart`).
+
+
+### 10. Eliminación de Cargas por Administración y Restricción de Inicios de Cargas a Depósito (`carga_detalle.dart` y `supabase_service.dart`)
+* **Problema**: Se requería otorgar la capacidad a los roles administrativos (**Compras**, **CEO**, **Gerente**) de eliminar físicamente una carga que está en estado `Pendiente` (por ejemplo, si se canceló un viaje, si hay desabastecimiento, o se necesita replanificar), y simultáneamente retirarles de forma estricta los botones para iniciar o confirmar cargas, ya que esta transición de estados de cambio de carga es responsabilidad exclusiva del operador en terreno (**Depósito**).
+* **Solución**:
+  - **Función de Deletreo en Supabase**: Implementamos la función `deleteCarga(String cargaId)` en `SupabaseService` para realizar un borrado transaccional limpio eliminando primero los ítems en `carga_items` y luego el registro de la carga en `cargas`.
+  - **Botón de Deletreo Condicional**: Agregamos un botón de acción premium de **"ELIMINAR CARGA"** en `carga_detalle.dart` visible únicamente para los roles `_isManagement` cuando la carga está en estado `Pendiente`. Al pulsarlo, abre un cuadro de diálogo de confirmación seguro.
+  - **Restricción de Flujo de Estados**: Envolvimos el bloque de botones de acción de estados ("INICIAR CARGA", "CONFIRMAR CARGA TERMINADA") con un validador que requiere que el usuario posea estrictamente el rol de depósito (`_isDeposito`), ocultándolos de forma definitiva para los puestos corporativos/gerenciales y resguardando la integridad operativa de los flujos de terreno.
+
+
+
 
 

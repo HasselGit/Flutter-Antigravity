@@ -342,22 +342,57 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       itemCount: currentItems.length,
                       itemBuilder: (_, idx) {
                         final item = currentItems[idx];
-                        final prod = (item['producto_codigo'] ?? 'S/D').toString().toUpperCase();
                         // Usar el controller persistente para este índice
                         final ctrl = (idx < itemControllers.length) ? itemControllers[idx] : TextEditingController();
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: DesignTokens.primary.withValues(alpha: 0.04),
+                            color: DesignTokens.primary.withOpacity(0.04),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: DesignTokens.primary.withValues(alpha: 0.1)),
+                            border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
                           ),
                           child: Row(
                             children: [
-                              Expanded(
+                               Expanded(
                                 flex: 3,
-                                child: Text(prod, style: const TextStyle(fontWeight: FontWeight.bold, color: DesignTokens.primary)),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: DesignTokens.primary.withOpacity(0.12)),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _productos.any((p) => p['codigo']?.toString() == item['producto_codigo']?.toString())
+                                          ? item['producto_codigo']?.toString()
+                                          : null,
+                                      hint: const Text('Prod.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                      isExpanded: true,
+                                      style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold, color: DesignTokens.primary, fontSize: 13),
+                                      icon: const Icon(Icons.arrow_drop_down, size: 18, color: DesignTokens.primary),
+                                      items: _productos.map((p) {
+                                        final code = p['codigo']?.toString() ?? '';
+                                        return DropdownMenuItem<String>(
+                                          value: code,
+                                          child: Text(code, overflow: TextOverflow.ellipsis),
+                                        );
+                                      }).toList(),
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          setModalState(() {
+                                            item['producto_codigo'] = v;
+                                            final catalogProd = _productos.firstWhere((p) => p['codigo']?.toString() == v, orElse: () => {});
+                                            if (catalogProd.isNotEmpty) {
+                                              item['unidad'] = catalogProd['unidad'] ?? 'UN';
+                                            }
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
                               ),
                               SizedBox(
                                 width: 70,

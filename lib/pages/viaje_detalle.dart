@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
 import 'dart:typed_data';
+import 'package:share_plus/share_plus.dart';
 
 class ViajeDetalleWidget extends StatefulWidget {
   final String viajeId;
@@ -86,14 +87,33 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_viaje == null) return const Scaffold(body: Center(child: Text('No se encontró el viaje')));
 
-    final paradas = List<Map<String, dynamic>>.from(_viaje!['paradas'] ?? [])
-      ..sort((a, b) {
-        final int oA = (a['orden_secuencia'] as num?)?.toInt() ?? 0;
-        final int oB = (b['orden_secuencia'] as num?)?.toInt() ?? 0;
-        return oA.compareTo(oB);
-      });
-    final gastos = List<Map<String, dynamic>>.from(_viaje!['gastos'] ?? []);
-    final chofer = _viaje!['chofer'] ?? _viaje!['profiles'] ?? {};
+    final List<Map<String, dynamic>> paradas = [];
+    if (_viaje!['paradas'] is List) {
+      for (var p in _viaje!['paradas']) {
+        if (p is Map) paradas.add(Map<String, dynamic>.from(p));
+      }
+    }
+    paradas.sort((a, b) {
+      final int oA = (a['orden_secuencia'] as num?)?.toInt() ?? 0;
+      final int oB = (b['orden_secuencia'] as num?)?.toInt() ?? 0;
+      return oA.compareTo(oB);
+    });
+
+    final List<Map<String, dynamic>> gastos = [];
+    if (_viaje!['gastos'] is List) {
+      for (var g in _viaje!['gastos']) {
+        if (g is Map) gastos.add(Map<String, dynamic>.from(g));
+      }
+    }
+
+    dynamic choferRaw = _viaje!['chofer'] ?? _viaje!['profiles'] ?? {};
+    Map<String, dynamic> chofer = {};
+    if (choferRaw is Map) {
+      chofer = Map<String, dynamic>.from(choferRaw);
+    } else if (choferRaw is List && choferRaw.isNotEmpty) {
+      chofer = Map<String, dynamic>.from(choferRaw.first);
+    }
+
     final choferNombre = (chofer['nombre'] != null) 
         ? '${chofer['nombre']} ${chofer['apellido']}' 
         : 'ID: ${_viaje!['chofer_id'] ?? 'S/D'}';
@@ -102,13 +122,27 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     final bool esEnCurso = AppStates.normalize(_viaje!['estado']) == AppStates.enCurso;
     final bool tieneRuta = paradas.isNotEmpty;
     final bool todasTerminadas = tieneRuta &&
-        paradas.every((p) => AppStates.normalize(p['estado']) == AppStates.terminado);
+        paradas.every((p) {
+          final String estado = AppStates.normalize(p['estado']);
+          final List<dynamic> pRemitos = p['remitos'] as List? ?? [];
+          return estado == AppStates.terminado || pRemitos.isNotEmpty;
+        });
 
-    final cargas = List<Map<String, dynamic>>.from(_viaje!['cargas'] ?? []);
+    final List<Map<String, dynamic>> cargas = [];
+    if (_viaje!['cargas'] is List) {
+      for (var c in _viaje!['cargas']) {
+        if (c is Map) cargas.add(Map<String, dynamic>.from(c));
+      }
+    }
     final bool tieneCargaPendiente = cargas.any((c) => AppStates.normalize(c['estado']) == AppStates.pendiente);
     final bool puedeIniciar = esPendiente && tieneRuta && !tieneCargaPendiente;
 
-    final rutasRaw = List<Map<String, dynamic>>.from(_viaje!['rutas_data'] ?? []);
+    final List<Map<String, dynamic>> rutasRaw = [];
+    if (_viaje!['rutas_data'] is List) {
+      for (var r in _viaje!['rutas_data']) {
+        if (r is Map) rutasRaw.add(Map<String, dynamic>.from(r));
+      }
+    }
 
     return Scaffold(
       backgroundColor: theme.primaryBackground,
@@ -332,7 +366,14 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
 
   Widget _buildInfoCard(FlutterFlowTheme theme, String choferNombre) {
     final fmt = DateFormat('dd/MM HH:mm');
-    String _format(dynamic date) => date != null ? fmt.format(DateTime.parse(date)) : '—';
+    String _format(dynamic date) {
+      if (date == null || date.toString().trim().isEmpty) return '—';
+      try {
+        return fmt.format(DateTime.parse(date.toString().trim()));
+      } catch (_) {
+        return date.toString();
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -403,8 +444,24 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   Widget _buildParadaItem(Map<String, dynamic> p, FlutterFlowTheme theme) {
-    final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
-    final remitos = List<Map<String, dynamic>>.from(p['remitos'] ?? []);
+    final List<Map<String, dynamic>> items = [];
+    if (p['parada_items'] is List) {
+      for (var it in p['parada_items']) {
+        if (it is Map) {
+          items.add(Map<String, dynamic>.from(it));
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> remitos = [];
+    if (p['remitos'] is List) {
+      for (var r in p['remitos']) {
+        if (r is Map) {
+          remitos.add(Map<String, dynamic>.from(r));
+        }
+      }
+    }
+    
     final bool isViajeTerminado = AppStates.normalize(_viaje?['estado']) == AppStates.terminado;
     
     // Determinar tipo display dinámico basado en productos reales
@@ -476,6 +533,32 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(height: 1, thickness: 0.5),
             ),
+            if (items.isNotEmpty) ...[
+              const Text(
+                'REQUERIMIENTOS:',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...items.map((it) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline_rounded, size: 14, color: DesignTokens.secondary),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${it['producto_codigo']}: ${it['cantidad']} ${it['unidad']}',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.primary),
+                    ),
+                  ],
+                ),
+              )).toList(),
+              const SizedBox(height: 12),
+            ],
             if (remitos.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Text(
@@ -491,9 +574,14 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               ...remitos.map((r) {
                 final String pdfUrl = r['pdf_url'] ?? '';
                 final String persona = r['persona_nombre'] ?? 'Receptor';
-                final String fechaRemito = r['fecha'] != null 
-                    ? DateFormat('dd/MM HH:mm').format(DateTime.parse(r['fecha'].toString()))
-                    : '';
+                String fechaRemito = '';
+                if (r['fecha'] != null) {
+                  try {
+                    fechaRemito = DateFormat('dd/MM HH:mm').format(DateTime.parse(r['fecha'].toString()));
+                  } catch (_) {
+                    fechaRemito = r['fecha'].toString();
+                  }
+                }
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(10),
@@ -587,6 +675,14 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   }
 
   Widget _buildGastoItem(Map<String, dynamic> g, FlutterFlowTheme theme) {
+    String fechaGasto = '—';
+    if (g['fecha'] != null && g['fecha'].toString().trim().isNotEmpty) {
+      try {
+        fechaGasto = DateFormat('dd/MM').format(DateTime.parse(g['fecha'].toString().trim()));
+      } catch (_) {
+        fechaGasto = g['fecha'].toString();
+      }
+    }
     return Card(
       elevation: 0,
       color: Colors.white,
@@ -594,7 +690,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
       child: ListTile(
         leading: const Icon(Icons.receipt_long, color: Color(0xFF1E352F)),
         title: Text(g['categoria'] ?? 'Gasto'),
-        subtitle: Text(DateFormat('dd/MM').format(DateTime.parse(g['fecha']))),
+        subtitle: Text(fechaGasto),
         trailing: Text('\$${g['monto']}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
       ),
     );
@@ -821,6 +917,22 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
             icon: const Icon(Icons.close_rounded, color: Colors.white),
             onPressed: () => Navigator.pop(ctx),
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.open_in_browser_rounded, color: Colors.white),
+              tooltip: 'Abrir en Navegador',
+              onPressed: () async {
+                try {
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                } catch (e) {
+                  print('Error al abrir PDF externo: $e');
+                }
+              },
+            ),
+          ],
         ),
         body: FutureBuilder<Uint8List>(
           future: _downloadPdf(url),
@@ -829,18 +941,67 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               return const Center(child: CircularProgressIndicator(color: DesignTokens.secondary));
             }
             if (snapshot.hasError || !snapshot.hasData) {
-              return Center(child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Error al cargar PDF: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
-              ));
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 48),
+                      const SizedBox(height: 16),
+                      Text('Error al cargar vista previa del PDF: ${snapshot.error}', textAlign: TextAlign.center),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.open_in_browser_rounded),
+                        label: const Text('ABRIR EN NAVEGADOR'),
+                        style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
+                        onPressed: () async {
+                          try {
+                            final uri = Uri.parse(url);
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } catch (_) {}
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }
-            return PdfPreview(
-              build: (format) => snapshot.data!,
-              allowPrinting: true,
-              allowSharing: true,
-              canChangePageFormat: false,
-              dynamicLayout: false,
-            );
+            try {
+              return PdfPreview(
+                build: (format) => snapshot.data!,
+                allowPrinting: true,
+                allowSharing: true,
+                canChangePageFormat: false,
+                dynamicLayout: false,
+              );
+            } catch (previewErr) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.picture_as_pdf_rounded, color: DesignTokens.primary, size: 48),
+                      const SizedBox(height: 16),
+                      const Text('El plugin de vista previa no es compatible con este dispositivo.', textAlign: TextAlign.center),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.open_in_browser_rounded),
+                        label: const Text('ABRIR CON VISOR NATIVO'),
+                        style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
+                        onPressed: () async {
+                          try {
+                            final uri = Uri.parse(url);
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } catch (_) {}
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
           },
         ),
       ),
@@ -852,7 +1013,12 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
       final bytes = await _downloadPdf(url);
       await Printing.sharePdf(bytes: bytes, filename: '$filename.pdf');
     } catch (e) {
-      print('Error sharing PDF: $e');
+      print('Error sharing PDF (Printing): $e. Intentando compartir por enlace público...');
+      try {
+        await Share.share('Remito Digital: $url', subject: filename);
+      } catch (shareErr) {
+        print('Error en Share fallback: $shareErr');
+      }
     }
   }
 }

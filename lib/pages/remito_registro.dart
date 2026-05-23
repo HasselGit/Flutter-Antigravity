@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../backend/design_tokens.dart';
 import '../backend/supabase_service.dart';
 import '../backend/pdf_invoice_generator.dart';
+import '../backend/apicultores_data.dart';
 
 class RemitoRegistroPage extends StatefulWidget {
   final String paradaId;
@@ -145,9 +146,20 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         _availableItems = List<Map<String, dynamic>>.from(results[0]);
         _pesajes = List<Map<String, dynamic>>.from(results[1]);
         
-        if (apicultorData != null && apicultorData['telefono'] != null) {
+        if (apicultorData != null && apicultorData['telefono'] != null && apicultorData['telefono'].toString().trim().isNotEmpty) {
           _apicultorTelefono = apicultorData['telefono'].toString();
           _telefonoController.text = apicultorData['telefono'].toString();
+        } else {
+          // Fallback to static catalog data
+          final String searchName = (widget.apicultorNombre ?? '').toString().toLowerCase().trim();
+          final match = ApicultoresData.fallbackApicultores.firstWhere(
+            (a) => a['nombre'].toString().toLowerCase().trim() == searchName,
+            orElse: () => <String, dynamic>{},
+          );
+          if (match.isNotEmpty && match['telefono'] != null) {
+            _apicultorTelefono = match['telefono'].toString();
+            _telefonoController.text = match['telefono'].toString();
+          }
         }
         
         for (var item in _availableItems) {
@@ -189,26 +201,84 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   }
 
   Future<void> _shareWhatsApp(String pdfUrl) async {
-    final String text = 'Hola, le envío el Remito Digital de la operación: $pdfUrl';
-    final String phone = _cleanPhoneNumber(_telefonoController.text);
+    await _shareWhatsAppToNumber(_telefonoController.text, pdfUrl, _firmanteNombreController.text);
+  }
+
+  Future<void> _shareWhatsAppToNumber(String rawPhone, String pdfUrl, String recipientLabel) async {
+    final String cleanPhone = _cleanPhoneNumber(rawPhone);
+    final String humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
+    final String text = 'Hola $recipientLabel, le envío el Remito Digital de la operación ($humanId) de la plataforma GeoLogística: $pdfUrl';
     
     String url;
-    if (phone.isNotEmpty) {
-      url = 'https://wa.me/$phone?text=${Uri.encodeComponent(text)}';
+    if (cleanPhone.isNotEmpty) {
+      url = 'https://wa.me/$cleanPhone?text=${Uri.encodeComponent(text)}';
     } else {
       url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
     }
     
     try {
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        debugPrint('Could not launch WhatsApp url');
+      bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+      if (!launched) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir WhatsApp en la aplicación ni en el navegador.')),
+        );
       }
     } catch (e) {
-      debugPrint('Error launching WhatsApp: $e');
+      debugPrint('Error launching WhatsApp, trying platformDefault: $e');
+      try {
+        final uri = Uri.parse(url);
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        if (!launched) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo abrir el enlace de WhatsApp.')),
+          );
+        }
+      } catch (e2) {
+        debugPrint('Second failure launching: $e2');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir WhatsApp: $e2')),
+        );
+      }
     }
+  }
+
+  Widget _buildRoleShareChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _uploadFileWithAutoBucket(
@@ -332,13 +402,40 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         'viaje_id': _paradaData?['viaje_id'],
         'pdf_url': pdfUrl,
         'tipo': widget.tipoOperacion,
-        'fecha': DateTime.now().toIso8601String(),
+        'fecha': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'firma_url': firmaUrl,
         'persona_nombre': receptorNombre,
         'persona_dni': receptorDni,
-        'estado': 'FIRMADO',
+        'numero_remito': 'REM-${widget.paradaId.split('-').first.toUpperCase()}',
       };
       await Supabase.instance.client.from('remitos').insert(remitoData);
+
+      // Update phone number in 'apicultores' table if it changed/was provided
+      final cleanPhone = _cleanPhoneNumber(_telefonoController.text);
+      if (cleanPhone.isNotEmpty && _titularId != null) {
+        try {
+          await Supabase.instance.client
+              .from('apicultores')
+              .update({'telefono': cleanPhone})
+              .eq('id', _titularId!);
+          print('RemitoRegistro: Teléfono del apicultor actualizado con éxito en la base de datos.');
+        } catch (e) {
+          print('RemitoRegistro: No se pudo actualizar el teléfono en la tabla apicultores: $e');
+        }
+      }
+
+      // Auto-finalize the parada if it is a Distribución parada,
+      // so the driver does not have to manually click "FINALIZAR PARADA COMPLETA".
+      bool autoFinalize = widget.tipoOperacion == 'Distribución' || widget.tipoOperacion == 'Distribucion' || widget.tipoOperacion.toLowerCase().contains('distrib');
+      if (autoFinalize) {
+        try {
+          final String vehiculoCodigo = _viajeData?['vehiculo_codigo']?.toString() ?? 'CAMION-01';
+          await SupabaseService().finalizarParada(widget.paradaId, vehiculoCodigo);
+          print('RemitoRegistro: Parada de Distribución auto-finalizada con éxito.');
+        } catch (e) {
+          print('RemitoRegistro: Error al auto-finalizar parada: $e');
+        }
+      }
 
       // 5.1 Sincronizar e Impactar en la Ficha del Apicultor (Tabla solicitudes)
       for (final item in itemsToInclude) {
@@ -426,7 +523,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('Remito Emitido', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: const Text('El remito digital de báscula ha sido generado y guardado correctamente.'),
+            content: const Text('El remito digital ha sido generado y guardado correctamente.'),
             actionsAlignment: MainAxisAlignment.center,
             actions: [
               Column(
@@ -458,22 +555,68 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'ENVIAR POR WHATSAPP A:',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: DesignTokens.primary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('ENVIAR POR WHATSAPP'),
+                      icon: const Icon(Icons.person_pin_circle_rounded, size: 20, color: Colors.white),
+                      label: Text(_telefonoController.text.isNotEmpty ? 'RECEPTOR (${_telefonoController.text})' : 'RECEPTOR'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF25D366), 
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
                       ),
                       onPressed: () {
-                        _shareWhatsApp(pdfUrl);
+                        _shareWhatsAppToNumber(_telefonoController.text, pdfUrl, _firmanteNombreController.text);
                       },
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _buildRoleShareChip(
+                        label: 'COMPRAS',
+                        icon: Icons.business_center_rounded,
+                        color: const Color(0xFF1E293B),
+                        onPressed: () => _shareWhatsAppToNumber('5492302456789', pdfUrl, 'Compras'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'DEPÓSITO',
+                        icon: Icons.warehouse_rounded,
+                        color: const Color(0xFF0D9488),
+                        onPressed: () => _shareWhatsAppToNumber('5492302987654', pdfUrl, 'Depósito'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'CEO',
+                        icon: Icons.star_rounded,
+                        color: const Color(0xFFB45309),
+                        onPressed: () => _shareWhatsAppToNumber('5492302123456', pdfUrl, 'CEO'),
+                      ),
+                      _buildRoleShareChip(
+                        label: 'GERENTE',
+                        icon: Icons.account_box_rounded,
+                        color: const Color(0xFF64748B),
+                        onPressed: () => _shareWhatsAppToNumber('5492302654321', pdfUrl, 'Gerente'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   TextButton(
