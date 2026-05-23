@@ -1,13 +1,8 @@
-import '../flutter_flow/flutter_flow_theme.dart';
-import '../flutter_flow/flutter_flow_util.dart';
 import '../flutter_flow/flutter_flow_widgets.dart';
-import 'dart:ui';
 import 'dart:math';
 import '../index.dart';
 import 'package:flutter/material.dart';
 import '../backend/design_tokens.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 
 import 'welcome_page_model.dart';
 export 'welcome_page_model.dart';
@@ -22,19 +17,68 @@ class WelcomePageWidget extends StatefulWidget {
   State<WelcomePageWidget> createState() => _WelcomePageWidgetState();
 }
 
-class _WelcomePageWidgetState extends State<WelcomePageWidget> {
+class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProviderStateMixin {
   late WelcomePageModel _model;
-
   final scaffoldKey = GlobalKey<ScaffoldState>();
+
+  // Splash screen premium variables
+  bool _isSplashActive = true;
+  double _progressValue = 0.0;
+  late AnimationController _breathingController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => WelcomePageModel());
+
+    // 1. Logo breathing animation controller (subtle scale)
+    _breathingController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.06).animate(
+      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOut),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _breathingController.reverse();
+        } else if (status == AnimationStatus.dismissed) {
+          _breathingController.forward();
+        }
+      });
+    _breathingController.forward();
+
+    // 2. Honey Gold progress bar animation (2.0s duration)
+    _animateProgress();
+  }
+
+  void _animateProgress() async {
+    const totalDuration = Duration(milliseconds: 2000);
+    const interval = Duration(milliseconds: 50);
+    final steps = totalDuration.inMilliseconds ~/ interval.inMilliseconds;
+
+    for (int i = 0; i <= steps; i++) {
+      await Future.delayed(interval);
+      if (!mounted) return;
+      setState(() {
+        _progressValue = i / steps;
+      });
+    }
+
+    // Small delay for smooth exit
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (mounted) {
+      setState(() {
+        _isSplashActive = false;
+      });
+      // Gently stop the breathing animation at original scale when splash ends
+      _breathingController.animateTo(0.0, duration: const Duration(milliseconds: 500));
+    }
   }
 
   @override
   void dispose() {
+    _breathingController.dispose();
     _model.dispose();
     super.dispose();
   }
@@ -50,14 +94,19 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: theme.primaryBackground,
+        backgroundColor: const Color(0xFFFBF9F8), // Same light off-white tone as welcome to make transition fully imperceptible!
         body: Stack(
           children: [
-            // Honeycomb Pattern Background
-            Positioned.fill(
-              child: CustomPaint(
-                painter: HoneycombPainter(
-                  color: theme.primary.withOpacity(0.03),
+            // Honeycomb Pattern Background (fades in smoothly after splash finishes)
+            AnimatedOpacity(
+              opacity: _isSplashActive ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeIn,
+              child: Positioned.fill(
+                child: CustomPaint(
+                  painter: HoneycombPainter(
+                    color: theme.primary.withOpacity(0.03),
+                  ),
                 ),
               ),
             ),
@@ -70,98 +119,147 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Spacer(flex: 3),
-                      // Logo Container
-                      Container(
-                        width: 180,
-                        height: 180,
-                        decoration: const BoxDecoration(
-                          color: Colors.transparent,
-                          shape: BoxShape.circle,
+                      // Logo Container with breathing scaling
+                      ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: Container(
+                          width: 180,
+                          height: 180,
+                          decoration: const BoxDecoration(
+                            color: Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primary.withOpacity(_isSplashActive ? 0.05 : 0.1),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/logo_Geologistica_Verde.png',
+                                    height: 160,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: theme.primary.withOpacity(0.1),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
+                      ),
+                      const SizedBox(height: 30),
+
+                      // Golden Progress Indicator (shows only during splash active state)
+                      AnimatedOpacity(
+                        opacity: _isSplashActive ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: _isSplashActive
+                            ? Column(
+                                children: [
+                                  const SizedBox(height: 20),
+                                  SizedBox(
+                                    width: 150,
+                                    height: 4,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: LinearProgressIndicator(
+                                        value: _progressValue,
+                                        backgroundColor: DesignTokens.secondary.withOpacity(0.15),
+                                        valueColor: const AlwaysStoppedAnimation<Color>(DesignTokens.secondary), // Honey Gold!
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+
+                      // Brand details & texts (fades in smoothly in same space)
+                      AnimatedOpacity(
+                        opacity: _isSplashActive ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeInOut,
+                        child: _isSplashActive
+                            ? const SizedBox.shrink()
+                            : Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'GeoLogística',
+                                    style: theme.displayLarge.override(
+                                      fontFamily: 'Manrope',
+                                      color: theme.primary,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'TECNOLOGÍA Y LOGÍSTICA APÍCOLA',
+                                    textAlign: TextAlign.center,
+                                    style: theme.labelSmall.override(
+                                      fontFamily: 'Work Sans',
+                                      color: theme.secondary,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 2.0,
+                                    ),
                                   ),
                                 ],
                               ),
-                              child: ClipOval(
-                                child: Image.asset(
-                                  'assets/images/logo_Geologistica_Verde.png',
-                                  height: 160,
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      Text(
-                        'GeoLogística',
-                        style: theme.displayLarge.override(
-                          fontFamily: 'Manrope',
-                          color: theme.primary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'TECNOLOGÍA Y LOGÍSTICA APÍCOLA',
-                        textAlign: TextAlign.center,
-                        style: theme.labelSmall.override(
-                          fontFamily: 'Work Sans',
-                          color: theme.secondary,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2.0,
-                        ),
                       ),
                       const Spacer(flex: 4),
-                      // Premium Button
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 60),
-                        child: Container(
-                          width: double.infinity,
-                          height: 65,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: theme.primary.withOpacity(0.2),
-                                blurRadius: 30,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: () => context.pushNamed('Login'),
-                            style: DesignTokens.secondaryButtonStyle,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.login_rounded, size: 20),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'INICIAR',
-                                  style: theme.titleSmall.override(
-                                    fontFamily: 'Manrope',
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
+                      // Premium Button (fades in smoothly at the bottom)
+                      AnimatedOpacity(
+                        opacity: _isSplashActive ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeInOut,
+                        child: _isSplashActive
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(bottom: 60),
+                                child: Container(
+                                  width: double.infinity,
+                                  height: 65,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: theme.primary.withOpacity(0.2),
+                                        blurRadius: 30,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ElevatedButton(
+                                    onPressed: () => context.pushNamed('Login'),
+                                    style: DesignTokens.secondaryButtonStyle,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.login_rounded, size: 20),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'INICIAR',
+                                          style: theme.titleSmall.override(
+                                            fontFamily: 'Manrope',
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
+                              ),
                       ),
                     ],
                   ),
@@ -187,8 +285,8 @@ class HoneycombPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     const double radius = 30.0;
-    final double height = radius * 2;
-    final double width = radius * 1.732; // sqrt(3) * radius
+    const double height = radius * 2;
+    const double width = radius * 1.732; // sqrt(3) * radius
 
     for (double y = 0; y < size.height + height; y += height * 0.75) {
       bool offset = (y / (height * 0.75)).floor() % 2 != 0;
