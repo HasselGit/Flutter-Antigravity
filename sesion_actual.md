@@ -6,12 +6,13 @@ Hoy logramos estabilizar y elevar la calidad de GeoLogística a un nivel de prod
 
 ---
 
-### 🎨 1. Splash Screen Premium con Transición Imperceptible e Inteligente
+### 🎨 1. Splash Screen Premium con Transición Imperceptible e Inmersión Visual
 
 - **Fondo Dinámico Transicional**: Reemplazamos el color estático del Scaffold por un `AnimatedContainer` que inicia en blanco puro (`Colors.white`), mimetizándose al 100% con el fondo original del logo para que no se note ningún recuadro o círculo de contraste. Al completarse la barra de carga, transiciona de forma fluida durante 800ms hacia `theme.primaryBackground` (el color crema cálido original de la pantalla de bienvenida).
 - **Freno de Respiración del Logo**: Corregimos un bucle infinito causado por el disparador del estado `dismissed` en el listener del `AnimationController`. Añadimos una verificación de estado (`if (!_isSplashActive) return;`), deteniendo con éxito la respiración del logo al terminar el splash y dejándolo estático y estable en su escala original de `1.0`.
 - **Barra de Progreso Honey Gold**: Implementamos una barra delgada y elegante de 150px cargada con el color oficial **Oro Miel (`#C68E17`)**, la cual se llena fluidamente a lo largo de **2.0 segundos**.
 - **Transición Invisible al Bienvenido**: Al finalizar la carga, la barra se desvanece y la interfaz del bienvenido (títulos, eslogan y botón **"INICIAR"**) se dibuja en el mismo plano sin alterar la posición física del logotipo, garantizando una estética super premium.
+- **Barra de Estado Transparente e Inmersiva**: Identificamos que el emulador y los dispositivos Android dibujaban por defecto una barra horizontal gris oscuro en la parte superior (el área física del status bar), lo cual arruinaba la continuidad visual y estética premium. Configuramos globalmente `SystemChrome.setSystemUIOverlayStyle` en `main.dart` con `statusBarColor: Colors.transparent` e íconos en `Brightness.dark`. Esto elimina por completo la barra gris superior, logrando que el patrón honeycomb y los colores de fondo fluyan nítidamente hasta el borde físico superior de la pantalla.
 
 ### 📱 2. Resolución de Cámara para Tickets de Gastos (Android 11+ / SDK 30+)
 
