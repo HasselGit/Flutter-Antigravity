@@ -40,6 +40,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.06).animate(
       CurvedAnimation(parent: _breathingController, curve: Curves.easeInOut),
     )..addStatusListener((status) {
+        if (!_isSplashActive) return; // Stop loop when splash ends!
         if (status == AnimationStatus.completed) {
           _breathingController.reverse();
         } else if (status == AnimationStatus.dismissed) {
@@ -94,15 +95,22 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: const Color(0xFFFBF9F8), // Same light off-white tone as welcome to make transition fully imperceptible!
+        backgroundColor: theme.primaryBackground,
         body: Stack(
           children: [
+            // Smoothly animated background transition from pure white (matching logo) to primaryBackground
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 800),
+                color: _isSplashActive ? Colors.white : theme.primaryBackground,
+              ),
+            ),
             // Honeycomb Pattern Background (fades in smoothly after splash finishes)
-            AnimatedOpacity(
-              opacity: _isSplashActive ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.easeIn,
-              child: Positioned.fill(
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: _isSplashActive ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 800),
+                curve: Curves.easeIn,
                 child: CustomPaint(
                   painter: HoneycombPainter(
                     color: theme.primary.withOpacity(0.03),

@@ -8,10 +8,10 @@ Hoy logramos estabilizar y elevar la calidad de GeoLogística a un nivel de prod
 
 ### 🎨 1. Splash Screen Premium con Transición Imperceptible e Inteligente
 
-- **Fondo de Color Identitario**: Configuramos el Scaffold de la pantalla de bienvenida con el color hexadecimal exacto `#FBF9F8`, igualando a la perfección el fondo del logo PNG para ocultar cualquier línea de separación o marco circular visible.
-- **Efecto de Respiración del Logo**: Agregamos un `AnimationController` acoplado con `Curves.easeInOut` que oscila la escala del contenedor del logotipo entre `1.0` y `1.06` en un bucle continuo de 1.0s. Al completar la carga, la animación frena gradualmente en su tamaño real.
-- **Barra de Progreso Honey Gold**: En lugar de spinners genéricos, implementamos una barra delgada y elegante de 150px de ancho cargada con el color oficial **Oro Miel (`#C68E17`)**, la cual se llena fluidamente a lo largo de **2.0 segundos**.
-- **Transición Invisible al Bienvenido**: Al llenarse la barra, esta se desvanece de forma atenuada (`AnimatedOpacity`), y el título de la marca (`GeoLogística`), el eslogan secundario y el botón premium de **"INICIAR"** se despliegan en el mismo lienzo sin alterar la posición física del logo, generando una transición extremadamente premium.
+- **Fondo Dinámico Transicional**: Reemplazamos el color estático del Scaffold por un `AnimatedContainer` que inicia en blanco puro (`Colors.white`), mimetizándose al 100% con el fondo original del logo para que no se note ningún recuadro o círculo de contraste. Al completarse la barra de carga, transiciona de forma fluida durante 800ms hacia `theme.primaryBackground` (el color crema cálido original de la pantalla de bienvenida).
+- **Freno de Respiración del Logo**: Corregimos un bucle infinito causado por el disparador del estado `dismissed` en el listener del `AnimationController`. Añadimos una verificación de estado (`if (!_isSplashActive) return;`), deteniendo con éxito la respiración del logo al terminar el splash y dejándolo estático y estable en su escala original de `1.0`.
+- **Barra de Progreso Honey Gold**: Implementamos una barra delgada y elegante de 150px cargada con el color oficial **Oro Miel (`#C68E17`)**, la cual se llena fluidamente a lo largo de **2.0 segundos**.
+- **Transición Invisible al Bienvenido**: Al finalizar la carga, la barra se desvanece y la interfaz del bienvenido (títulos, eslogan y botón **"INICIAR"**) se dibuja en el mismo plano sin alterar la posición física del logotipo, garantizando una estética super premium.
 
 ### 📱 2. Resolución de Cámara para Tickets de Gastos (Android 11+ / SDK 30+)
 

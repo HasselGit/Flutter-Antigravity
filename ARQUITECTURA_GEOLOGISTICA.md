@@ -124,8 +124,8 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 
 ## 16. Splash Screen Premium e Híbrida Imperceptible
 - **Problema de Salto Visual**: En muchas apps, la pantalla de Splash y la pantalla de Bienvenido tienen discrepancias de coordenadas de logo y fondos de color, provocando saltos bruscos y molestos para el usuario.
-- **Solución de Diseño Unificado**: En `welcomepage.dart`, implementamos ambas etapas en un único widget de estado. El fondo se unificó como `Color(0xFFFBF9F8)` para fusionarse imperceptiblemente con el fondo nativo del logo.
-- **Efecto de Respiración Continua**: Se utiliza un `AnimationController` que oscila la escala del logo de `1.0` a `1.06` en curva de desaceleración. Al completarse la carga, frena de manera suave y vuelve al tamaño original.
+- **Solución de Diseño Unificado**: En `welcomepage.dart`, implementamos ambas etapas en un único widget de estado. El fondo es gestionado por un `AnimatedContainer` que se inicia en blanco puro (`Colors.white`) para mimetizarse perfectamente con el fondo original del logo, y transiciona suavemente en 800ms hacia `theme.primaryBackground` cuando el splash termina.
+- **Efecto de Respiración Continua e Interrupción**: Se utiliza un `AnimationController` que oscila la escala del logo de `1.0` a `1.06` en curva de desaceleración. Para evitar que el listener entre en un bucle infinito en su estado `dismissed` al detenerse, se agregó una bandera de verificación (`if (!_isSplashActive) return;`), deteniendo la animación limpiamente en su tamaño original (`1.0`) y dejándolo estable.
 - **Transición de Desvanecimiento por Bloques**: La barra Honey Gold (`#C68E17`) e indicadoras del Splash se ocultan con `AnimatedOpacity`, y el resto de la interfaz (Títulos, Eslogan y Botón INICIAR) se despliegan en el mismo espacio con retardo de fade-in de 800ms, manteniendo el logo estático en su lugar geométrico original.
 
 ## 17. Declaración de Visibilidad del Sistema de Intents (Android 11+)
