@@ -18,5 +18,11 @@ Estos archivos contienen la lógica más importante y deben ser los primeros en 
 
 ## 🛠 Configuración de Entorno
 1.  [`pubspec.yaml`](../pubspec.yaml): Dependencias globales del sistema apícola.
-2.  [`android/app/src/main/AndroidManifest.xml`](../android/app/src/main/AndroidManifest.xml): Habilitación de callbacks de gestos de retroceso (`enableOnBackInvokedCallback`) y desactivación de Impeller para máxima compatibilidad gráfica.
+2.  [`android/app/src/main/AndroidManifest.xml`](../android/app/src/main/AndroidManifest.xml): Habilitación de callbacks de gestos de retroceso, desactivación de Impeller y declaración de visibilidad de intents de cámara para compatibilidad gráfica e ImagePicker.
 3.  [`lib/backend/honeycomb_painter.dart`](../lib/backend/honeycomb_painter.dart): Motor de renderizado estático de fondos premium del panal de abejas.
+4.  [`lib/pages/welcomepage.dart`](../lib/pages/welcomepage.dart): Pantalla de presentación híbrida y bienvenida con transiciones suaves, animación de respiración del logo y barra de progreso Honey Gold.
+
+## 📄 Plantillas y Presentación Ejecutiva
+1.  [`lib/backend/pdf_invoice_generator.dart`](../lib/backend/pdf_invoice_generator.dart): Generador de facturas y remitos premium en formato PDF enlazado directamente a los colores corporativos oficiales y libre de terminologías de báscula.
+2.  [`lib/pages/remito_page.dart`](../lib/pages/remito_page.dart): Visualizador y compartidor digital de remitos con lookup inteligente de teléfono y esquema dual de envío WhatsApp nativo/web.
+

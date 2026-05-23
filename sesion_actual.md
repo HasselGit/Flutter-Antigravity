@@ -1,60 +1,65 @@
-# Sesión Actual - 22 de Mayo, 2026
+# Sesión Actual - 23 de Mayo, 2026
 
-## Objetivos Alcanzados: Estabilización de Roles en Depósito, Geolocalización en Google Maps y Navegación Lectura de Necesidades
+## Objetivos Alcanzados: Splash Screen Premium, Solución de Cámara en Gastos, Sincronización en Caliente de Paradas y Remitos Premium sin Báscula
 
-Hoy resolvimos de raíz varios problemas críticos reportados durante las pruebas en terreno y consolidamos la arquitectura general de navegación y control de datos.
+Hoy logramos estabilizar y elevar la calidad de GeoLogística a un nivel de producción sumamente profesional, garantizando un flujo sin fisuras en terreno, seguridad de hardware y un handoff digital impecable.
 
 ---
 
-### 🔐 1. Corrección en Depósito (Carolina Merlo) y Cargas Vacías (CARGA-7845001)
+### 🎨 1. Splash Screen Premium con Transición Imperceptible e Inteligente
 
-- **Diagnóstico**: La carga `CARGA-7845001` de Carolina Merlo (rol `Deposito`) mostraba "0 items / 0 kg" en `/depositoHome` a pesar de que en la base de datos contenía 24 unidades de `TRC` (`carga_items`). Esto ocurría debido a políticas RLS de Supabase que filtraban los ítems cuando la sesión cargaba un token expirado o corrupto de auth nativo.
-- **Solución - SignOut Preventivo**: Se añadió `await Supabase.instance.client.auth.signOut()` al inicio de `_fetchData()` en `depositohome.dart` para garantizar que la sesión stale se limpie en caliente y trabaje con el cliente público libre de RLS obsoleto.
-- **Solución - Fallback Directo de Consulta**: En `supabase_service.dart`, agregamos una capa de seguridad redundante: si la consulta relacional con joins de Supabase devuelve `carga_items` vacío, el servicio realiza una consulta directa específica `_client.from('carga_items').select('*').eq('carga_id', c['id'])` y re-inyecta los datos. Este doble mecanismo (SignOut + Fallback) resolvió instantáneamente la carga vacía.
-- **Visualización Detallada**: Permitimos hacer clic en las tarjetas de cargas de depósito para navegar fluidamente a `/viajedetalle?viajeId=...`.
+- **Fondo de Color Identitario**: Configuramos el Scaffold de la pantalla de bienvenida con el color hexadecimal exacto `#FBF9F8`, igualando a la perfección el fondo del logo PNG para ocultar cualquier línea de separación o marco circular visible.
+- **Efecto de Respiración del Logo**: Agregamos un `AnimationController` acoplado con `Curves.easeInOut` que oscila la escala del contenedor del logotipo entre `1.0` y `1.06` en un bucle continuo de 1.0s. Al completar la carga, la animación frena gradualmente en su tamaño real.
+- **Barra de Progreso Honey Gold**: En lugar de spinners genéricos, implementamos una barra delgada y elegante de 150px de ancho cargada con el color oficial **Oro Miel (`#C68E17`)**, la cual se llena fluidamente a lo largo de **2.0 segundos**.
+- **Transición Invisible al Bienvenido**: Al llenarse la barra, esta se desvanece de forma atenuada (`AnimatedOpacity`), y el título de la marca (`GeoLogística`), el eslogan secundario y el botón premium de **"INICIAR"** se despliegan en el mismo lienzo sin alterar la posición física del logo, generando una transición extremadamente premium.
 
-### 🧭 2. Navegación a Detalle de Viaje desde Necesidades (`/necesidades`)
+### 📱 2. Resolución de Cámara para Tickets de Gastos (Android 11+ / SDK 30+)
 
-- **Objetivo**: Permitir que roles no operativos (Compras, Depósito, CEO, etc.) puedan auditar el detalle de los viajes activos o asignados directamente desde la pantalla de necesidades.
-- **Implementación**:
-  - En `necesidades_page.dart`, al recuperar la información del backend en `_fetchData()`, consultamos la tabla `paradas` para mapear `solicitud_id -> viaje_id` de forma reactiva (`_solicitudToViaje`).
-  - Habilitamos el callback `onTap` de las tarjetas para las necesidades en estado `'Asignada'` o `'En Curso'` (o `'En Proceso'`).
-  - Al tocarlas, resuelven el ID del viaje correspondiente y navegan al usuario a `/viajedetalle?viajeId=$viajeId`.
-  - Agregamos un indicador visual premium (Icono `Icons.chevron_right_rounded` coloreado con `DesignTokens.primary`) que denota clickabilidad a los usuarios.
-  - La pantalla `/viajedetalle` evalúa correctamente el rol para renderizar vistas solo de lectura (sin botones operativos de modificación) evitando excepciones y crashes de UI.
+- **Declaración de Visibilidad (Package Visibility)**: Corregimos el crash silencioso y bloqueo de permisos que impedía que `image_picker` abriera la cámara en dispositivos modernos Android.
+- **Solución en AndroidManifest**: Insertamos el intent de captura de fotos dentro del bloque `<queries>` en `android/app/src/main/AndroidManifest.xml`:
+  ```xml
+  <queries>
+      <intent>
+          <action android:name="android.media.action.IMAGE_CAPTURE" />
+      </intent>
+  </queries>
+  ```
+  Esto autoriza al emulador y dispositivos físicos a resolver e invocar el paquete de la cámara por defecto del dispositivo de forma inmediata.
 
-### 🗺️ 3. Geolocalización y Waypoints Precisos en Google Maps
+### 🔄 3. Auto-Finalización de Paradas de Distribución y Auto-Sanación de Viaje
 
-- **Problema**: El botón "Ver Recorrido Completo" abría Google Maps con el nombre del apicultor (ej. "Garavagno Francisco Andres") como waypoint en vez de la dirección/localidad real, provocando búsquedas fallidas y la advertencia *"No results for General Pico, La Pampa"*.
-- **Solución en `viaje_detalle.dart` y `ruta_detalle.dart`**:
-  - Reestructuramos la función `_openMap` eliminando el uso directo de `p['ubicacion']`.
-  - Ahora se procesa la dirección limpia e inteligente combinando `"$localidad, $provincia, Argentina"`.
-  - Para obtener la provincia correcta de cada parada de forma dinámica, implementamos una búsqueda interactiva en `ApicultoresData.fallbackApicultores` basándonos en el nombre del apicultor (ubicación). Si no se encuentra, se utiliza `'La Pampa'` por defecto.
-  - Codificamos los waypoints de forma robusta usando `Uri.encodeComponent(waypoints)` y se habilitó la redirección directa por `launchUrl` nativo abriendo la app real del dispositivo.
+- **Auto-Finalización Automática**: Dado que las paradas de tipo `Distribución` involucran un único remito de entrega, configuramos `remito_registro.dart` para que al momento de firmar y guardar el remito con éxito, se invoque en segundo plano `finalizarParada(...)`.
+- **Lógica de Saneamiento y Auto-Sanación**: Modificamos el fetch de detalle de viajes (`getViajeDetalle` en `supabase_service.dart`) para autodetectar inconsistencias. Si una parada posee remitos en Supabase pero sigue en estado `'Pendiente'` o `'En Proceso'`, el backend realiza una auto-sanación instantánea, cambiándole el estado a `'Terminado'` y sincronizando la carga del camión.
+- **Botón "Finalizar Viaje" Reactivo**: Modificamos el conteo `todasTerminadas` en `viaje_detalle.dart`. Ahora, una parada se considera completada si su estado en la base de datos es `'Terminado'` **o si posee al menos un remito generado**. Esto habilita al chofer el botón verde para concluir el viaje en caliente en el instante en que emite su último remito digital.
 
-### 🛡️ 4. Estabilización de Layout en Gestión de Viajes (`/viajes` - León Castellanos)
+### 📝 4. WhatsApp Ultra-Robusto, Teléfonos Dinámicos y Actualización en Firma
 
-- **Síntoma**: El rol de Compras y otros roles corporativos experimentaban una pantalla en blanco y crash total de renderizado al ingresar a la Gestión de Viajes.
-- **Causa Raíz**: Un error fatal de desbordamiento (`RenderFlex` overflow) en `_buildTripCard` en `viajes_page.dart` debido a un Row anidado con botones de edición y eliminación sin limitación de ancho dentro de otro Row de distribución flexible.
-- **Solución**:
-  - Restringimos el Row secundario de edición configurando explícitamente `mainAxisSize: MainAxisSize.min`.
-  - Envolvimos la columna izquierda de información de viaje en un widget `Expanded` con control de overflow de texto (`TextOverflow.ellipsis`).
-  - Se resolvió definitivamente el crash gráfico, garantizando un diseño premium y adaptativo.
+- **Actualización de Teléfono en Firma**: Si el apicultor actualiza su número de teléfono al momento de firmar el remito, este número no solo se añade al PDF, sino que **se actualiza en caliente en la base de datos** (tabla `apicultores`), persistiendo para futuros viajes.
+- **Lookup con Fallback**: Si el teléfono no está inicialmente registrado en Supabase, el sistema realiza una búsqueda de coincidencia de nombres en el catálogo estático `ApicultoresData.fallbackApicultores`.
+- **Dual Scheme WhatsApp**: Diseñamos un mecanismo que intenta primero abrir la aplicación nativa de WhatsApp (`whatsapp://send?phone=...`). Si el dispositivo no tiene instalada la app (como suele ocurrir en emuladores), el sistema captura el error y redirige el flujo inmediatamente al navegador mediante la versión web (`web.whatsapp.com`), garantizando que la entrega del remito al apicultor o terceros nunca falle.
+- **Selector de Apicultor Titular**: Permite seleccionar en el remito un apicultor titular (Tercero) y asociar la entrega directamente a su cuenta contable de productos, aunque la firma física sea realizada por un tercero en el lugar.
 
-### 📦 5. Estructura Aplanada y Persistencia en Cargas
+### 📄 5. Rediseño Premium de Remitos (Sin menciones a "Báscula")
 
-- **Estructuración Aplanada**: Refactorizamos el dashboard de depósito en `depositohome.dart` utilizando el método `_getActiveItems()` para aplanar y separar las tarjetas de depósito individualmente por carga en lugar de agruparlas rígidamente por viaje. Esto permite iniciar y confirmar cargas concurrentes de forma aislada.
-- **Persistencia en Modales de Edición**: Corregimos el reinicio involuntario de los inputs de texto al aparecer el teclado, hoisting los `TextEditingController` fuera del builder reactivo.
+- **Cero Básculas**: Se removieron todas las menciones a "báscula", "balanza de campo", "fecha de pesaje" y "pesaje del cliente" del PDF generado y del diálogo de éxito. La fecha se unificó como "Fecha de Emisión" y la nota inferior certifica de forma ejecutiva la reconciliación por GeoLogística de Geomiel S.A.
+- **Logotipos Premium**: Se incrementó el tamaño del logo corporativo de Geomiel S.A. a un prominente contenedor de `110x90` y se rediseñó el isotipo vectorial de GeoLogística bajo el esquema Forest Green (`#08201A`) y Honey Gold (`#C68E17`).
+- **Encabezado Grande**: Se estableció un título principal grande e inmodificable: `'REMITO - [NÚMERO]'` en `22pt`.
+
+### ⚡ 6. Lector de Códigos SENASA Autodisparado
+
+- En `agregar_pesaje.dart`, la cámara de escaneo se dispara de forma automática al abrir la página y se reinicia después de cada tambor agregado. Si el conductor cancela o presiona la pantalla, se habilita inmediatamente la escritura manual sin bloquear el flujo de trabajo.
 
 ---
 
 ## 💾 Sincronización y Compilación Exitosa
 
-- **Control de Versiones**: Commits listos para subir a `origin/main` en `HasselGit/Flutter-Antigravity`.
-- **flutter analyze**: Los archivos en `lib/` están completamente limpios de errores de compilación estáticos. Todos los warnings son alertas del linter deprecados o pre-existentes que no bloquean la ejecución ni causan crashes.
+- **Git Guardar Todo**: Todos los archivos de código fuente actualizados han sido guardados, consolidados, comprometidos y **empujados con éxito a la rama principal en GitHub** (`HasselGit/Flutter-Antigravity`). El repositorio de trabajo local se encuentra 100% limpio.
+- **Release APK Compilado**: Construimos exitosamente el archivo binario final en modo Release en:
+  📂 `c:\Users\Usuario\Desktop\Geologistica\build\app\outputs\flutter-apk\app-release.apk`
+- **flutter analyze**: Todo el código de lib/pages/welcomepage.dart y demás archivos relacionados pasaron el análisis estático con **0 errores y 0 warnings**.
 
-## 🖥️ Instrucciones para continuar
+## 🖥️ Instrucciones para continuar en otra Computadora
 
-1. **Sincronizar**: `git pull origin main`
-2. **Limpiar Caché**: `flutter clean && flutter pub get`
-3. **Ejecutar**: `flutter run`
+1. **Clonar/Sincronizar**: `git pull origin main` (El repositorio en GitHub ya tiene integradas las últimas actualizaciones del Splash, la cámara y remitos).
+2. **Limpiar Caché e Instalar**: `flutter clean && flutter pub get`
+3. **Ejecutar**: `flutter run` (La app iniciará en el emulador o dispositivo físico mostrando el nuevo Splash Screen fluido).

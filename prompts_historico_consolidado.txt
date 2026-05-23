@@ -2230,3 +2230,32 @@ FIN DEL DOCUMENTO
 Generado: Abril 2026
 Versión: 1.0
 Para: Google Antigravity - FlutterFlow Project
+
+================================================================================
+SESIÓN ADICIONAL: 23 de Mayo de 2026 - SPLASH PREMIUM Y ROBUSTEZ LOGÍSTICA
+================================================================================
+
+1. REQUERIMIENTO:
+- Diseñar e integrar una pantalla de carga Splash de respuesta premium en WelcomePageWidget que use el mismo tono de fondo (#FBF9F8) de la marca para no tener fisuras de render.
+- Agregar efecto de animación "respiración" (bucle de escala de 1.0 a 1.06) en el logo y una barra de carga dorada de la paleta corporativa que dure 2 segundos.
+- Al completarse la carga, realizar una transición 100% invisible y sin saltos hacia el contenido de bienvenida tradicional (títulos y botón de iniciar sesión), utilizando opacidad progresiva sin alterar la posición del logo.
+- Eliminar de raíz todas las menciones del término "báscula" y "balanza de campo" del PDF y alertas, cambiando nombres por "Remito - [Nº]" y "Fecha de Emisión".
+- Ajustar visibilidad de cámara para Android 11+ agregando intents de IMAGE_CAPTURE al AndroidManifest.xml.
+- Corregir de raíz la finalización de viajes y paradas de tipo Distribución que impedían habilitar el botón "Finalizar Viaje" en la UI agregando lógica de auto-finalización y auto-sanación en supabase_service.dart.
+- Implementar envío robusto dual de WhatsApp: intentar aplicación nativa y, si falla o no está instalada (ej. emulador), lanzar inmediatamente la versión web.whatsapp.com en el navegador sin excepciones.
+- Actualizar dinámicamente la tabla "apicultores" de Supabase en caliente cuando el conductor edite o confirme el número de teléfono del receptor al firmar.
+
+2. SOLUCIÓN IMPLEMENTADA:
+- WelcomePageWidget reescrito con TickerProviderStateMixin y AnimationController para el logo oscilando en un bucle sutil.
+- LinearProgressIndicator animado dinámicamente en 2000ms con DesignTokens.secondary (Honey Gold #C68E17).
+- Transición con AnimatedOpacity en brand details y botón INICIAR en el mismo espacio con el logo estático, logrando un cambio fluido y perfecto.
+- Inserción de `<intent><action android:name="android.media.action.IMAGE_CAPTURE"/></intent>` en AndroidManifest.xml.
+- Método getViajeDetalle en SupabaseService autodeclara como 'Terminado' cualquier parada que ya tenga remitos generados en la base de datos, recalculando en caliente el inventario.
+- WhatsApp de doble canal implementado con try-catch de launchUrl nativa redirigiendo a la web oficial en su defecto.
+- Actualización transaccional en caliente del apicultor al momento del firmado del remito.
+- Plantilla de PDF invoice rediseñada con fuentes grandes de 22pt, logos extendidos de 110x90 y paleta elegante profunda.
+
+================================================================================
+FIN DE LA SESIÓN DE HISTÓRICO
+================================================================================
+

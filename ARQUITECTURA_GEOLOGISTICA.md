@@ -121,3 +121,20 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Solución en Tarjetas de Viaje (`viajes_page.dart`)**:
   1. Configurar siempre `mainAxisSize: MainAxisSize.min` en filas de botones de acción o elementos anidados del lado derecho.
   2. Envolver columnas o textos descriptivos del lado izquierdo en widgets `Expanded` y aplicar control de overflow mediante `overflow: TextOverflow.ellipsis` para evitar desbordamientos en pantallas estrechas.
+
+## 16. Splash Screen Premium e Híbrida Imperceptible
+- **Problema de Salto Visual**: En muchas apps, la pantalla de Splash y la pantalla de Bienvenido tienen discrepancias de coordenadas de logo y fondos de color, provocando saltos bruscos y molestos para el usuario.
+- **Solución de Diseño Unificado**: En `welcomepage.dart`, implementamos ambas etapas en un único widget de estado. El fondo se unificó como `Color(0xFFFBF9F8)` para fusionarse imperceptiblemente con el fondo nativo del logo.
+- **Efecto de Respiración Continua**: Se utiliza un `AnimationController` que oscila la escala del logo de `1.0` a `1.06` en curva de desaceleración. Al completarse la carga, frena de manera suave y vuelve al tamaño original.
+- **Transición de Desvanecimiento por Bloques**: La barra Honey Gold (`#C68E17`) e indicadoras del Splash se ocultan con `AnimatedOpacity`, y el resto de la interfaz (Títulos, Eslogan y Botón INICIAR) se despliegan en el mismo espacio con retardo de fade-in de 800ms, manteniendo el logo estático en su lugar geométrico original.
+
+## 17. Declaración de Visibilidad del Sistema de Intents (Android 11+)
+- **Problema de Bloqueo de Hardware**: Las apps modernas Android (SDK 30+) bloquean la resolución e invocación de intents externos (como la cámara o visor de fotos) a menos que se declaren explícitamente en el manifest.
+- **Solución en Manifest**: Se agregó la acción del intent `android.media.action.IMAGE_CAPTURE` dentro de la sección `<queries>` de `AndroidManifest.xml` para garantizar la compatibilidad universal del plugin de selección de fotos en el formulario de gastos.
+
+## 18. Auto-Finalización, Auto-Sanación de Rutas y Doble WhatsApp Fallback
+- **Auto-Finalización en Distribución**: Las paradas de tipo `Distribución` se auto-finalizan en Supabase al momento de la firma electrónica y guardado del remito único, reduciendo la fricción para el conductor.
+- **Auto-Sanación Reactiva**: Al consultar `getViajeDetalle` en `supabase_service.dart`, el backend compara si existen paradas en estado `'Pendiente'` que cuenten con remitos en base de datos. Si las detecta, actualiza el estado de las paradas a `'Terminado'` y recalcula el inventario del camión sobre la marcha para asegurar la visualización y habilitación del botón verde **"FINALIZAR VIAJE"**.
+- **Lookup y Actualización de Apicultores**: Si el apicultor no cuenta con un número celular registrado, el sistema busca coincidencias en `ApicultoresData.fallbackApicultores`. Si el usuario ingresa o corrige su teléfono en la firma digital, este se actualiza inmediatamente en Supabase (tabla `apicultores`) para futuras referencias.
+- **WhatsApp Dual-Scheme**: El sistema intenta lanzar primero el intent nativo `whatsapp://send?phone=...`. Si falla (ej. emulador), atrapa la excepción y lanza la versión web `web.whatsapp.com` en el navegador del dispositivo de forma transparente.
+
