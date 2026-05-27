@@ -77,7 +77,7 @@ class SupabaseService {
       List<dynamic> data;
       try {
         // Consulta optimizada con joins para evitar el bucle de queries individuales
-        var query = _client.from('viajes').select('*, paradas(*)');
+        var query = _client.from('viajes').select('*, paradas(*, parada_items(*), remitos(*))');
 
         if (role == 'Chofer' && userId != null) {
           query = query.eq('chofer_id', userId);
@@ -405,6 +405,19 @@ class SupabaseService {
         viaje['cargas'] = cargas;
       } catch (_) { viaje['cargas'] = []; }
 
+      // Fetch and attach gastos directly to the viaje object
+      try {
+        final gastosRaw = await _client.from('gastos')
+            .select('*, profiles(nombre, apellido)')
+            .eq('viaje_id', viajeId)
+            .order('fecha', ascending: false);
+        viaje['gastos'] = gastosRaw;
+        print('SupabaseService: Gastos cargados para viaje: ${gastosRaw.length}');
+      } catch (gastosErr) {
+        print('SupabaseService: Error cargando gastos del viaje: $gastosErr');
+        viaje['gastos'] = [];
+      }
+
       return viaje;
     } catch (e) {
       print('SupabaseService: Error en getViajeDetalle: $e');
@@ -457,6 +470,15 @@ class SupabaseService {
     } catch (e) {
       print('SupabaseService: Error propagando estado a solicitudes: $e');
     }
+  }
+
+  Future<void> updateViajeOdometerAndLitros(String viajeId, {double? odometroInicial, double? odometroFinal, String? descripcion}) async {
+    final Map<String, dynamic> updates = {};
+    if (odometroInicial != null) updates['odometro_inicial'] = odometroInicial;
+    if (odometroFinal != null) updates['odometro_final'] = odometroFinal;
+    if (descripcion != null) updates['descripcion'] = descripcion;
+    
+    await _client.from('viajes').update(updates).eq('id', viajeId);
   }
 
   /// Marca todas las cargas de un viaje que están 'En Proceso' como 'Terminado'.

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
 
@@ -340,6 +342,26 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                       _quickAction(Icons.group_rounded, 'Apicultores', 'Directorio de productores', () => context.push('/apicultores')),
                       const SizedBox(height: 10),
                     ],
+                    if (!_isChofer) ...[
+                      _quickAction(
+                        Icons.map_rounded,
+                        'Seguimiento Satelital',
+                        'Monitoreo de camiones en tiempo real',
+                        () async {
+                          final url = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
+                          try {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error al abrir sitio: $e')),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     _quickAction(Icons.receipt_long_rounded, 'Remitos Digitales', 'Documentos de cierre', () => context.push('/remitosLista')),
                     
                     const SizedBox(height: 40),
@@ -544,6 +566,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
           _drawerItem(Icons.logout_rounded, 'Cerrar Sesión', () async {
             await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/');
+          }),
+          _drawerItem(Icons.power_settings_new_rounded, 'Salir', () {
+            SystemNavigator.pop();
           }, color: Colors.redAccent),
           const SizedBox(height: 20),
         ],

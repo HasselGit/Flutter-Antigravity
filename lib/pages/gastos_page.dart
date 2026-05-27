@@ -20,6 +20,19 @@ class GastosPageWidget extends StatefulWidget {
 class _GastosPageWidgetState extends State<GastosPageWidget> {
   List<Map<String, dynamic>> _gastos = [];
   bool _loading = true;
+  String _searchQuery = '';
+
+  List<Map<String, dynamic>> get _filteredGastos {
+    if (_searchQuery.isEmpty) return _gastos;
+    final q = _searchQuery.toLowerCase();
+    return _gastos.where((g) {
+      final tipo = (g['tipo_gasto'] ?? '').toString().toLowerCase();
+      final importe = (g['importe'] ?? '').toString().toLowerCase();
+      final chofer = g['profiles'] != null ? '${g['profiles']['nombre']} ${g['profiles']['apellido']}'.toLowerCase() : '';
+      final viaje = (g['viajes']?['viaje_codigo'] ?? '').toString().toLowerCase();
+      return tipo.contains(q) || importe.contains(q) || chofer.contains(q) || viaje.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -55,13 +68,49 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: DesignTokens.secondary))
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: _gastos.length,
-              itemBuilder: (context, index) {
-                final g = _gastos[index];
-                return _buildGastoCard(g);
-              },
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por chofer, viaje, importe, tipo...',
+                      hintStyle: const TextStyle(fontSize: 14),
+                      prefixIcon: const Icon(Icons.search, color: DesignTokens.primary),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.1))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.1))),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val;
+                      });
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('TOTAL MOSTRADO:', style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.onSurfaceVariant)),
+                      Text('\$${_filteredGastos.fold(0.0, (sum, g) => sum + (double.tryParse(g['importe']?.toString() ?? '0') ?? 0.0)).toStringAsFixed(2)}', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 16, color: DesignTokens.primary)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: _filteredGastos.length,
+                    itemBuilder: (context, index) {
+                      final g = _filteredGastos[index];
+                      return _buildGastoCard(g);
+                    },
+                  ),
+                ),
+              ],
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddGastoDialog,
@@ -80,69 +129,79 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     final chofer = g['profiles'] != null ? '${g['profiles']['nombre']} ${g['profiles']['apellido']}' : 'S/D';
     final viaje = g['viajes']?['viaje_codigo'] ?? 'Sin viaje';
 
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: DesignTokens.primary.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
+        side: BorderSide(color: DesignTokens.primary.withOpacity(0.05)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: InkWell(
+        onTap: () => _showGastoDetailDialog(context, g),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: DesignTokens.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
-                child: Text(tipo.toUpperCase(), style: const TextStyle(color: Color(0xFF7D5700), fontSize: 10, fontWeight: FontWeight.bold)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: DesignTokens.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                    child: Text(tipo.toUpperCase(), style: const TextStyle(color: Color(0xFF7D5700), fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                  Text('\$ $importe', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: DesignTokens.primary)),
+                ],
               ),
-              Text('\$ $importe', style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800, fontSize: 18, color: DesignTokens.primary)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.person_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(chofer, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
-              const Spacer(),
-              const Icon(Icons.calendar_today_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(fechaStr, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.local_shipping_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text('Viaje: $viaje', style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
-            ],
-          ),
-          if (g['descripcion'] != null && g['descripcion'].toString().trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9F9F9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFEEEEEE)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.person_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(chofer, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
+                  const Spacer(),
+                  const Icon(Icons.calendar_today_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(fechaStr, style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
+                ],
               ),
-              child: Text(
-                g['descripcion'],
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.black54,
-                  height: 1.4,
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.local_shipping_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text('Viaje: $viaje', style: const TextStyle(fontSize: 12, color: DesignTokens.onSurfaceVariant)),
+                ],
+              ),
+              if (g['descripcion'] != null && g['descripcion'].toString().trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9F9F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFEEEEEE)),
+                  ),
+                  child: Text(
+                    g['descripcion'],
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.black54,
+                      height: 1.4,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
-        ],
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -519,6 +578,218 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
           );
         },
       ),
+    );
+  }
+
+  void _showGastoDetailDialog(BuildContext context, Map<String, dynamic> g) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final tipo = g['tipo_gasto'] ?? 'Gasto';
+        final importe = g['importe']?.toString() ?? '0';
+        final fecha = DateTime.tryParse(g['fecha']?.toString() ?? '') ?? DateTime.now();
+        final fechaStr = DateFormat('dd/MM/yyyy HH:mm').format(fecha);
+        final chofer = g['profiles'] != null 
+            ? '${g['profiles']['nombre']} ${g['profiles']['apellido']}' 
+            : 'S/D';
+        final viaje = g['viajes']?['viaje_codigo'] ?? (g['viaje_codigo'] ?? 'S/D');
+        final metodo = g['forma_pago'] ?? 'S/D';
+        final comprobante = g['nro_comprobante'] ?? 'S/D';
+        final descripcion = g['descripcion'] ?? '';
+        final ticketUrl = g['comprobante_url'];
+
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  decoration: const BoxDecoration(
+                    color: DesignTokens.primary,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Detalle de Gasto',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        onPressed: () => Navigator.pop(ctx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: DesignTokens.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                            child: Text(tipo.toUpperCase(), style: const TextStyle(color: Color(0xFF7D5700), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                          ),
+                          Text('\$ $importe', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: DesignTokens.primary)),
+                        ],
+                      ),
+                      const Divider(height: 32),
+                      _buildDetailRow(Icons.calendar_today_rounded, 'Fecha de registro', fechaStr),
+                      const SizedBox(height: 16),
+                      _buildDetailRow(Icons.person_rounded, 'Registrado por', chofer),
+                      const SizedBox(height: 16),
+                      _buildDetailRow(Icons.local_shipping_rounded, 'Viaje asociado', viaje),
+                      const SizedBox(height: 16),
+                      _buildDetailRow(Icons.payment_rounded, 'Forma de pago', metodo),
+                      const SizedBox(height: 16),
+                      _buildDetailRow(Icons.receipt_rounded, 'Nro. Comprobante', comprobante),
+                      
+                      if (descripcion.toString().trim().isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.primary)),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF9F9F9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFEEEEEE)),
+                          ),
+                          child: Text(descripcion, style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.4)),
+                        ),
+                      ],
+
+                      if (ticketUrl != null && ticketUrl.toString().isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        const Text('Ticket / Comprobante', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.primary)),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (zoomCtx) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                insetPadding: const EdgeInsets.all(10),
+                                child: Stack(
+                                  children: [
+                                    InteractiveViewer(
+                                      panEnabled: true,
+                                      minScale: 0.5,
+                                      maxScale: 4.0,
+                                      child: Center(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: Image.network(ticketUrl, fit: BoxFit.contain),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 10,
+                                      right: 10,
+                                      child: CircleAvatar(
+                                        backgroundColor: Colors.black54,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.close, color: Colors.white),
+                                          onPressed: () => Navigator.pop(zoomCtx),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.network(
+                                  ticketUrl,
+                                  height: 180,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(
+                                      height: 180,
+                                      color: const Color(0xFFF5F5F5),
+                                      child: const Center(child: CircularProgressIndicator(color: DesignTokens.secondary)),
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) => Container(
+                                    height: 180,
+                                    color: const Color(0xFFFEE2E2),
+                                    child: const Center(child: Icon(Icons.broken_image_rounded, color: Colors.redAccent, size: 40)),
+                                  ),
+                                ),
+                                Container(
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                                    ),
+                                  ),
+                                ),
+                                const Positioned(
+                                  bottom: 12,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.zoom_in_rounded, color: Colors.white, size: 16),
+                                      SizedBox(width: 4),
+                                      Text('Toca para ampliar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: DesignTokens.secondary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text(value, style: const TextStyle(fontSize: 13, color: DesignTokens.primary, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

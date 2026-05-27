@@ -1,66 +1,45 @@
-# Sesión Actual - 23 de Mayo, 2026
+# Sesión Actual - 27 de Mayo, 2026
 
-## Objetivos Alcanzados: Splash Screen Premium, Solución de Cámara en Gastos, Sincronización en Caliente de Paradas y Remitos Premium sin Báscula
+## Objetivos Alcanzados: Corrección de Teclado, Totales Precisos, Unidades Dinámicas y Menú Refinado
 
-Hoy logramos estabilizar y elevar la calidad de GeoLogística a un nivel de producción sumamente profesional, garantizando un flujo sin fisuras en terreno, seguridad de hardware y un handoff digital impecable.
+En esta sesión nos centramos en refinar la experiencia de usuario (UX) corrigiendo el bloqueo de teclado en el login, ajustando cálculos y perfeccionando el despliegue de datos en las pantallas principales.
 
 ---
 
-### 🎨 1. Splash Screen Premium con Transición Imperceptible e Inmersión Visual
+### ⌨️ 1. Corrección del Bloqueo de Teclado en Login (Credential Manager)
 
-- **Fondo Dinámico Transicional**: Reemplazamos el color estático del Scaffold por un `AnimatedContainer` que inicia en blanco puro (`Colors.white`), mimetizándose al 100% con el fondo original del logo para que no se note ningún recuadro o círculo de contraste. Al completarse la barra de carga, transiciona de forma fluida durante 800ms hacia `theme.primaryBackground` (el color crema cálido original de la pantalla de bienvenida).
-- **Freno de Respiración del Logo**: Corregimos un bucle infinito causado por el disparador del estado `dismissed` en el listener del `AnimationController`. Añadimos una verificación de estado (`if (!_isSplashActive) return;`), deteniendo con éxito la respiración del logo al terminar el splash y dejándolo estático y estable en su escala original de `1.0`.
-- **Barra de Progreso Honey Gold**: Implementamos una barra delgada y elegante de 150px cargada con el color oficial **Oro Miel (`#C68E17`)**, la cual se llena fluidamente a lo largo de **2.0 segundos**.
-- **Transición Invisible al Bienvenido**: Al finalizar la carga, la barra se desvanece y la interfaz del bienvenido (títulos, eslogan y botón **"INICIAR"**) se dibuja en el mismo plano sin alterar la posición física del logotipo, garantizando una estética super premium.
-- **Barra de Estado Transparente e Inmersiva**: Identificamos que el emulador y los dispositivos Android dibujaban por defecto una barra horizontal gris oscuro en la parte superior (el área física del status bar), lo cual arruinaba la continuidad visual y estética premium. Configuramos globalmente `SystemChrome.setSystemUIOverlayStyle` en `main.dart` con `statusBarColor: Colors.transparent` e íconos en `Brightness.dark`. Esto elimina por completo la barra gris superior, logrando que el patrón honeycomb y los colores de fondo fluyan nítidamente hasta el borde físico superior de la pantalla.
+- **Problema Detectado**: El teclado no se desplegaba en los campos de usuario y contraseña porque Android 14+ intentaba invocar el "Credential Manager" nativo, superponiendo un modal invisible (las famosas "3 rayas") que bloqueaba la UI.
+- **Solución Implementada**: Retiramos los `autofillHints` de los `TextFormField` en `login.dart` y ajustamos el manejo de foco manual para saltarnos el gestor de contraseñas de Android, garantizando que el teclado del sistema operativo abra instantáneamente en todos los dispositivos al tocar los campos.
 
-### 📱 2. Resolución de Cámara para Tickets de Gastos (Android 11+ / SDK 30+)
+### 💰 2. Cálculo Preciso de "Total Gastos" y Buscador Integral
 
-- **Declaración de Visibilidad (Package Visibility)**: Corregimos el crash silencioso y bloqueo de permisos que impedía que `image_picker` abriera la cámara en dispositivos modernos Android.
-- **Solución en AndroidManifest**: Insertamos el intent de captura de fotos dentro del bloque `<queries>` en `android/app/src/main/AndroidManifest.xml`:
-  ```xml
-  <queries>
-      <intent>
-          <action android:name="android.media.action.IMAGE_CAPTURE" />
-      </intent>
-  </queries>
-  ```
-  Esto autoriza al emulador y dispositivos físicos a resolver e invocar el paquete de la cámara por defecto del dispositivo de forma inmediata.
+- **Detalle de Viaje**: Corregimos un error crítico donde el total de los gastos se mostraba como `$0.00`. El cálculo intentaba sumar el campo obsoleto `monto` en lugar de `importe`, que es el campo utilizado por la base de datos de Supabase. Ahora calcula e imprime con exactitud la suma de todos los viáticos asignados al viaje.
+- **Gestión de Gastos (Buscador Global)**: En `gastos_page.dart` añadimos una robusta barra de búsqueda con diseño corporativo que filtra los gastos simultáneamente por nombre del chofer, código de viaje, importe o tipo de gasto (ej: *Combustible*). Incluimos un medidor dinámico de **TOTAL MOSTRADO** que suma en tiempo real exclusivamente los montos de los tickets que coinciden con el filtro.
 
-### 🔄 3. Auto-Finalización de Paradas de Distribución y Auto-Sanación de Viaje
+### 📦 3. Tarjetas de Recolección con Unidades Dinámicas
 
-- **Auto-Finalización Automática**: Dado que las paradas de tipo `Distribución` involucran un único remito de entrega, configuramos `remito_registro.dart` para que al momento de firmar y guardar el remito con éxito, se invoque en segundo plano `finalizarParada(...)`.
-- **Lógica de Saneamiento y Auto-Sanación**: Modificamos el fetch de detalle de viajes (`getViajeDetalle` en `supabase_service.dart`) para autodetectar inconsistencias. Si una parada posee remitos en Supabase pero sigue en estado `'Pendiente'` o `'En Proceso'`, el backend realiza una auto-sanación instantánea, cambiándole el estado a `'Terminado'` y sincronizando la carga del camión.
-- **Botón "Finalizar Viaje" Reactivo**: Modificamos el conteo `todasTerminadas` en `viaje_detalle.dart`. Ahora, una parada se considera completada si su estado en la base de datos es `'Terminado'` **o si posee al menos un remito generado**. Esto habilita al chofer el botón verde para concluir el viaje en caliente en el instante en que emite su último remito digital.
+- **Problema**: La tarjeta en `RecoleccionesPage` forzaba la visualización de la unidad como "KG" (`15.0 KG - TCM`), lo cual era ambiguo para insumos medidos en unidades (como tambores vacíos o con miel).
+- **Solución Automática**: Importamos el `masterCatalog` corporativo desde `productos_data.dart`. Ahora, el renderizado de la tarjeta analiza en caliente el código de producto (ej: `TCM` o `TAMBORES`) e inyecta dinámicamente la unidad correcta (`UNI` en lugar de `KG`), logrando que la UI lea impecablemente: **`15.0 UNI - TCM`**.
 
-### 📝 4. WhatsApp Ultra-Robusto, Teléfonos Dinámicos y Actualización en Firma
+### 📊 4. Medidor de Progreso Realista en Gestión de Ruta
 
-- **Actualización de Teléfono en Firma**: Si el apicultor actualiza su número de teléfono al momento de firmar el remito, este número no solo se añade al PDF, sino que **se actualiza en caliente en la base de datos** (tabla `apicultores`), persistiendo para futuros viajes.
-- **Lookup con Fallback**: Si el teléfono no está inicialmente registrado en Supabase, el sistema realiza una búsqueda de coincidencia de nombres en el catálogo estático `ApicultoresData.fallbackApicultores`.
-- **Dual Scheme WhatsApp**: Diseñamos un mecanismo que intenta primero abrir la aplicación nativa de WhatsApp (`whatsapp://send?phone=...`). Si el dispositivo no tiene instalada la app (como suele ocurrir en emuladores), el sistema captura el error y redirige el flujo inmediatamente al navegador mediante la versión web (`web.whatsapp.com`), garantizando que la entrega del remito al apicultor o terceros nunca falle.
-- **Selector de Apicultor Titular**: Permite seleccionar en el remito un apicultor titular (Tercero) y asociar la entrega directamente a su cuenta contable de productos, aunque la firma física sea realizada por un tercero en el lugar.
+- **Limpieza Visual**: Eliminamos la frase confusa "S/D" del cálculo de distancia en las tarjetas de la ruta activa.
+- **Métricas de Rendimiento**: Reconfiguramos la barra de progreso lineal de `rutas_page.dart` para que evalúe y sume los kilos de las paradas realmente terminadas (`collectedKg`) contra el estimado total del viaje (`totalKg`), brindando un porcentaje visual certero del progreso del chofer.
 
-### 📄 5. Rediseño Premium de Remitos (Sin menciones a "Báscula")
+### 🚪 5. Reorganización Lógica del Botón "Salir"
 
-- **Cero Básculas**: Se removieron todas las menciones a "báscula", "balanza de campo", "fecha de pesaje" y "pesaje del cliente" del PDF generado y del diálogo de éxito. La fecha se unificó como "Fecha de Emisión" y la nota inferior certifica de forma ejecutiva la reconciliación por GeoLogística de Geomiel S.A.
-- **Logotipos Premium**: Se incrementó el tamaño del logo corporativo de Geomiel S.A. a un prominente contenedor de `110x90` y se rediseñó el isotipo vectorial de GeoLogística bajo el esquema Forest Green (`#08201A`) y Honey Gold (`#C68E17`).
-- **Encabezado Grande**: Se estableció un título principal grande e inmodificable: `'REMITO - [NÚMERO]'` en `22pt`.
-
-### ⚡ 6. Lector de Códigos SENASA Autodisparado
-
-- En `agregar_pesaje.dart`, la cámara de escaneo se dispara de forma automática al abrir la página y se reinicia después de cada tambor agregado. Si el conductor cancela o presiona la pantalla, se habilita inmediatamente la escritura manual sin bloquear el flujo de trabajo.
+- **Cierre de Sesión vs Cierre de App**: Distinguimos claramente las funciones. "Cerrar Sesión" ahora envía incondicionalmente al usuario al Login sin dejar remanentes.
+- **Menú Lateral (Drawer)**: Agregamos el botón rojo "Salir" (`SystemNavigator.pop()`) directamente en el Drawer lateral del `homepage.dart`, justo debajo del botón de Cerrar Sesión. Con esto, evitamos ensuciar la pantalla de Login con botones de salida y lo integramos en el flujo principal del usuario.
 
 ---
 
 ## 💾 Sincronización y Compilación Exitosa
 
-- **Git Guardar Todo**: Todos los archivos de código fuente actualizados han sido guardados, consolidados, comprometidos y **empujados con éxito a la rama principal en GitHub** (`HasselGit/Flutter-Antigravity`). El repositorio de trabajo local se encuentra 100% limpio.
-- **Release APK Compilado**: Construimos exitosamente el archivo binario final en modo Release en:
-  📂 `c:\Users\Usuario\Desktop\Geologistica\build\app\outputs\flutter-apk\app-release.apk`
-- **flutter analyze**: Todo el código de lib/pages/welcomepage.dart y demás archivos relacionados pasaron el análisis estático con **0 errores y 0 warnings**.
+- **Release APK Compilado**: Construimos exitosamente el archivo binario final en modo Release, ubicable en la ruta estándar.
+- **Git Guardar Todo**: Los cambios fueron agregados al repositorio principal. Todos los archivos de código fuente actualizados han sido guardados, consolidados y empujados con éxito a la rama principal en GitHub (`HasselGit/Flutter-Antigravity`).
 
 ## 🖥️ Instrucciones para continuar en otra Computadora
 
-1. **Clonar/Sincronizar**: `git pull origin main` (El repositorio en GitHub ya tiene integradas las últimas actualizaciones del Splash, la cámara y remitos).
+1. **Clonar/Sincronizar**: `git pull origin main` (El repositorio ya posee el teclado solucionado, el buscador de gastos y la barra lateral actualizada).
 2. **Limpiar Caché e Instalar**: `flutter clean && flutter pub get`
-3. **Ejecutar**: `flutter run` (La app iniciará en el emulador o dispositivo físico mostrando el nuevo Splash Screen fluido).
+3. **Ejecutar**: `flutter run`

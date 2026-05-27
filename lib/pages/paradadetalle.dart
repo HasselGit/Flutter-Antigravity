@@ -3,6 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
+import 'dart:typed_data';
 import '../components/agregaritem.dart';
 import '../backend/design_tokens.dart';
 import '../backend/app_states.dart';
@@ -785,23 +788,10 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     ),
                 ],
               ),
-              onTap: () async {
+              onTap: () {
                 final url = r['pdf_url'];
                 if (url != null && url.isNotEmpty) {
-                  try {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No se pudo abrir el PDF en esta plataforma')),
-                      );
-                    }
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error al intentar abrir el PDF: $e')),
-                    );
-                  }
+                  _showPdfPreviewDialog(context, url, 'Remito - ${p['persona_nombre'] ?? 'Parada'}');
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Este remito no tiene un PDF asociado')),
@@ -874,6 +864,129 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
           ],
         ],
       ],
+    );
+  }
+
+  Future<Uint8List> _downloadPdf(String url) async {
+    try {
+      // 1. Try public fetch
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        return res.bodyBytes;
+      }
+    } catch (_) {}
+    
+    // 2. Fallback to Supabase Storage direct download
+    try {
+      final fileName = url.split('/').last;
+      final bytes = await Supabase.instance.client.storage.from('remitos').download(fileName);
+      return bytes;
+    } catch (e) {
+      print('Error downloading PDF from Storage: $e');
+      rethrow;
+    }
+  }
+
+  void _showPdfPreviewDialog(BuildContext context, String url, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: DesignTokens.primary,
+          elevation: 0,
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.open_in_browser_rounded, color: Colors.white),
+              tooltip: 'Abrir en Navegador',
+              onPressed: () async {
+                try {
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                } catch (e) {
+                  print('Error al abrir PDF externo: $e');
+                }
+              },
+            ),
+          ],
+        ),
+        body: FutureBuilder<Uint8List>(
+          future: _downloadPdf(url),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: DesignTokens.secondary));
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 48),
+                      const SizedBox(height: 16),
+                      Text('Error al cargar vista previa del PDF: ${snapshot.error}', textAlign: TextAlign.center),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.open_in_browser_rounded),
+                        label: const Text('ABRIR EN NAVEGADOR'),
+                        style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
+                        onPressed: () async {
+                          try {
+                            final uri = Uri.parse(url);
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } catch (_) {}
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            try {
+              return PdfPreview(
+                build: (format) => snapshot.data!,
+                allowPrinting: true,
+                allowSharing: true,
+                canChangePageFormat: false,
+                dynamicLayout: false,
+              );
+            } catch (previewErr) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.picture_as_pdf_rounded, color: DesignTokens.primary, size: 48),
+                      const SizedBox(height: 16),
+                      const Text('El plugin de vista previa no es compatible con este dispositivo.', textAlign: TextAlign.center),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.open_in_browser_rounded),
+                        label: const Text('ABRIR CON VISOR NATIVO'),
+                        style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
+                        onPressed: () async {
+                          try {
+                            final uri = Uri.parse(url);
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } catch (_) {}
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+      ),
     );
   }
 }

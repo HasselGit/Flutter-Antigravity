@@ -146,34 +146,37 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       trayecto = 'Punto: ${paradas.first['localidad']}';
     }
 
-    // Extract KM from description if present (e.g. "Total ruta: 380km")
-    String kmStr = 'S/D';
     final desc = v['descripcion']?.toString() ?? '';
-    final kmMatch = RegExp(r'(\d+)\s*km', caseSensitive: false).firstMatch(desc);
-    if (kmMatch != null) {
-      kmStr = '${kmMatch.group(1)} km';
-    }
 
     int nRecoleccion = 0;
     double totalKg = 0;
-    // ... rest of logic remains similar but updated for consistency
+    double collectedKg = 0;
     for (final p in paradas) {
       final tipo = (p['tipo'] ?? p['tipo_operacion'] ?? '').toString().toLowerCase();
       if (tipo.contains('recolec')) nRecoleccion++;
-      // ... kg logic
+
+      double stopKg = 0;
       if (p['carga_kg'] != null) {
-        totalKg += (p['carga_kg'] as num).toDouble();
+        stopKg = (p['carga_kg'] as num).toDouble();
       } else {
         final items = p['parada_items'] as List? ?? [];
         for (final item in items) {
           final kg = double.tryParse(item['peso_kg']?.toString() ?? '') ?? 0;
           final qty = (item['cantidad'] as num?)?.toDouble() ?? 1;
-          if (kg > 0) totalKg += kg * qty;
+          if (kg > 0) stopKg += kg * qty;
         }
+      }
+      totalKg += stopKg;
+
+      final st = (p['estado'] ?? '').toString().toLowerCase();
+      if (st.contains('terminad')) {
+        collectedKg += stopKg;
       }
     }
 
-    final progress = nParadas > 0 ? ((paradas.where((p) => p['estado'] == 'Completada').length) / nParadas).clamp(0.0, 1.0) : 0.0;
+    final progress = totalKg > 0 
+        ? (collectedKg / totalKg).clamp(0.0, 1.0) 
+        : (nParadas > 0 ? ((paradas.where((p) => (p['estado'] ?? '').toString().toLowerCase().contains('terminad')).length) / nParadas).clamp(0.0, 1.0) : 0.0);
     final pctStr = '${(progress * 100).round()}%';
     
     final totalTambores = (totalKg / 300).round();
@@ -271,8 +274,6 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                 children: [
                   _infoChip(Icons.location_on_rounded, '$nParadas PARADAS'),
                   const SizedBox(width: 8),
-                  _infoChip(Icons.straighten_rounded, kmStr),
-                  const SizedBox(width: 8),
                   _infoChip(
                     nRecoleccion > 0 ? Icons.scale_rounded : Icons.inventory_2_rounded,
                     nRecoleccion > 0 ? 'RECOLECCIÓN' : 'DISTRIBUCIÓN',
@@ -313,9 +314,8 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildMetricCol('TOTAL ESTIMADO', '${totalKg.round()} kg', Icons.monitor_weight_outlined),
-                    Container(width: 1, height: 24, color: DesignTokens.primary.withOpacity(0.1)),
-                    _buildMetricCol('TAMBORES', '$totalTambores un.', Icons.inventory_2_outlined),
+                    Expanded(child: _buildMetricCol('TOTAL ESTIMADO', '${totalKg.round()} kg', Icons.monitor_weight_outlined)),
+                    Expanded(child: _buildMetricCol('PROCESADO', '${collectedKg.round()} kg', Icons.check_circle_outline)),
                   ],
                 ),
               ),

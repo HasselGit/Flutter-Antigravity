@@ -35,6 +35,11 @@ import 'pages/cargas_page.dart';
 import 'pages/carga_detalle.dart';
 import 'pages/remito_carga_page.dart';
 
+// Completer global para que WelcomePage pueda esperar a que Supabase esté listo
+import 'dart:async';
+
+final Completer<void> supabaseReady = Completer<void>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -42,28 +47,30 @@ void main() async {
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
   ));
-  try {
-    print('Main: Inicializando Supabase...');
-    await Supabase.initialize(
-      url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-      anonKey:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
-    );
-    print('Main: Supabase OK');
 
-    // Limpiar cualquier sesión vieja/stale de Supabase Auth persistida en secure storage
-    try {
-      await Supabase.instance.client.auth.signOut();
-      print('Main: Sesión previa de Supabase Auth cerrada con éxito para asegurar RLS correcto');
-    } catch (_) {}
-    
-    // Inicialización de Locale en segundo plano para no bloquear el inicio
-    initializeDateFormatting('es_AR', null);
-  } catch (e) {
-    print('Main: Error en inicialización: $e');
-  }
-
+  // Lanzar la app inmediatamente para que el splash se vea al instante
   runApp(const MyApp());
+
+  // Inicializar Supabase en paralelo (no bloquea el hilo de UI)
+  Future(() async {
+    try {
+      print('Main: Inicializando Supabase...');
+      await Supabase.initialize(
+        url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
+        anonKey:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+      );
+      print('Main: Supabase OK');
+
+      // Locale en segundo plano
+      initializeDateFormatting('es_AR', null);
+
+      supabaseReady.complete();
+    } catch (e) {
+      print('Main: Error en inicialización: $e');
+      supabaseReady.complete();
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {

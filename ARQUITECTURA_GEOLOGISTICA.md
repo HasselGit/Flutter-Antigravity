@@ -140,3 +140,9 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
 - **Lookup y Actualizaci√≥n de Apicultores**: Si el apicultor no cuenta con un n√∫mero celular registrado, el sistema busca coincidencias en `ApicultoresData.fallbackApicultores`. Si el usuario ingresa o corrige su tel√©fono en la firma digital, este se actualiza inmediatamente en Supabase (tabla `apicultores`) para futuras referencias.
 - **WhatsApp Dual-Scheme**: El sistema intenta lanzar primero el intent nativo `whatsapp://send?phone=...`. Si falla (ej. emulador), atrapa la excepci√≥n y lanza la versi√≥n web `web.whatsapp.com` en el navegador del dispositivo de forma transparente.
 
+ 
+ # #   A c t u a l i z a c i Û n   v 1 . 0 . 5   ( 2 7   d e   M a y o ,   2 0 2 6 )  
+ -   R e f a c t o r i z a c i Û n   e n   l o g i n . d a r t   ( C r e d e n t i a l   M a n a g e r   f i x ) .  
+ -   I n c o r p o r a c i Û n   d e   b u s c a d o r   p r e d i c t i v o   y   c · l c u l o s   d e   t o t a l e s   ( g a s t o s _ p a g e . d a r t ,   v i a j e _ d e t a l l e . d a r t ) .  
+ -   U n i d a d e s   d i n · m i c a s   e n   r e c o l e c c i o n e s _ p a g e . d a r t   ( c o n e x i Û n   c o n   m a s t e r C a t a l o g ) .  
+ 

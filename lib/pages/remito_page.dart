@@ -267,7 +267,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
       final pdfUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(fileName);
 
       final humanId = 'REM-${widget.paradaId.split('-').first.toUpperCase()}';
-      await Supabase.instance.client.from('remitos').insert({
+      final insertedRemito = await Supabase.instance.client.from('remitos').insert({
         'parada_id': widget.paradaId,
         'viaje_id': _paradaData?['viaje_id'],
         'pdf_url': pdfUrl,
@@ -276,10 +276,14 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
         'fecha': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         'persona_nombre': receptorNombre,
         'persona_dni': receptorDni,
-      });
+      }).select('id').single();
+      final remitoId = insertedRemito['id']?.toString();
 
-      // Update parada and solicitud status
-      await Supabase.instance.client.from('paradas').update({'estado': 'Terminado'}).eq('id', widget.paradaId);
+      // Update parada status and link the remito_id
+      await Supabase.instance.client.from('paradas').update({
+        'estado': 'Terminado',
+        'remito_id': remitoId,
+      }).eq('id', widget.paradaId);
       
       try {
         final solId = _paradaData?['solicitud_id'];

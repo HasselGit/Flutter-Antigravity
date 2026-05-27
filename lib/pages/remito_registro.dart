@@ -408,7 +408,13 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
         'persona_dni': receptorDni,
         'numero_remito': 'REM-${widget.paradaId.split('-').first.toUpperCase()}',
       };
-      await Supabase.instance.client.from('remitos').insert(remitoData);
+      final insertedRemito = await Supabase.instance.client.from('remitos').insert(remitoData).select('id').single();
+      final remitoId = insertedRemito['id']?.toString();
+
+      await Supabase.instance.client.from('paradas').update({
+        'remito_id': remitoId,
+      }).eq('id', widget.paradaId);
+      print('RemitoRegistro: Parada ${widget.paradaId} actualizada con remito_id: $remitoId');
 
       // Update phone number in 'apicultores' table if it changed/was provided
       final cleanPhone = _cleanPhoneNumber(_telefonoController.text);

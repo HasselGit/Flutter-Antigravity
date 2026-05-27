@@ -3,6 +3,7 @@ import 'dart:math';
 import '../index.dart';
 import 'package:flutter/material.dart';
 import '../backend/design_tokens.dart';
+import '../main.dart' show supabaseReady;
 
 import 'welcome_page_model.dart';
 export 'welcome_page_model.dart';
@@ -23,6 +24,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
 
   // Splash screen premium variables
   bool _isSplashActive = true;
+  bool _supabaseReady = false;
   double _progressValue = 0.0;
   late AnimationController _breathingController;
   late Animation<double> _scaleAnimation;
@@ -51,10 +53,15 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
 
     // 2. Honey Gold progress bar animation (2.0s duration)
     _animateProgress();
+
+    // Esperar a Supabase en paralelo
+    supabaseReady.future.then((_) {
+      if (mounted) setState(() => _supabaseReady = true);
+    });
   }
 
   void _animateProgress() async {
-    const totalDuration = Duration(milliseconds: 2000);
+    const totalDuration = Duration(milliseconds: 700);
     const interval = Duration(milliseconds: 50);
     final steps = totalDuration.inMilliseconds ~/ interval.inMilliseconds;
 
@@ -102,7 +109,7 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
             Positioned.fill(
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 800),
-                color: _isSplashActive ? Colors.white : theme.primaryBackground,
+                color: _isSplashActive ? const Color(0xFFFBF9F8) : theme.primaryBackground,
               ),
             ),
             // Honeycomb Pattern Background (fades in smoothly after splash finishes)
@@ -247,24 +254,35 @@ class _WelcomePageWidgetState extends State<WelcomePageWidget> with TickerProvid
                                     ],
                                   ),
                                   child: ElevatedButton(
-                                    onPressed: () => context.pushNamed('Login'),
+                                    onPressed: _supabaseReady
+                                        ? () => context.pushNamed('Login')
+                                        : null,
                                     style: DesignTokens.secondaryButtonStyle,
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(Icons.login_rounded, size: 20),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          'INICIAR',
-                                          style: theme.titleSmall.override(
-                                            fontFamily: 'Manrope',
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1.5,
+                                    child: _supabaseReady
+                                        ? Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(Icons.login_rounded, size: 20),
+                                              const SizedBox(width: 12),
+                                              Text(
+                                                'INICIAR',
+                                                style: theme.titleSmall.override(
+                                                  fontFamily: 'Manrope',
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  letterSpacing: 1.5,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : const SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
                                   ),
                                 ),
                               ),

@@ -1,5 +1,6 @@
 import '../backend/design_tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../backend/supabase_service.dart';
@@ -16,7 +17,32 @@ class LoginWidget extends StatefulWidget {
 class _LoginWidgetState extends State<LoginWidget> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailFocusNode.addListener(_onFocusChange);
+    _passwordFocusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (_emailFocusNode.hasFocus || _passwordFocusNode.hasFocus) {
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+    }
+  }
+
+
+  @override
+  void dispose() {
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _signIn() async {
     final email = _emailController.text.trim();
@@ -78,9 +104,29 @@ class _LoginWidgetState extends State<LoginWidget> {
                           const SizedBox(height: 8),
                           const Text('Inicia sesión para continuar', style: TextStyle(fontFamily: 'Inter', color: DesignTokens.onSurfaceVariant)),
                           const SizedBox(height: 32),
-                          _buildTextField(controller: _emailController, label: 'Correo Electrónico', icon: Icons.alternate_email_rounded),
-                          const SizedBox(height: 16),
-                          _buildTextField(controller: _passwordController, label: 'Contraseña', icon: Icons.lock_outline_rounded, isPassword: true),
+                          Column(
+                            children: [
+                              _buildTextField(
+                                controller: _emailController,
+                                label: 'Correo Electrónico',
+                                icon: Icons.alternate_email_rounded,
+                                keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
+                                focusNode: _emailFocusNode,
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                controller: _passwordController,
+                                label: 'Contraseña',
+                                icon: Icons.lock_outline_rounded,
+                                isPassword: true,
+                                keyboardType: TextInputType.visiblePassword,
+                                textInputAction: TextInputAction.done,
+                                focusNode: _passwordFocusNode,
+                                onSubmitted: (_) => _isLoading ? null : _signIn(),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 32),
                           SizedBox(
                             width: double.infinity,
@@ -96,7 +142,6 @@ class _LoginWidgetState extends State<LoginWidget> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
                     TextButton(
                       onPressed: () => context.go('/'),
                       child: const Text('VOLVER', style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.w800, color: DesignTokens.primary, letterSpacing: 1)),
@@ -111,10 +156,26 @@ class _LoginWidgetState extends State<LoginWidget> {
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, bool isPassword = false}) {
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool isPassword = false,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    FocusNode? focusNode,
+    void Function(String)? onSubmitted,
+  }) {
     return TextField(
       controller: controller,
       obscureText: isPassword,
+      keyboardType: keyboardType,
+      focusNode: focusNode,
+      autofillHints: null,
+      enableSuggestions: false,
+      autocorrect: false,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: DesignTokens.primary.withOpacity(0.5)),

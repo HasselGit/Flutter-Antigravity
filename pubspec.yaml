@@ -52,6 +52,7 @@ dependencies:
   share_plus: any
   image_picker: ^1.1.2
   path: ^1.9.0
+  image: ^4.8.0
 
 dependency_overrides:
   sqflite: 2.3.3+1
@@ -65,9 +66,18 @@ dev_dependencies:
   lints: any
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo_Geologistica_Verde.png"
+  adaptive_icon_background: "#F6F7F2"
+  adaptive_icon_foreground: "assets/images/logo_padded.png"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
   

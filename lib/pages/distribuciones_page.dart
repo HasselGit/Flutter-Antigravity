@@ -88,7 +88,12 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
 
           final paradaConViaje = {...p, 'viaje_codigo': v['viaje_codigo'], 'viaje_id': v['id']};
           
-          if (estadoViaje == 'Planificado') {
+          final String estadoParada = (p['estado'] ?? '').toString();
+          final bool isParadaTerminada = estadoParada == 'Terminado' || estadoParada == 'Terminada' || (p['remito_id'] != null) || (p['remitos'] as List? ?? []).isNotEmpty;
+
+          if (isParadaTerminada) {
+            _terminadas.add(paradaConViaje);
+          } else if (estadoViaje == 'Planificado') {
             _asignadas.add(paradaConViaje);
           } else if (estadoViaje == 'En Curso' || estadoViaje == 'En Proceso' || estadoViaje == 'Cargado') {
             _enCurso.add(paradaConViaje);
@@ -180,15 +185,28 @@ class _DistribucionesPageWidgetState extends State<DistribucionesPageWidget>
     final theme = FlutterFlowTheme.of(context);
     final id = item['id']?.toString() ?? '';
     final code = isSolicitud ? (item['solicitud_codigo'] ?? 'SOL-') : (item['viaje_codigo'] ?? 'VIAJE-');
+    String? personaNombreFromRemito;
+    final rList = item['remitos'] as List? ?? [];
+    if (rList.isNotEmpty && rList.first is Map) {
+      personaNombreFromRemito = rList.first['persona_nombre']?.toString();
+    }
+
     final title = isSolicitud 
         ? (item['apicultores']?['nombre'] ?? 'Sin nombre')
-        : (item['persona_nombre'] ?? 'Sin nombre');
+        : (item['ubicacion'] ?? personaNombreFromRemito ?? 'Sin nombre');
     final subtitle = isSolicitud
         ? (item['apicultores']?['localidad'] ?? 'Sin localidad')
         : (item['localidad'] ?? 'Sin localidad');
-    final detail = isSolicitud
-        ? '${item['cantidad']} UN - ${item['producto'] ?? 'Insumos'}'
-        : 'Entrega en Viaje ${item['viaje_codigo']}';
+
+    String detail = 'Entrega en Viaje ${item['viaje_codigo'] ?? ''}';
+    if (isSolicitud) {
+      detail = '${item['cantidad']} UN - ${item['producto'] ?? 'Insumos'}';
+    } else {
+      final itemsList = List<Map<String, dynamic>>.from(item['parada_items'] ?? []);
+      if (itemsList.isNotEmpty) {
+        detail = itemsList.map((it) => 'Entrega: ${it['cantidad']} ${it['unidad'] ?? 'Uni'} - ${it['producto_codigo'] ?? ''}').join(', ');
+      }
+    }
 
     return GestureDetector(
       onTap: () {

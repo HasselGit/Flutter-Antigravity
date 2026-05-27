@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../backend/supabase_service.dart';
 import '../backend/design_tokens.dart';
+import '../backend/productos_data.dart';
 
 class RecoleccionesPageWidget extends StatefulWidget {
   const RecoleccionesPageWidget({super.key});
@@ -88,7 +89,12 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
 
           final paradaConViaje = {...p, 'viaje_codigo': v['viaje_codigo'], 'viaje_id': v['id']};
           
-          if (estadoViaje == 'Planificado') {
+          final String estadoParada = (p['estado'] ?? '').toString();
+          final bool isParadaTerminada = estadoParada == 'Terminado' || estadoParada == 'Terminada' || (p['remito_id'] != null) || (p['remitos'] as List? ?? []).isNotEmpty;
+
+          if (isParadaTerminada) {
+            _terminadas.add(paradaConViaje);
+          } else if (estadoViaje == 'Planificado') {
             _asignadas.add(paradaConViaje);
           } else if (estadoViaje == 'En Curso' || estadoViaje == 'En Proceso' || estadoViaje == 'Cargado') {
             _enCurso.add(paradaConViaje);
@@ -180,15 +186,41 @@ class _RecoleccionesPageWidgetState extends State<RecoleccionesPageWidget>
     final theme = FlutterFlowTheme.of(context);
     final id = item['id']?.toString() ?? '';
     final code = isSolicitud ? (item['solicitud_codigo'] ?? 'SOL-') : (item['viaje_codigo'] ?? 'VIAJE-');
+    String? personaNombreFromRemito;
+    final rList = item['remitos'] as List? ?? [];
+    if (rList.isNotEmpty && rList.first is Map) {
+      personaNombreFromRemito = rList.first['persona_nombre']?.toString();
+    }
+
     final title = isSolicitud 
         ? (item['apicultores']?['nombre'] ?? 'Sin nombre')
-        : (item['persona_nombre'] ?? 'Sin nombre');
+        : (item['ubicacion'] ?? personaNombreFromRemito ?? 'Sin nombre');
     final subtitle = isSolicitud
         ? (item['apicultores']?['localidad'] ?? 'Sin localidad')
         : (item['localidad'] ?? 'Sin localidad');
-    final detail = isSolicitud
-        ? '${item['cantidad']} KG - ${item['producto'] ?? 'Miel'}'
-        : '${item['carga_kg'] ?? 'S/D'} KG - ${item['producto_codigo'] ?? 'Miel'}';
+
+    String detail = 'S/D';
+    if (isSolicitud) {
+      final pCode = (item['producto'] ?? '').toString().toUpperCase();
+      String unit = 'KG';
+      if (pCode.isNotEmpty) {
+        final catalogMatch = ProductosData.masterCatalog.where((p) => p['producto'].toString().toUpperCase() == pCode).toList();
+        if (catalogMatch.isNotEmpty) {
+          unit = catalogMatch.first['unidad']?.toString().toUpperCase() ?? 'UNI';
+        } else if (pCode.contains('TAMBOR') || pCode == 'TCM') {
+          unit = 'UNI';
+        }
+      }
+      final qty = item['cantidad']?.toString() ?? '0';
+      detail = '$qty $unit - ${item['producto'] ?? 'Miel'}';
+    } else {
+      final itemsList = List<Map<String, dynamic>>.from(item['parada_items'] ?? []);
+      if (itemsList.isNotEmpty) {
+        detail = itemsList.map((it) => '${it['cantidad']} ${it['unidad'] ?? 'Uni'} - ${it['producto_codigo'] ?? ''}').join(', ');
+      } else {
+        detail = '${item['carga_kg'] ?? '0'} KG - Miel';
+      }
+    }
 
     return GestureDetector(
       onTap: () {

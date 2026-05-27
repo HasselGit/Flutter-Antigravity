@@ -2259,3 +2259,5 @@ SESI√ìN ADICIONAL: 23 de Mayo de 2026 - SPLASH PREMIUM Y ROBUSTEZ LOG√çSTICA
 FIN DE LA SESI√ìN DE HIST√ìRICO
 ================================================================================
 
+2 7   d e   M a y o ,   2 0 2 6 :   C o r r e c c i Û n   d e l   C r e d e n t i a l   M a n a g e r   ( t e c l a d o   e n   l o g i n ) ,   r e o r g a n i z a c i Û n   d e l   b o t Û n   d e   S a l i d a   n a t i v o   d e   l a   a p p   e n   h o m e p a g e . d a r t ,   i m p l e m e n t a c i Û n   d e   b u s c a d o r   m ˙ l t i p l e   y   t o t a l   r e a c t i v o   e n   g a s t o s _ p a g e . d a r t ,   s o l u c i Û n   d e l   t o t a l   d e   g a s t o s   c a l c u l a n d o   ' i m p o r t e '   e n   v i a j e _ d e t a l l e . d a r t ,   y   r e n d e r i z a d o   d i n · m i c o   d e   u n i d a d e s   d e s d e   m a s t e r C a t a l o g   e n   r e c o l e c c i o n e s _ p a g e . d a r t .  
+ 
