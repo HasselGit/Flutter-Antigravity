@@ -348,14 +348,26 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                         'Seguimiento Satelital',
                         'Monitoreo de camiones en tiempo real',
                         () async {
-                          final url = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
+                          // Try forcing the specific Fleet app using Android Intent scheme
+                          final intentUrl = Uri.parse('intent://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59#Intent;scheme=http;package=com.gpsgate.fleet;end;');
+                          final fallbackUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                           try {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                            // Intenta abrir el intent (forzando la app Fleet)
+                            final launched = await launchUrl(intentUrl, mode: LaunchMode.externalApplication);
+                            if (!launched) {
+                              // Si falla (ej: iOS o app no instalada), usa el fallback
+                              await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+                            }
                           } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error al abrir sitio: $e')),
-                              );
+                            // Fallback seguro si la plataforma no soporta intent://
+                            try {
+                              await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+                            } catch (e2) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error al abrir sitio: $e2')),
+                                );
+                              }
                             }
                           }
                         },

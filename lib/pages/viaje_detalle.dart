@@ -1446,14 +1446,24 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   elevation: 0,
                 ),
                 onPressed: () async {
-                  final url = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.inAppBrowserView);
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No se pudo abrir el sitio de seguimiento')),
-                      );
+                  final intentUrl = Uri.parse('intent://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59#Intent;scheme=http;package=com.gpsgate.fleet;end;');
+                  final fallbackUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
+                  try {
+                    // Intenta forzar la app Fleet primero
+                    final launched = await launchUrl(intentUrl, mode: LaunchMode.externalApplication);
+                    if (!launched) {
+                      // Fallback al browser
+                      await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (e) {
+                    try {
+                      await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+                    } catch (e2) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al abrir sitio: $e2')),
+                        );
+                      }
                     }
                   }
                 },
