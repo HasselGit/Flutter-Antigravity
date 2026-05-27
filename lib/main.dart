@@ -54,11 +54,19 @@ void main() async {
   // Inicializar Supabase en paralelo (no bloquea el hilo de UI)
   Future(() async {
     try {
+      const String supabaseUrl = String.fromEnvironment(
+        'SUPABASE_URL',
+        defaultValue: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
+      );
+      const String supabaseAnonKey = String.fromEnvironment(
+        'SUPABASE_KEY',
+        defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+      );
+
       print('Main: Inicializando Supabase...');
       await Supabase.initialize(
-        url: 'https://suwcqdlxnmfcvmlnzizl.supabase.co',
-        anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
       );
       print('Main: Supabase OK');
 
