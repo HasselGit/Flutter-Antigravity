@@ -556,7 +556,17 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
-                    builder: (context) => AgregarItemWidget(paradaId: widget.paradaId!),
+                    builder: (context) {
+                      dynamic viajesRaw = _resolvedParada != null ? _resolvedParada!['viajes'] : null;
+                      Map<String, dynamic> viajeAsociado = {};
+                      if (viajesRaw is Map) {
+                        viajeAsociado = Map<String, dynamic>.from(viajesRaw);
+                      } else if (viajesRaw is List && viajesRaw.isNotEmpty) {
+                        viajeAsociado = Map<String, dynamic>.from(viajesRaw.first);
+                      }
+                      final vId = viajeAsociado['id']?.toString() ?? '';
+                      return AgregarItemWidget(paradaId: widget.paradaId!, viajeId: vId);
+                    },
                   );
                   setState(() {
                     _paradaFuture = _fetchParadaData();
@@ -907,7 +917,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                 try {
                   final uri = Uri.parse(url);
                   if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                   }
                 } catch (e) {
                   print('Error al abrir PDF externo: $e');
@@ -940,7 +950,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         onPressed: () async {
                           try {
                             final uri = Uri.parse(url);
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                           } catch (_) {}
                         },
                       ),
@@ -975,7 +985,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         onPressed: () async {
                           try {
                             final uri = Uri.parse(url);
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                           } catch (_) {}
                         },
                       ),

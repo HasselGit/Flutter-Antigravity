@@ -144,7 +144,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
     
     try {
       final uri = Uri.parse(url);
-      bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      bool launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
       if (!launched) {
         launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
       }

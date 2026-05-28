@@ -29,6 +29,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   List<Map<String, dynamic>> _productos = [];
   Map<String, dynamic>? _selectedViaje;
   String? _selectedViajeId;
+  String _selectedDeposito = 'Parque Industrial';
   final List<Map<String, dynamic>> _newItems = [];
 
   @override
@@ -128,10 +129,15 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
            email.contains('rsteierd');
   }
 
+  bool get _isChoferDepositoHuinca {
+    final r = _normalizeRole(_userRole);
+    return r.contains('chofer') && (_carga?['deposito_origen'] == 'Deposito Huinca');
+  }
+
   bool get _canChangeEstado {
     if (_carga == null) return false;
     final estado = AppStates.normalize(_carga!['estado'] ?? '');
-    if (_isDeposito) {
+    if (_isDeposito || _isChoferDepositoHuinca) {
       return estado == AppStates.pendiente || estado == AppStates.enCurso;
     }
     if (_isManagement) {
@@ -172,6 +178,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
         viajeId: _selectedViaje!['id'].toString(),
         items: _newItems,
         createdBy: _userId ?? '',
+        depositoOrigen: _selectedDeposito,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -293,7 +300,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
           const SizedBox(height: 24),
 
           // ── BOTONES DE ACCIÓN ─────────────────────────────────────────────
-          if (_isDeposito && _canChangeEstado) ...[
+          if ((_isDeposito || _isChoferDepositoHuinca) && _canChangeEstado) ...[
             if (estado == AppStates.pendiente)
               _actionButton(
                 label: 'INICIAR CARGA',
@@ -319,7 +326,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
               onPressed: _saving ? null : () => _confirmarEliminarCarga(),
             ),
             const SizedBox(height: 40),
-          ] else if (_isDeposito && _canChangeEstado) ...[
+          ] else if ((_isDeposito || _isChoferDepositoHuinca) && _canChangeEstado) ...[
             const SizedBox(height: 40),
           ],
           if (estado == AppStates.terminado) ...[
@@ -624,8 +631,30 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
             ),
           ),
           const SizedBox(height: 24),
+          _labelText('2. DEPÓSITO DE ORIGEN'),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: DesignTokens.primary.withOpacity(0.1))),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: _selectedDeposito,
+                items: ['Parque Industrial', 'Deposito Huinca'].map((d) => DropdownMenuItem<String>(
+                  value: d,
+                  child: Text(d),
+                )).toList(),
+                onChanged: (v) => setState(() {
+                  if (v != null) _selectedDeposito = v;
+                }),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            _labelText('2. ÍTEMS DE CARGA'),
+            _labelText('3. ÍTEMS DE CARGA'),
             TextButton.icon(
               onPressed: () => _showAddItemDialog(),
               icon: const Icon(Icons.add_rounded, size: 16, color: DesignTokens.primary),

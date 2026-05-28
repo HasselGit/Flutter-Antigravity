@@ -43,9 +43,10 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   );
 
   bool _isApicultorFirmante = true;
-  final _firmanteNombreController = TextEditingController();
-  final _firmanteDniController = TextEditingController();
-  final _telefonoController = TextEditingController();
+  final TextEditingController _firmanteNombreController = TextEditingController();
+  final TextEditingController _firmanteDniController = TextEditingController();
+  final TextEditingController _telefonoController = TextEditingController();
+  final TextEditingController _terceroTelefonoController = TextEditingController();
   
   List<Map<String, dynamic>> _availableItems = [];
   Map<String, double> _selectedQuantities = {};
@@ -218,7 +219,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
     
     try {
       final uri = Uri.parse(url);
-      bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      bool launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
       if (!launched) {
         launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
@@ -426,22 +427,11 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
               .eq('id', _titularId!);
           print('RemitoRegistro: Teléfono del apicultor actualizado con éxito en la base de datos.');
         } catch (e) {
-          print('RemitoRegistro: No se pudo actualizar el teléfono en la tabla apicultores: $e');
+          print('RemitoRegistro: No se pudo actualizar el teléfono en la tabla apicultores (ignorado): $e');
         }
       }
 
-      // Auto-finalize the parada if it is a Distribución parada,
-      // so the driver does not have to manually click "FINALIZAR PARADA COMPLETA".
-      bool autoFinalize = widget.tipoOperacion == 'Distribución' || widget.tipoOperacion == 'Distribucion' || widget.tipoOperacion.toLowerCase().contains('distrib');
-      if (autoFinalize) {
-        try {
-          final String vehiculoCodigo = _viajeData?['vehiculo_codigo']?.toString() ?? 'CAMION-01';
-          await SupabaseService().finalizarParada(widget.paradaId, vehiculoCodigo);
-          print('RemitoRegistro: Parada de Distribución auto-finalizada con éxito.');
-        } catch (e) {
-          print('RemitoRegistro: Error al auto-finalizar parada: $e');
-        }
-      }
+      // NO AUTO-FINALIZE: La parada ya no se auto-finaliza.
 
       // 5.1 Sincronizar e Impactar en la Ficha del Apicultor (Tabla solicitudes)
       for (final item in itemsToInclude) {
@@ -579,7 +569,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.person_pin_circle_rounded, size: 20, color: Colors.white),
-                      label: Text(_telefonoController.text.isNotEmpty ? 'RECEPTOR (${_telefonoController.text})' : 'RECEPTOR'),
+                      label: Text(_telefonoController.text.isNotEmpty ? 'APICULTOR (${_telefonoController.text})' : 'APICULTOR'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF25D366), 
                         foregroundColor: Colors.white,
@@ -588,10 +578,30 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                         elevation: 0,
                       ),
                       onPressed: () {
-                        _shareWhatsAppToNumber(_telefonoController.text, pdfUrl, _firmanteNombreController.text);
+                        _shareWhatsAppToNumber(_telefonoController.text, pdfUrl, _titularNombre ?? '');
                       },
                     ),
                   ),
+                  if (!_isApicultorFirmante) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.person_outline_rounded, size: 20, color: Colors.white),
+                        label: Text(_terceroTelefonoController.text.isNotEmpty ? 'TERCERO (${_terceroTelefonoController.text})' : 'TERCERO'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366), 
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                        ),
+                        onPressed: () {
+                          _shareWhatsAppToNumber(_terceroTelefonoController.text, pdfUrl, _firmanteNombreController.text);
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -646,7 +656,18 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isRecoleccion = widget.tipoOperacion.toLowerCase().contains('recolec');
+    bool hasDistribucion = false;
+    bool hasRecoleccion = false;
+    for (var item in _availableItems) {
+      if ((_selectedQuantities[item['id'].toString()] ?? 0) > 0) {
+        final unitRaw = (item['unidad'] ?? 'uni').toString();
+        final opType = unitRaw.split('|').length > 1 ? unitRaw.split('|')[1] : widget.tipoOperacion;
+        if (opType == 'Distribución' || opType == 'Distribucion') hasDistribucion = true;
+        if (opType == 'Recolección' || opType == 'Recoleccion') hasRecoleccion = true;
+      }
+    }
+    final String displayOperacion = (hasDistribucion && hasRecoleccion) ? 'MIXTA' : widget.tipoOperacion;
+    final isRecoleccion = displayOperacion.toLowerCase().contains('recolec') || displayOperacion == 'MIXTA';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9), // Sleek, modern gray desk surface
@@ -789,7 +810,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                             Expanded(
                               child: _operacionBadgeCard(
                                 'Tipo de Operación',
-                                widget.tipoOperacion.toUpperCase(),
+                                displayOperacion.toUpperCase(),
                                 isRecoleccion ? const Color(0xFFFEF3C7) : const Color(0xFFDBEAFE),
                                 isRecoleccion ? const Color(0xFFB45309) : const Color(0xFF1E40AF),
                               ),
@@ -826,7 +847,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      'Verifique el número para el envío directo por WhatsApp.',
+                                      'Teléfono Apicultor Titular (WhatsApp)',
                                       style: TextStyle(
                                         fontFamily: 'Inter',
                                         fontSize: 12,
@@ -1027,7 +1048,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                                 ),
                                 const SizedBox(height: 12),
                                 TextField(
-                                  controller: _telefonoController,
+                                  controller: _terceroTelefonoController,
                                   keyboardType: TextInputType.phone,
                                   style: const TextStyle(fontFamily: 'Inter', fontSize: 13),
                                   decoration: InputDecoration(
@@ -1340,7 +1361,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
           } else {
             _firmanteNombreController.clear();
             _firmanteDniController.clear();
-            _telefonoController.clear();
+            _terceroTelefonoController.clear();
           }
         });
       },

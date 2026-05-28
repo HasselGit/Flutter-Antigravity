@@ -210,6 +210,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     final amountController = TextEditingController();
     final descController = TextEditingController();
     final comprobanteController = TextEditingController();
+    final litrosController = TextEditingController();
     String? selectedTipo = 'Combustible';
     String? selectedMetodo = 'Efectivo';
     DateTime selectedFecha = DateTime.now();
@@ -315,6 +316,22 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                         .toList(),
                     onChanged: (v) => setModalState(() => selectedTipo = v),
                   ),
+                  if (selectedTipo == 'Combustible') ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: litrosController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Cantidad en Litros (L)',
+                        prefixIcon: const Icon(Icons.local_gas_station_rounded, color: DesignTokens.primary),
+                        filled: true,
+                        fillColor: DesignTokens.surface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.primary.withOpacity(0.05))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   DropdownButtonFormField<String>(
@@ -543,6 +560,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                           await Supabase.instance.client.from('gastos').insert({
                             'tipo_gasto': selectedTipo,
                             'importe': double.tryParse(amountController.text) ?? 0,
+                            'cantidad_litros': selectedTipo == 'Combustible' ? (double.tryParse(litrosController.text) ?? 0.0) : null,
                             'descripcion': descController.text + auditSuffix,
                             'nro_comprobante': comprobanteController.text,
                             'forma_pago': selectedMetodo,
@@ -657,6 +675,11 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                       const SizedBox(height: 16),
                       _buildDetailRow(Icons.receipt_rounded, 'Nro. Comprobante', comprobante),
                       
+                      if (tipo == 'Combustible' && g['cantidad_litros'] != null) ...[
+                        const SizedBox(height: 16),
+                        _buildDetailRow(Icons.local_gas_station_rounded, 'Litros cargados', '${g['cantidad_litros']} L'),
+                      ],
+
                       if (descripcion.toString().trim().isNotEmpty) ...[
                         const SizedBox(height: 24),
                         const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignTokens.primary)),

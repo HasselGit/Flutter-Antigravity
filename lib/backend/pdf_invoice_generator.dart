@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 
 class PdfInvoiceGenerator {
   // Brand colors
@@ -85,52 +86,44 @@ class PdfInvoiceGenerator {
     );
   }
 
-  // 3. Shared Header showing both Geomiel (PNG logo or fallback) and GeoLogística
-  static pw.Widget _buildHeader(String docTitle, String? subtitle, Uint8List? logoBytes) {
+  static Future<pw.Widget> _buildHeader(String docTitle, String? subtitle, Uint8List? logoBytes) async {
     pw.Widget geomielLogoWidget;
     if (logoBytes != null && logoBytes.isNotEmpty) {
       geomielLogoWidget = pw.Container(
-        width: 110, // Agrandado considerablemente
-        height: 90,
-        alignment: pw.Alignment.center,
+        width: 150, // Agrandado
+        height: 120,
+        alignment: pw.Alignment.centerLeft,
         child: pw.Image(pw.MemoryImage(logoBytes), fit: pw.BoxFit.contain),
       );
     } else {
       geomielLogoWidget = _buildGeomielLogo();
     }
 
+    Uint8List? appLogoBytes;
+    try {
+      final data = await rootBundle.load('assets/images/logo_Geologistica_Verde.png');
+      appLogoBytes = data.buffer.asUint8List();
+    } catch (_) {}
+
     return pw.Column(
       children: [
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // Left: Geomiel Logo + Text with exact address
-            pw.Row(
+            // Left: Geomiel Logo + Address & Phone
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 geomielLogoWidget,
-                pw.SizedBox(width: 10),
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'GEOMIEL S.A.',
-                      style: pw.TextStyle(
-                        fontSize: 24,
-                        fontWeight: pw.FontWeight.bold,
-                        color: accentColor,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    pw.Text(
-                      'J. Sampayo 180, General Pico, La Pampa',
-                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-                    ),
-                    pw.Text(
-                      'Apicultura y Producción de Precisión',
-                      style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500),
-                    ),
-                  ],
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  'J. Sampayo 180, General Pico, La Pampa',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                ),
+                pw.Text(
+                  'Tel: +54 9 2302 520218',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
                 ),
               ],
             ),
@@ -149,13 +142,19 @@ class PdfInvoiceGenerator {
                       ),
                     ),
                     pw.Text(
-                      'Logística & Control de Tránsito',
+                      'Tecnología y Logística Apícola',
                       style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500),
                     ),
                   ],
                 ),
-                pw.SizedBox(width: 8),
-                _buildGeologisticaLogo(),
+                if (appLogoBytes != null) ...[
+                  pw.SizedBox(width: 8),
+                  pw.Container(
+                    width: 32,
+                    height: 32,
+                    child: pw.Image(pw.MemoryImage(appLogoBytes), fit: pw.BoxFit.contain),
+                  ),
+                ],
               ],
             ),
           ],
@@ -260,6 +259,8 @@ class PdfInvoiceGenerator {
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
     final humanId = 'REM-${paradaId.split('-').first.toUpperCase()}';
 
+    final headerWidget = await _buildHeader('REMITO - $humanId', null, logoBytes);
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -284,7 +285,7 @@ class PdfInvoiceGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Branded Header
-              _buildHeader('REMITO - $humanId', 'GeoLogística Verified', logoBytes),
+              headerWidget,
 
               // Metadata section
               _buildMetadataCard([
@@ -356,6 +357,12 @@ class PdfInvoiceGenerator {
                     1: pw.Alignment.centerRight,
                     3: pw.Alignment.centerRight,
                   },
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(4),
+                    1: pw.FlexColumnWidth(1.5),
+                    2: pw.FlexColumnWidth(2.5),
+                    3: pw.FlexColumnWidth(2),
+                  },
                 ),
                 pw.SizedBox(height: 12),
               ],
@@ -388,6 +395,12 @@ class PdfInvoiceGenerator {
                   cellAlignments: {
                     1: pw.Alignment.centerRight,
                     3: pw.Alignment.centerRight,
+                  },
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(4),
+                    1: pw.FlexColumnWidth(1.5),
+                    2: pw.FlexColumnWidth(2.5),
+                    3: pw.FlexColumnWidth(2),
                   },
                 ),
                 pw.SizedBox(height: 12),
@@ -427,22 +440,7 @@ class PdfInvoiceGenerator {
 
               pw.Spacer(),
 
-              // Corporate certification note
-              pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  color: backgroundColor,
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                ),
-                child: pw.Center(
-                  child: pw.Text(
-                    'Este remito digital ha sido emitido en campo por Geomiel utilizando la plataforma logística GeoLogística. \n'
-                    'Para cualquier consulta o validación de trazabilidad de miel, contacte al Depósito Central.',
-                    textAlign: pw.TextAlign.center,
-                    style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
-                  ),
-                ),
-              ),
+              pw.Spacer(),
 
               pw.SizedBox(height: 25),
 
@@ -518,6 +516,8 @@ class PdfInvoiceGenerator {
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
     final humanId = 'REM-${paradaId.split('-').first.toUpperCase()}';
 
+    final headerWidget = await _buildHeader('REMITO - $humanId', null, logoBytes);
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -542,7 +542,7 @@ class PdfInvoiceGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Branded Header
-              _buildHeader('REMITO - $humanId', 'Certificado Geomiel S.A.', logoBytes),
+              headerWidget,
 
               // Metadata section
               _buildMetadataCard([
@@ -607,6 +607,11 @@ class PdfInvoiceGenerator {
                   cellStyle: const pw.TextStyle(fontSize: 8),
                   cellAlignment: pw.Alignment.centerLeft,
                   cellAlignments: {1: pw.Alignment.centerRight},
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(4),
+                    1: pw.FlexColumnWidth(2),
+                    2: pw.FlexColumnWidth(3),
+                  },
                 ),
                 pw.SizedBox(height: 12),
               ],
@@ -632,6 +637,11 @@ class PdfInvoiceGenerator {
                   cellStyle: const pw.TextStyle(fontSize: 8),
                   cellAlignment: pw.Alignment.centerLeft,
                   cellAlignments: {1: pw.Alignment.centerRight},
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(4),
+                    1: pw.FlexColumnWidth(2),
+                    2: pw.FlexColumnWidth(3),
+                  },
                 ),
                 pw.SizedBox(height: 12),
               ],
@@ -668,6 +678,13 @@ class PdfInvoiceGenerator {
                     3: pw.Alignment.centerRight,
                     4: pw.Alignment.centerRight,
                   },
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(1.5),
+                    1: pw.FlexColumnWidth(3),
+                    2: pw.FlexColumnWidth(1.5),
+                    3: pw.FlexColumnWidth(1.5),
+                    4: pw.FlexColumnWidth(1.5),
+                  },
                 ),
                 pw.SizedBox(height: 10),
 
@@ -699,22 +716,7 @@ class PdfInvoiceGenerator {
 
               pw.Spacer(),
 
-              // Professional certification and compliance text
-              pw.Container(
-                padding: const pw.EdgeInsets.all(6),
-                decoration: pw.BoxDecoration(
-                  color: backgroundColor,
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                ),
-                child: pw.Center(
-                  child: pw.Text(
-                    'Este remito digital certifica que la mercadería indicada arriba fue reconciliada\n'
-                    'y verificada en la plataforma GeoLogística de Geomiel S.A.',
-                    textAlign: pw.TextAlign.center,
-                    style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
-                  ),
-                ),
-              ),
+              pw.Spacer(),
 
               pw.SizedBox(height: 15),
 
@@ -779,6 +781,8 @@ class PdfInvoiceGenerator {
     final pdf = pw.Document();
     final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(updatedAtDate));
 
+    final headerWidget = await _buildHeader('MANIFIESTO Y REMITO DE CARGA', 'Operación de Depósito Central', logoBytes);
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -788,7 +792,7 @@ class PdfInvoiceGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Branded Header
-              _buildHeader('MANIFIESTO Y REMITO DE CARGA', 'Operación de Depósito Central', logoBytes),
+              headerWidget,
 
               // Metadata card
               _buildMetadataCard([
@@ -879,12 +883,6 @@ class PdfInvoiceGenerator {
               pw.SizedBox(height: 20),
               
               pw.Divider(color: borderColor),
-              pw.Center(
-                child: pw.Text(
-                  'Este documento constituye un manifiesto de carga oficial para tránsito interno y control de inventario de Geomiel.',
-                  style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500),
-                ),
-              ),
             ],
           );
         },

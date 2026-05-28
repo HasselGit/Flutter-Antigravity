@@ -118,8 +118,8 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
         necData = await service.getNecesidadesPendientes();
       }
       
-      final vehData = await service.getVehiculos();
-      final choData = await service.getChoferes();
+      final vehData = await service.getVehiculos(soloDisponibles: true, excluirViajeId: widget.editId);
+      final choData = await service.getChoferes(soloDisponibles: true, excluirViajeId: widget.editId);
 
       if (mounted) {
         setState(() {
@@ -299,7 +299,7 @@ class _PlanificarViajeWidgetState extends State<PlanificarViajeWidget> {
     final url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving';
     
     try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalNonBrowserApplication);
     } catch (e) {
       // print('Error al abrir mapa: $e');
       if (mounted) {

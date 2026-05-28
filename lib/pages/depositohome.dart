@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:signature/signature.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:typed_data';
 import '../backend/supabase_service.dart';
 import '../backend/app_states.dart';
 import '../backend/design_tokens.dart';
 
 class DepositohomeWidget extends StatefulWidget {
-  const DepositohomeWidget({super.key});
+  final String? initialTab;
+  const DepositohomeWidget({super.key, this.initialTab});
 
   @override
   State<DepositohomeWidget> createState() => _DepositohomeWidgetState();
@@ -26,7 +30,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    int initIdx = 0;
+    if (widget.initialTab != null) {
+      if (widget.initialTab == '1') initIdx = 1;
+      else if (widget.initialTab == '2') initIdx = 2;
+    }
+    _tabController = TabController(length: 3, vsync: this, initialIndex: initIdx);
     _fetchData();
   }
 
@@ -39,17 +48,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   Future<void> _fetchData() async {
     setState(() => _loading = true);
     try {
-      // Limpiar sesión Supabase Auth residual para evitar RLS block en consultas anidadas
-      try {
-        await Supabase.instance.client.auth.signOut();
-      } catch (authErr) {
-        print('DepositoHome: Error al limpiar sesión Supabase: $authErr');
-      }
+      // Se removió el signOut() que deslogueaba al usuario y rompía las demás pantallas.
 
       // Obtener viajes con cargas activas (Pendiente, En Proceso, En Curso)
       final pendingViajesRaw = await Supabase.instance.client
           .from('viajes')
-          .select('*, paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, carga_items(*))')
+          .select('*, paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, deposito_origen, carga_items(*))')
           .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
           .order('fecha', ascending: true);
 
@@ -64,6 +68,13 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
 
       final List<Map<String, dynamic>> pendingViajes = [];
       
+      final prefs = await SharedPreferences.getInstance();
+      final userRole = (prefs.getString('user_puesto') ?? '').toLowerCase();
+      final userEmail = (Supabase.instance.client.auth.currentUser?.email ?? '').toLowerCase();
+      final isChofer = userRole.contains('chofer') || userEmail.contains('mperez') || userEmail.contains('cmuse') || userEmail.contains('agomez') || userEmail.contains('efernandez');
+      final isDeposito = userRole.contains('deposito') || userEmail.contains('cmerlo') || userEmail.contains('csantana');
+      final onlyChofer = isChofer && !isDeposito;
+
       for (var v in rawList) {
         if (v['chofer_id'] != null) {
           try {
@@ -76,8 +87,13 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           } catch (_) {}
         }
         
-        final listCargas = v['cargas'] as List? ?? [];
+        var listCargas = v['cargas'] as List? ?? [];
         
+        if (onlyChofer) {
+          listCargas = listCargas.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
+          v['cargas'] = listCargas;
+        }
+
         // Fallback directo si carga_items viene vacío por RLS stale
         for (var c in listCargas) {
           final items = c['carga_items'] as List? ?? [];
@@ -94,18 +110,21 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           }
         }
 
-        if (listCargas.isEmpty) {
+        if (listCargas.isNotEmpty) {
           pendingViajes.add(v);
         } else {
-          final hasPending = listCargas.any((c) => c['estado'] != AppStates.terminado);
-          if (hasPending) {
+          // If the viaje has no cargas, only show to Deposito, not to Chofer
+          if (!onlyChofer) {
             pendingViajes.add(v);
           }
         }
       }
 
       // Obtener cargas terminadas para la segunda pestaña
-      final history = await SupabaseService().getTerminatedCargas();
+      var history = await SupabaseService().getTerminatedCargas();
+      if (onlyChofer) {
+        history = history.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
+      }
 
       // Obtener productos disponibles
       final prods = await SupabaseService().getProductos();
@@ -246,38 +265,128 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     }
   }
 
-  Future<void> _confirmarSalida(Map<String, dynamic> viaje, Map<String, dynamic> carga) async {
-    final confirmar = await showDialog<bool>(
+  Future<void> _finalizarCarga(Map<String, dynamic> viaje, Map<String, dynamic> carga) async {
+    final SignatureController signatureController = SignatureController(
+      penStrokeWidth: 3,
+      penColor: Colors.black,
+      exportBackgroundColor: Colors.white,
+    );
+
+    final bool? confirm = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Confirmar Salida', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('¿La carga ${carga['carga_codigo']} del viaje ${viaje['viaje_codigo']} ha sido cargada completamente y está lista para salir?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: DesignTokens.primary),
-            child: const Text('CONFIRMAR', style: TextStyle(color: Colors.white)),
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Finalizar Carga', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
+              Text('Firma del chofer para ${carga['carga_codigo']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 24),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: DesignTokens.primary.withOpacity(0.2)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Signature(
+                    controller: signatureController,
+                    height: 200,
+                    backgroundColor: Colors.grey.shade50,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.clear, size: 16),
+                    label: const Text('Limpiar'),
+                    onPressed: () => signatureController.clear(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        signatureController.dispose();
+                        Navigator.pop(ctx, false);
+                      },
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: const Text('CANCELAR'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DesignTokens.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text('FINALIZAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
-        ],
+        ),
       ),
     );
 
-    if (confirmar == true) {
+    if (confirm == true) {
+      if (signatureController.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe proporcionar la firma del chofer')));
+        signatureController.dispose();
+        return;
+      }
+
+      setState(() => _loading = true);
       try {
-        await SupabaseService().updateCargaEstado(carga['id'].toString(), AppStates.terminado);
+        final signatureBytes = await signatureController.toPngBytes();
+        if (signatureBytes == null) throw Exception('Error al capturar la firma');
+        
+        final signatureFileName = 'firma_carga_${carga['id']}_${DateTime.now().millisecondsSinceEpoch}.png';
+        await Supabase.instance.client.storage
+            .from('remitos')
+            .uploadBinary(
+              signatureFileName,
+              signatureBytes,
+              fileOptions: const FileOptions(contentType: 'image/png'),
+            );
+        final firmaUrl = Supabase.instance.client.storage.from('remitos').getPublicUrl(signatureFileName);
+
+        await Supabase.instance.client.from('cargas').update({
+          'estado': AppStates.terminado,
+          'chofer_firma_url': firmaUrl,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', carga['id']);
+
         await _fetchData();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Carga confirmada — viaje listo para salir'), backgroundColor: Colors.green),
+            const SnackBar(content: Text('Carga finalizada correctamente'), backgroundColor: Colors.green),
           );
-          _tabController.animateTo(1);
+          _tabController.animateTo(2); // Ir a la pestaña terminadas
         }
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+          setState(() => _loading = false);
+        }
       }
     }
+    signatureController.dispose();
   }
 
   // ─── Diálogo de edición de carga ────────────────────────────────────────────
@@ -584,7 +693,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           indicatorColor: DesignTokens.secondary,
           indicatorWeight: 3,
           tabs: const [
-            Tab(text: 'ACTIVAS'),
+            Tab(text: 'PENDIENTES'),
+            Tab(text: 'EN CURSO'),
             Tab(text: 'TERMINADAS'),
           ],
         ),
@@ -594,7 +704,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         : TabBarView(
             controller: _tabController,
             children: [
-              _buildActivasTab(),
+              _buildPendientesTab(),
+              _buildEnCursoTab(),
               _buildTerminadasTab(),
             ],
           ),
@@ -623,53 +734,32 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     return items;
   }
 
-  Widget _buildActivasTab() {
+  Widget _buildPendientesTab() {
     final allItems = _getActiveItems();
-
-    if (allItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.local_shipping_outlined, size: 64, color: DesignTokens.primary.withOpacity(0.1)),
-            const SizedBox(height: 16),
-            const Text('No hay viajes con cargas activas.'),
-          ],
-        ),
-      );
-    }
-
-    final enCursoItems = allItems.where((item) {
-      if (item['type'] == 'viaje_sin_carga') return false;
-      final c = item['carga'];
-      return c != null && c['estado'] == AppStates.enCurso;
-    }).toList();
-
     final pendientesItems = allItems.where((item) {
       if (item['type'] == 'viaje_sin_carga') return true;
       final c = item['carga'];
       return c != null && c['estado'] == AppStates.pendiente;
     }).toList();
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      children: [
-        // ─── Sección EN CARGA ────────────────────────────────────────────────
-        if (enCursoItems.isNotEmpty) ...[
-          _sectionHeader(
-            icon: Icons.local_shipping_rounded,
-            label: 'EN CARGA',
-            color: const Color(0xFF7D5700),
-            bgColor: const Color(0xFFFDEFCC),
-            count: enCursoItems.length,
-          ),
-          const SizedBox(height: 10),
-          ...enCursoItems.map((item) => _buildViajeCard(item, isEnCurso: true)),
-          const SizedBox(height: 20),
-        ],
+    if (pendientesItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.hourglass_empty_rounded, size: 64, color: DesignTokens.primary.withOpacity(0.1)),
+            const SizedBox(height: 16),
+            const Text('No hay cargas pendientes.'),
+          ],
+        ),
+      );
+    }
 
-        // ─── Sección PENDIENTE ───────────────────────────────────────────────
-        if (pendientesItems.isNotEmpty) ...[
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+        children: [
           _sectionHeader(
             icon: Icons.hourglass_empty_rounded,
             label: 'PENDIENTES',
@@ -680,13 +770,47 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           const SizedBox(height: 10),
           ...pendientesItems.map((item) => _buildViajeCard(item, isEnCurso: false)),
         ],
+      ),
+    );
+  }
 
-        if (enCursoItems.isEmpty && pendientesItems.isEmpty)
-          const Center(child: Padding(
-            padding: EdgeInsets.all(40),
-            child: Text('No hay cargas activas.'),
-          )),
-      ],
+  Widget _buildEnCursoTab() {
+    final allItems = _getActiveItems();
+    final enCursoItems = allItems.where((item) {
+      if (item['type'] == 'viaje_sin_carga') return false;
+      final c = item['carga'];
+      return c != null && c['estado'] == AppStates.enCurso;
+    }).toList();
+
+    if (enCursoItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.local_shipping_outlined, size: 64, color: DesignTokens.primary.withOpacity(0.1)),
+            const SizedBox(height: 16),
+            const Text('No hay cargas en curso.'),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+        children: [
+          _sectionHeader(
+            icon: Icons.local_shipping_rounded,
+            label: 'EN CARGA',
+            color: const Color(0xFF7D5700),
+            bgColor: const Color(0xFFFDEFCC),
+            count: enCursoItems.length,
+          ),
+          const SizedBox(height: 10),
+          ...enCursoItems.map((item) => _buildViajeCard(item, isEnCurso: true)),
+        ],
+      ),
     );
   }
 
@@ -887,7 +1011,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                         flex: 2,
                         child: ElevatedButton.icon(
                           onPressed: isEnCurso
-                              ? () => _confirmarSalida(v, c!)
+                              ? () => _finalizarCarga(v, c!)
                               : () => _iniciarCarga(v, c!),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isEnCurso ? DesignTokens.primary : const Color(0xFF1565C0),
@@ -902,7 +1026,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             color: isEnCurso ? DesignTokens.accent : Colors.white,
                           ),
                           label: Text(
-                            isEnCurso ? 'CONFIRMAR SALIDA' : 'INICIAR CARGA',
+                            isEnCurso ? 'FINALIZAR CARGA' : 'INICIAR CARGA',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                           ),
                         ),
@@ -919,59 +1043,62 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   }
 
   Widget _buildTerminadasTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por código...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por código...',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                    onChanged: (val) {
+                      _searchQuery = val;
+                      _applyFilters();
+                    },
                   ),
-                  onChanged: (val) {
-                    _searchQuery = val;
-                    _applyFilters();
-                  },
                 ),
-              ),
-              const SizedBox(width: 12),
-              IconButton.filled(
-                onPressed: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDate ?? DateTime.now(),
-                    firstDate: DateTime(2024),
-                    lastDate: DateTime.now(),
-                  );
-                  if (date != null) {
-                    setState(() => _selectedDate = date);
-                    _applyFilters();
-                  }
-                },
-                icon: Icon(Icons.calendar_month, color: _selectedDate != null ? DesignTokens.accent : Colors.white),
-                style: IconButton.styleFrom(backgroundColor: DesignTokens.primary),
-              ),
-              if (_selectedDate != null)
-                IconButton(onPressed: () { setState(() => _selectedDate = null); _applyFilters(); }, icon: const Icon(Icons.clear, color: Colors.red)),
-            ],
+                const SizedBox(width: 12),
+                IconButton.filled(
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate ?? DateTime.now(),
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime.now(),
+                    );
+                    if (date != null) {
+                      setState(() => _selectedDate = date);
+                      _applyFilters();
+                    }
+                  },
+                  icon: Icon(Icons.calendar_month, color: _selectedDate != null ? DesignTokens.accent : Colors.white),
+                  style: IconButton.styleFrom(backgroundColor: DesignTokens.primary),
+                ),
+                if (_selectedDate != null)
+                  IconButton(onPressed: () { setState(() => _selectedDate = null); _applyFilters(); }, icon: const Icon(Icons.clear, color: Colors.red)),
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          child: _filteredHistory.isEmpty
-            ? const Center(child: Text('No se encontraron cargas terminadas.'))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _filteredHistory.length,
-                itemBuilder: (ctx, i) => _buildHistoryCard(_filteredHistory[i]),
-              ),
-        ),
-      ],
+          Expanded(
+            child: _filteredHistory.isEmpty
+              ? const Center(child: Text('No se encontraron cargas terminadas.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: _filteredHistory.length,
+                  itemBuilder: (ctx, i) => _buildHistoryCard(_filteredHistory[i]),
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -985,34 +1112,51 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       onTap: viajeId != null ? () => context.push('/viajedetalle?viajeId=$viajeId') : null,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.withOpacity(0.1)),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
-          child: const Icon(Icons.check_circle, color: Colors.green),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.green.withOpacity(0.3)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
         ),
-        title: Text(c['carga_codigo'] ?? 'CARGA', style: const TextStyle(fontWeight: FontWeight.w900)),
-        subtitle: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Viaje: ${c['viaje']?['viaje_codigo'] ?? 'S/V'}', style: const TextStyle(fontSize: 12)),
-            Text('Fecha: $dateStr', style: const TextStyle(fontSize: 12)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                      child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c['carga_codigo'] ?? 'CARGA', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                        Text('Viaje: ${c['viaje']?['viaje_codigo'] ?? 'S/V'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                ),
+                Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
             if (items.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 6,
-                runSpacing: 4,
+                runSpacing: 6,
                 children: items.map((item) {
                   final String prod = (item['producto_codigo'] ?? 'S/D').toString().toUpperCase();
                   final double cant = (item['cantidad'] ?? 0).toDouble();
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(6),
@@ -1020,26 +1164,32 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     ),
                     child: Text(
                       '$prod × ${cant.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.green),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.green),
                     ),
                   );
                 }).toList(),
               ),
             ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => context.push('/remito_carga?cargaId=${c['id']}'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: DesignTokens.secondary,
+                  foregroundColor: DesignTokens.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                label: const Text('REMITO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
+            ),
           ],
         ),
-        trailing: ElevatedButton(
-          onPressed: () => context.push('/remito_carga?cargaId=${c['id']}'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: DesignTokens.secondary,
-            foregroundColor: DesignTokens.primary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-          ),
-          child: const Text('REMITO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-        ),
       ),
-    ));
+    );
   }
 
   Widget _metricCol(String label, String value, IconData icon) {
@@ -1056,6 +1206,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   void _showAddCargaDialog({String? preselectedViajeId}) {
     String? selectedViajeId = preselectedViajeId;
     String? selectedProductoCodigo;
+    String? selectedDepositoOrigen = 'Parque Industrial';
     final qtyController = TextEditingController();
 
     showModalBottomSheet(
@@ -1094,6 +1245,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
                   ),
                   const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedDepositoOrigen,
+                    decoration: const InputDecoration(labelText: 'Depósito Origen', prefixIcon: Icon(Icons.warehouse_rounded)),
+                    items: const [
+                      DropdownMenuItem(value: 'Parque Industrial', child: Text('Parque Industrial')),
+                      DropdownMenuItem(value: 'Depósito Huinca', child: Text('Depósito Huinca')),
+                    ],
+                    onChanged: (v) => setModalState(() => selectedDepositoOrigen = v),
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: qtyController,
                     keyboardType: TextInputType.number,
@@ -1116,6 +1277,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             'viaje_id': viaje['id'],
                             'carga_codigo': humanId,
                             'estado': AppStates.pendiente,
+                            'deposito_origen': selectedDepositoOrigen,
                           }).select('id').single();
                           
                           final messenger = ScaffoldMessenger.of(context);

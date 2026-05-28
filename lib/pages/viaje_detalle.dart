@@ -817,7 +817,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
       // WhatsApp notification
       final msg = 'SOLICITUD DE CAMBIO DE RUTA\nViaje: ${_viaje!['viaje_codigo']}\nChofer: $_userId\nA partir de: ${parada['ubicacion']}';
       final url = 'https://wa.me/5492302123456?text=${Uri.encodeComponent(msg)}'; // Replace with real group/role numbers
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalNonBrowserApplication);
       
       await _loadData();
     } catch (e) {
@@ -881,7 +881,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
     
     try {
       final uri = Uri.parse(url);
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
@@ -939,7 +939,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 try {
                   final uri = Uri.parse(url);
                   if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                   }
                 } catch (e) {
                   print('Error al abrir PDF externo: $e');
@@ -972,7 +972,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                         onPressed: () async {
                           try {
                             final uri = Uri.parse(url);
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                           } catch (_) {}
                         },
                       ),
@@ -1007,7 +1007,7 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                         onPressed: () async {
                           try {
                             final uri = Uri.parse(url);
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
                           } catch (_) {}
                         },
                       ),
@@ -1271,7 +1271,6 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
   Widget _buildOdometerSection(FlutterFlowTheme theme, bool esPendiente, bool esEnCurso) {
     final double? oIni = (_viaje!['odometro_inicial'] as num?)?.toDouble();
     final double? oFin = (_viaje!['odometro_final'] as num?)?.toDouble();
-    final double? litros = _getLitrosFromDescripcion(_viaje!['descripcion']);
 
     final double? distancia = (oIni != null && oFin != null) ? (oFin - oIni) : null;
     
@@ -1282,6 +1281,16 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         if (g is Map) gastos.add(Map<String, dynamic>.from(g));
       }
     }
+    
+    final double litrosGastos = gastos
+        .where((g) => (g['tipo_gasto'] ?? '').toString().toLowerCase().contains('combustible'))
+        .fold(0.0, (sum, g) => sum + ((g['cantidad_litros'] as num?)?.toDouble() ?? 0.0));
+
+    final double manualLitros = _getLitrosFromDescripcion(_viaje!['descripcion']) ?? 0.0;
+    
+    // Preferimos la suma de los gastos, si no hay usamos el manual (antiguo)
+    final double? litros = (litrosGastos > 0) ? litrosGastos : (manualLitros > 0 ? manualLitros : null);
+
     final double gastoCombustible = gastos
         .where((g) => (g['tipo_gasto'] ?? '').toString().toLowerCase().contains('combustible'))
         .fold(0.0, (sum, g) => sum + ((g['importe'] as num?)?.toDouble() ?? 0.0));
@@ -1449,17 +1458,17 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   final intentUrl = Uri.parse('intent://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59#Intent;scheme=http;package=com.gpsgate.fleet;end;');
                   final fallbackUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                   try {
-                    // Intenta forzar la app Fleet primero
-                    final launched = await launchUrl(intentUrl, mode: LaunchMode.externalApplication);
+                    // Intenta abrir el intent (forzando la app Fleet)
+                    final launched = await launchUrl(intentUrl, mode: LaunchMode.externalNonBrowserApplication);
                     if (!launched) {
-                      // Fallback al browser
+                      // Si falla, usa el fallback normal abriendo el navegador
                       await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
                     }
                   } catch (e) {
                     try {
                       await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
                     } catch (e2) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Error al abrir sitio: $e2')),
                         );

@@ -527,7 +527,7 @@ class SupabaseService {
     try {
       final res = await _client.from('cargas')
           .select('*, viaje:viaje_id(*, vehiculo:vehiculo_codigo(*)), carga_items(*)')
-          .eq('estado', AppStates.terminado)
+          .or('estado.eq.Terminado,estado.eq.Terminada')
           .order('updated_at', ascending: false);
       
       final List<Map<String, dynamic>> list = (res as List).map((c) {
@@ -615,6 +615,27 @@ class SupabaseService {
     } catch (e) {
       print('SupabaseService: Error en getStats: $e');
       return {'planificados': 0, 'en_curso': 0, 'terminados': 0};
+    }
+  }
+
+  Future<Map<String, int>> getCargasStats({String? userId, String? role}) async {
+    try {
+      dynamic query = _client.from('cargas').select('estado');
+      // Podríamos filtrar por depósito origen/destino si fuese necesario, pero por ahora mostramos todas las cargas activas
+      
+      final data = await query.timeout(const Duration(seconds: 15));
+      int pendientes = 0, enCurso = 0, terminadas = 0;
+      
+      for (final c in (data as List)) {
+        final e = AppStates.normalize(c['estado']);
+        if (e == AppStates.pendiente) pendientes++;
+        else if (e == AppStates.enCurso) enCurso++;
+        else if (e == AppStates.terminado) terminadas++;
+      }
+      return {'planificadas': pendientes, 'en_curso': enCurso, 'terminadas': terminadas};
+    } catch (e) {
+      print('SupabaseService: Error en getCargasStats: $e');
+      return {'planificadas': 0, 'en_curso': 0, 'terminadas': 0};
     }
   }
 
@@ -850,7 +871,7 @@ class SupabaseService {
   Future<Map<String, dynamic>?> getCargaDetalle(String cargaId) async {
     try {
       final res = await _client.from('cargas')
-          .select('id, carga_codigo, viaje_id, estado, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
+          .select('id, carga_codigo, viaje_id, estado, deposito_origen, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
           .eq('id', cargaId).maybeSingle();
       if (res == null) return null;
       
@@ -917,14 +938,20 @@ class SupabaseService {
     required String viajeId,
     required List<Map<String, dynamic>> items,
     required String createdBy,
+    String? depositoOrigen,
   }) async {
     final String cleanCreatedBy = createdBy.isNotEmpty ? createdBy : 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
-    final cargaResp = await _client.from('cargas').insert({
+    final Map<String, dynamic> insertData = {
       'carga_codigo': 'CARGA-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
       'viaje_id': viajeId,
       'estado': AppStates.pendiente,
       'created_by': cleanCreatedBy,
-    }).select('id').single();
+    };
+    if (depositoOrigen != null && depositoOrigen.isNotEmpty) {
+      insertData['deposito_origen'] = depositoOrigen;
+    }
+    
+    final cargaResp = await _client.from('cargas').insert(insertData).select('id').single();
     final cargaId = cargaResp['id'] as String;
 
     try {
@@ -1080,15 +1107,49 @@ class SupabaseService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getVehiculos() async =>
-      _fetchList('vehiculos',
-          select: 'id, vehiculo_codigo, patente, modelo, capacidad_kg, capacidad_tambores, carga_actual_kg, carga_actual_tambores',
-          order: 'vehiculo_codigo');
+  Future<List<Map<String, dynamic>>> getVehiculos({bool soloDisponibles = false, String? excluirViajeId}) async {
+    final list = await _fetchList('vehiculos',
+        select: 'id, vehiculo_codigo, patente, modelo, capacidad_kg, capacidad_tambores, carga_actual_kg, carga_actual_tambores',
+        order: 'vehiculo_codigo');
 
-  Future<List<Map<String, dynamic>>> getChoferes() async =>
-      _fetchList('profiles',
-          select: 'id, nombre, apellido, puesto',
-          filter: {'puesto': 'Chofer'});
+    if (soloDisponibles) {
+      try {
+        dynamic query = _client.from('viajes').select('vehiculo_codigo').filter('estado', 'in', ['Pendiente', 'En Proceso', 'En Curso']);
+        if (excluirViajeId != null) query = query.neq('id', excluirViajeId);
+        final activos = await query;
+        final Set<String> ocupados = {};
+        for (var v in activos) {
+          if (v['vehiculo_codigo'] != null) ocupados.add(v['vehiculo_codigo'].toString());
+        }
+        return list.where((v) => !ocupados.contains(v['vehiculo_codigo']?.toString())).toList();
+      } catch (e) {
+        print('SupabaseService: Error filtrando vehículos ocupados: $e');
+      }
+    }
+    return list;
+  }
+
+  Future<List<Map<String, dynamic>>> getChoferes({bool soloDisponibles = false, String? excluirViajeId}) async {
+    final list = await _fetchList('profiles',
+        select: 'id, nombre, apellido, puesto',
+        filter: {'puesto': 'Chofer'});
+
+    if (soloDisponibles) {
+      try {
+        dynamic query = _client.from('viajes').select('chofer_id').filter('estado', 'in', ['Pendiente', 'En Proceso', 'En Curso']);
+        if (excluirViajeId != null) query = query.neq('id', excluirViajeId);
+        final activos = await query;
+        final Set<String> ocupados = {};
+        for (var v in activos) {
+          if (v['chofer_id'] != null) ocupados.add(v['chofer_id'].toString());
+        }
+        return list.where((c) => !ocupados.contains(c['id']?.toString())).toList();
+      } catch (e) {
+        print('SupabaseService: Error filtrando choferes ocupados: $e');
+      }
+    }
+    return list;
+  }
 
 
 

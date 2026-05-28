@@ -273,11 +273,6 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
               Row(
                 children: [
                   _infoChip(Icons.location_on_rounded, '$nParadas PARADAS'),
-                  const SizedBox(width: 8),
-                  _infoChip(
-                    nRecoleccion > 0 ? Icons.scale_rounded : Icons.inventory_2_rounded,
-                    nRecoleccion > 0 ? 'RECOLECCIÓN' : 'DISTRIBUCIÓN',
-                  ),
                 ],
               ),
 

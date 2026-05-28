@@ -145,8 +145,10 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/depositoHome',
-      name: 'depositoHome',
-      builder: (context, state) => const DepositohomeWidget(),
+      name: 'depositoHomePage',
+      builder: (context, state) => DepositohomeWidget(
+        initialTab: state.uri.queryParameters['tab'],
+      ),
     ),
     GoRoute(
       path: '/necesidades',
@@ -218,9 +220,11 @@ final GoRouter _router = GoRouter(
       builder: (context, state) => const RutasPageWidget(),
     ),
     GoRoute(
-      path: '/viajes',
-      name: 'viajesPage',
-      builder: (context, state) => const ViajesPageWidget(),
+      name: ViajesPageWidget.routeName,
+      path: ViajesPageWidget.routePath,
+      builder: (context, state) => ViajesPageWidget(
+        initialEstado: state.uri.queryParameters['estado'],
+      ),
     ),
     GoRoute(
       path: '/recolecciones',

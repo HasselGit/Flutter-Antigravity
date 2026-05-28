@@ -241,7 +241,7 @@ class _RutaDetalleWidgetState extends State<RutaDetalleWidget> {
     
     try {
       final uri = Uri.parse(url);
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       }

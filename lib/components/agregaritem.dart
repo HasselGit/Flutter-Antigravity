@@ -4,8 +4,9 @@ import '../backend/design_tokens.dart';
 import '../backend/supabase_service.dart';
 
 class AgregarItemWidget extends StatefulWidget {
-  const AgregarItemWidget({super.key, required this.paradaId});
+  const AgregarItemWidget({super.key, required this.paradaId, this.viajeId});
   final String? paradaId;
+  final String? viajeId;
 
   @override
   State<AgregarItemWidget> createState() => _AgregarItemWidgetState();
@@ -17,6 +18,7 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
   String? _selectedUnit;
   String _tipoMovimiento = 'Recolección'; // 'Recolección' (Retira) o 'Distribución' (Entrega)
   List<Map<String, dynamic>> _productos = [];
+  List<String> _productosEnCamion = [];
   bool _isSaving = false;
 
   @override
@@ -28,8 +30,25 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
   Future<void> _loadProductos() async {
     try {
       final response = await SupabaseService().getProductos();
+      List<String> inTruck = [];
+      if (widget.viajeId != null && widget.viajeId!.isNotEmpty) {
+        final cargas = await Supabase.instance.client
+            .from('cargas')
+            .select('carga_items(producto_codigo, cantidad)')
+            .eq('viaje_id', widget.viajeId!)
+            .or('estado.eq.Terminado,estado.eq.Terminada');
+            
+        for (var c in cargas) {
+          final items = c['carga_items'] as List? ?? [];
+          for (var it in items) {
+             inTruck.add(it['producto_codigo'].toString().trim());
+          }
+        }
+      }
+
       setState(() {
         _productos = List<Map<String, dynamic>>.from(response);
+        _productosEnCamion = inTruck;
       });
     } catch (e) {
       print('Error cargando productos: $e');
@@ -139,7 +158,12 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
-            items: _productos.map((prod) => DropdownMenuItem(
+            items: _productos.where((p) {
+              if (_tipoMovimiento == 'Distribución') {
+                return _productosEnCamion.contains((p['codigo'] ?? '').toString().trim());
+              }
+              return true;
+            }).map((prod) => DropdownMenuItem(
               value: prod['codigo']?.toString(),
               child: SizedBox(
                 width: MediaQuery.of(context).size.width - 100,
@@ -210,12 +234,17 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
                     }
 
                     if (newTipo != currentTipo) {
-                      await Supabase.instance.client.from('paradas')
-                          .update({'tipo': newTipo})
-                          .eq('id', widget.paradaId!);
+                      try {
+                        await Supabase.instance.client.from('paradas')
+                            .update({'tipo': newTipo})
+                            .eq('id', widget.paradaId!);
+                      } catch (e) {
+                        print('Aviso: no se pudo actualizar el tipo de parada a MIXTA: $e');
+                        // Ignoramos el error para no colgar la UI si hay RLS
+                      }
                     }
 
-                    if (context.mounted) {
+                    if (mounted) {
                       Navigator.pop(context);
                     }
                   }

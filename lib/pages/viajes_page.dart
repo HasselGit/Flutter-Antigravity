@@ -9,7 +9,8 @@ import '../backend/app_states.dart';
 import 'package:intl/intl.dart';
 
 class ViajesPageWidget extends StatefulWidget {
-  const ViajesPageWidget({super.key});
+  final String? initialEstado;
+  const ViajesPageWidget({super.key, this.initialEstado});
 
   static String routeName = 'Viajes';
   static String routePath = '/viajes';
@@ -33,7 +34,13 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    int initialIndex = 0;
+    if (widget.initialEstado != null) {
+      final s = AppStates.normalize(widget.initialEstado!);
+      if (s == AppStates.enCurso) initialIndex = 1;
+      else if (s == AppStates.terminado) initialIndex = 2;
+    }
+    _tabController = TabController(length: 3, vsync: this, initialIndex: initialIndex);
     _fetchViajes();
   }
 

@@ -19,6 +19,7 @@ class HomePageWidget extends StatefulWidget {
 
 class _HomePageWidgetState extends State<HomePageWidget> {
   Map<String, int> _stats = {'planificados': 0, 'en_curso': 0, 'terminados': 0};
+  Map<String, int> _cargasStats = {'planificadas': 0, 'en_curso': 0, 'terminadas': 0};
   bool _loadingStats = true;
   String? _userName;
   String? _userRole;
@@ -50,10 +51,12 @@ class _HomePageWidgetState extends State<HomePageWidget> {
       print('HomePage: Obteniendo stats para $_userRole ($userId)');
       
       final stats = await SupabaseService().getStats(userId: userId, role: _userRole);
+      final cargasStats = await SupabaseService().getCargasStats(userId: userId, role: _userRole);
 
       if (mounted) {
         setState(() {
           _stats = stats;
+          _cargasStats = cargasStats;
           _loadingStats = false;
         });
       }
@@ -196,16 +199,37 @@ class _HomePageWidgetState extends State<HomePageWidget> {
 
                     const SizedBox(height: 24),
 
-                    // ── Stats row ──
-                    Row(
-                      children: [
-                        _statCard('PENDIENTE', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF)),
-                        const SizedBox(width: 10),
-                        _statCard('EN CURSO', _stats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC)),
-                        const SizedBox(width: 10),
-                        _statCard('TERMINADOS', _stats['terminados']!, const Color(0xFF1A6B43), const Color(0xFFD4F0E1)),
-                      ],
-                    ),
+                    // ── Stats row Viajes ──
+                    if (!_isDeposito) ...[
+                      Text('ESTADO DE VIAJES', style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11)),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          _statCard('PENDIENTE', _stats['planificados']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF), onTap: () => context.push('/viajes?estado=Pendiente')),
+                          const SizedBox(width: 10),
+                          _statCard('EN CURSO', _stats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC), onTap: () => context.push('/viajes?estado=En%20Curso')),
+                          const SizedBox(width: 10),
+                          _statCard('TERMINADOS', _stats['terminados']!, const Color(0xFF1A6B43), const Color(0xFFD4F0E1), onTap: () => context.push('/viajes?estado=Terminado')),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                    ],
+
+                    // ── Stats row Cargas ──
+                    if (_isDeposito) ...[
+                      Text('ESTADO DE CARGAS', style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11)),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          _statCard('PENDIENTES', _cargasStats['planificadas']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF), onTap: () => context.push('/depositoHome?tab=0')),
+                          const SizedBox(width: 10),
+                          _statCard('EN CURSO', _cargasStats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC), onTap: () => context.push('/depositoHome?tab=1')),
+                          const SizedBox(width: 10),
+                          _statCard('TERMINADAS', _cargasStats['terminadas']!, const Color(0xFF1A6B43), const Color(0xFFD4F0E1), onTap: () => context.push('/depositoHome?tab=2')),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                    ],
 
                     const SizedBox(height: 28),
 
@@ -233,10 +257,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_isDeposito)
+                        if (_isDeposito || _isChofer)
                           _moduleCard(
                             icon: Icons.warehouse_rounded,
-                            title: 'Depósito',
+                            title: _isDeposito ? 'Depósito' : 'Depósito Huinca',
                             subtitle: 'Cargas y depósito\ncirculante',
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
@@ -260,7 +284,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gerenteHome'),
                           ),
-                        if (_isDeposito || (_isManagement && !_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia')))
+                        if (!_isDeposito && (_isManagement && !_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia')))
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Gestión de Cargas',
@@ -353,7 +377,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                           final fallbackUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                           try {
                             // Intenta abrir el intent (forzando la app Fleet)
-                            final launched = await launchUrl(intentUrl, mode: LaunchMode.externalApplication);
+                            final launched = await launchUrl(intentUrl, mode: LaunchMode.externalNonBrowserApplication);
                             if (!launched) {
                               // Si falla (ej: iOS o app no instalada), usa el fallback
                               await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
@@ -389,38 +413,41 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     );
   }
 
-  Widget _statCard(String label, int value, Color textColor, Color bgColor) {
+  Widget _statCard(String label, int value, Color textColor, Color bgColor, {VoidCallback? onTap}) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _loadingStats ? '—' : value.toString(),
-              style: TextStyle(
-                fontFamily: 'Manrope',
-                fontWeight: FontWeight.w800,
-                fontSize: 26,
-                color: textColor,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _loadingStats ? '—' : value.toString(),
+                style: TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 26,
+                  color: textColor,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Work Sans',
-                fontWeight: FontWeight.w700,
-                fontSize: 8,
-                color: textColor,
-                letterSpacing: 0.3,
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Work Sans',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 8,
+                  color: textColor,
+                  letterSpacing: 0.3,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -559,13 +586,14 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 if (_isAdmin || _isManagement)
                   _drawerItem(Icons.alt_route_rounded, 'Gestión de Viajes', () => context.push('/viajes')),
                 _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
-                if (!_isDeposito) ...[
+                if (!_isDeposito && !_isChofer) ...[
                   _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
                   _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                 ],
                 _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
-                _drawerItem(Icons.warehouse_rounded, 'Cargas Depósito', () => context.push('/depositoHome')),
-                if (_isAdmin || _isManagement || _isDeposito)
+                if (_isDeposito || _isChofer)
+                  _drawerItem(Icons.warehouse_rounded, _isDeposito ? 'Cargas Depósito' : 'Cargas Dep. Huinca', () => context.push('/depositoHome')),
+                if ((_isAdmin || _isManagement) && !_isDeposito)
                   _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),
                 const Divider(),
                 if (!_isDeposito)
@@ -609,12 +637,9 @@ class _HomePageWidgetState extends State<HomePageWidget> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _navItem(Icons.home_filled, 'HOME', true, () {}),
-              _navItem(Icons.assignment_rounded, 'OPERAR', false, () => context.push('/rutas')),
-              _navItem(Icons.analytics_rounded, 'METRICAS', false, () => context.push('/gerenteHome')),
-              _navItem(Icons.person_rounded, 'MI PERFIL', false, () {}),
             ],
           ),
         ),

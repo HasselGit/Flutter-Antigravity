@@ -282,8 +282,8 @@ class _NecesidadesPageWidgetState extends State<NecesidadesPageWidget> with Sing
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Cant. Est. (${productos.firstWhere((p) => (p['codigo'] ?? p['producto']) == selectedProducto, orElse: () => {'unidad': 'Kg'})['unidad']})', 
-                          style: const TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
+                        const Text('Cantidad', 
+                          style: TextStyle(fontFamily: 'Work Sans', fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF424846))),
                         const SizedBox(height: 8),
                         TextField(
                           controller: cantidadController,

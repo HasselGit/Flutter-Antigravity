@@ -72,7 +72,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
 
     final String url = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
     try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalNonBrowserApplication);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
     }

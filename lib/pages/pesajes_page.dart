@@ -28,10 +28,10 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
     try {
       final client = Supabase.instance.client;
 
-      // Obtener todos los pesajes con info de viaje
+      // Usar joins de Supabase para traer los datos relacionados directamente
       final data = await client
           .from('pesajes')
-          .select('*')
+          .select('*, parada:parada_id(tipo, localidad, ubicacion, viaje:viaje_id(viaje_codigo, fecha))')
           .order('created_at', ascending: false);
 
       final pesajes = List<Map<String, dynamic>>.from(data);
@@ -48,58 +48,51 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
         porParada.putIfAbsent(paradaId, () => []).add(p);
       }
 
-      // Obtener datos de paradas
-      final paradaIds = porParada.keys.where((k) => k != 'sin_parada').toList();
-      Map<String, Map<String, dynamic>> paradaMap = {};
-      if (paradaIds.isNotEmpty) {
-        final paradasRes = await client
-            .from('paradas')
-            .select('id, viaje_id, tipo, localidad, ubicacion')
-            .filter('id', 'in', paradaIds);
-        for (var p in paradasRes) {
-          paradaMap[p['id'].toString()] = Map<String, dynamic>.from(p);
-        }
-      }
-
-      // Obtener datos de viajes
-      final viajeIds = paradaMap.values.map((p) => p['viaje_id']?.toString()).whereType<String>().toSet().toList();
-      Map<String, Map<String, dynamic>> viajeMap = {};
-      if (viajeIds.isNotEmpty) {
-        final viajesRes = await client
-            .from('viajes')
-            .select('id, viaje_codigo, fecha')
-            .filter('id', 'in', viajeIds);
-        for (var v in viajesRes) {
-          viajeMap[v['id'].toString()] = Map<String, dynamic>.from(v);
-        }
-      }
-
       // Construir grupos enriquecidos
       final grupos = porParada.entries.map((entry) {
         final paradaId = entry.key;
         final items = entry.value;
-        final parada = paradaMap[paradaId] ?? {};
-        final viajeId = parada['viaje_id']?.toString() ?? '';
-        final viaje = viajeMap[viajeId] ?? {};
+        final firstItem = items[0];
+        final parada = (firstItem['parada'] as Map?) ?? {};
+        final viaje = (parada['viaje'] as Map?) ?? {};
 
         final totalBruto = items.fold(0.0, (s, p) => s + (double.tryParse(p['peso_bruto']?.toString() ?? '0') ?? 0));
         final totalTara = items.fold(0.0, (s, p) => s + (double.tryParse(p['tara']?.toString() ?? '0') ?? 0));
-        final totalNeto = items.fold(0.0, (s, p) => s + (double.tryParse(p['peso_neto']?.toString() ?? '0') ?? 0));
+        
+        // Calcular neto si no viene de la DB (por si es generada)
+        final totalNetoCalc = items.fold(0.0, (s, p) {
+          final netoDB = double.tryParse(p['peso_neto']?.toString() ?? '');
+          if (netoDB != null) return s + netoDB;
+          final b = double.tryParse(p['peso_bruto']?.toString() ?? '0') ?? 0;
+          final t = double.tryParse(p['tara']?.toString() ?? '0') ?? 0;
+          return s + (b - t);
+        });
+
+        // Asegurar que apicultor_id sea string
+        final apicId = firstItem['apicultor_id']?.toString() ?? 'S/D';
 
         return {
           'parada_id': paradaId,
-          'viaje_id': viajeId,
+          'viaje_id': firstItem['viaje_id']?.toString() ?? '',
           'viaje_codigo': viaje['viaje_codigo'] ?? 'V-S/N',
           'viaje_fecha': viaje['fecha'],
-          'apicultor': parada['ubicacion'] ?? parada['localidad'] ?? (items[0]['apicultor_id'] ?? 'S/D'),
+          'apicultor': parada['ubicacion'] ?? parada['localidad'] ?? apicId,
           'localidad': parada['localidad'] ?? 'S/D',
           'tipo': parada['tipo'] ?? 'Recolección',
-          'items': items,
+          'items': items.map((it) {
+            // Aseguramos que cada item tenga peso neto
+            if (it['peso_neto'] == null) {
+               final b = double.tryParse(it['peso_bruto']?.toString() ?? '0') ?? 0;
+               final t = double.tryParse(it['tara']?.toString() ?? '0') ?? 0;
+               it['peso_neto'] = b - t;
+            }
+            return it;
+          }).toList(),
           'tcm_count': items.length,
           'total_bruto': totalBruto,
           'total_tara': totalTara,
-          'total_neto': totalNeto,
-          'fecha': items[0]['created_at'],
+          'total_neto': totalNetoCalc,
+          'fecha': firstItem['created_at'],
         };
       }).toList();
 
@@ -115,7 +108,9 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
       }
     } catch (e) {
       debugPrint('PesajesPage: Error: $e');
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+         setState(() => _loading = false);
+      }
     }
   }
 
