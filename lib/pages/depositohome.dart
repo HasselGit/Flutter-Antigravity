@@ -53,7 +53,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       // Obtener viajes con cargas activas (Pendiente, En Proceso, En Curso)
       final pendingViajesRaw = await Supabase.instance.client
           .from('viajes')
-          .select('*, paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, deposito_origen, carga_items(*))')
+          .select('*, paradas(*, parada_items(*)), vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores), cargas(id, carga_codigo, estado, carga_items(*))')
           .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
           .order('fecha', ascending: true);
 
@@ -90,7 +90,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         var listCargas = v['cargas'] as List? ?? [];
         
         if (onlyChofer) {
-          listCargas = listCargas.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
+          // Eliminamos el filtrado por deposito_origen porque la columna ya no existe en BD
+          // listCargas = listCargas.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
           v['cargas'] = listCargas;
         }
 
@@ -123,7 +124,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       // Obtener cargas terminadas para la segunda pestaña
       var history = await SupabaseService().getTerminatedCargas();
       if (onlyChofer) {
-        history = history.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
+        // history = history.where((c) => c['deposito_origen'] == 'Depósito Huinca').toList();
       }
 
       // Obtener productos disponibles
@@ -1277,7 +1278,6 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             'viaje_id': viaje['id'],
                             'carga_codigo': humanId,
                             'estado': AppStates.pendiente,
-                            'deposito_origen': selectedDepositoOrigen,
                           }).select('id').single();
                           
                           final messenger = ScaffoldMessenger.of(context);

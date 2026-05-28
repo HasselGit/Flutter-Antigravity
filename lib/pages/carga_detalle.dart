@@ -131,7 +131,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
 
   bool get _isChoferDepositoHuinca {
     final r = _normalizeRole(_userRole);
-    return r.contains('chofer') && (_carga?['deposito_origen'] == 'Deposito Huinca');
+    return r.contains('chofer');
   }
 
   bool get _canChangeEstado {

@@ -871,7 +871,7 @@ class SupabaseService {
   Future<Map<String, dynamic>?> getCargaDetalle(String cargaId) async {
     try {
       final res = await _client.from('cargas')
-          .select('id, carga_codigo, viaje_id, estado, deposito_origen, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
+          .select('id, carga_codigo, viaje_id, estado, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
           .eq('id', cargaId).maybeSingle();
       if (res == null) return null;
       
@@ -947,9 +947,7 @@ class SupabaseService {
       'estado': AppStates.pendiente,
       'created_by': cleanCreatedBy,
     };
-    if (depositoOrigen != null && depositoOrigen.isNotEmpty) {
-      insertData['deposito_origen'] = depositoOrigen;
-    }
+    // deposito_origen eliminado
     
     final cargaResp = await _client.from('cargas').insert(insertData).select('id').single();
     final cargaId = cargaResp['id'] as String;
