@@ -2261,3 +2261,19 @@ FIN DE LA SESIÓN DE HISTÓRICO
 
 2 7   d e   M a y o ,   2 0 2 6 :   C o r r e c c i � n   d e l   C r e d e n t i a l   M a n a g e r   ( t e c l a d o   e n   l o g i n ) ,   r e o r g a n i z a c i � n   d e l   b o t � n   d e   S a l i d a   n a t i v o   d e   l a   a p p   e n   h o m e p a g e . d a r t ,   i m p l e m e n t a c i � n   d e   b u s c a d o r   m � l t i p l e   y   t o t a l   r e a c t i v o   e n   g a s t o s _ p a g e . d a r t ,   s o l u c i � n   d e l   t o t a l   d e   g a s t o s   c a l c u l a n d o   ' i m p o r t e '   e n   v i a j e _ d e t a l l e . d a r t ,   y   r e n d e r i z a d o   d i n � m i c o   d e   u n i d a d e s   d e s d e   m a s t e r C a t a l o g   e n   r e c o l e c c i o n e s _ p a g e . d a r t .  
  
+================================================================================
+SESIÓN ADICIONAL: 29 de Mayo de 2026 - OPTIMIZACIÓN DE TRÁNSITO Y ACCESO EJECUTIVO
+================================================================================
+
+1. REQUERIMIENTO:
+- Implementar pre-población automática de cargas en depósito basadas en las paradas programadas de tipo "Distribución", consolidando productos y mostrándolos en chips visuales premium.
+- Realizar validación en tiempo real en ruta de stock en tránsito (Initial Carga - Distribuciones + Recolecciones) bloqueando entregas que excedan las existencias físicas del camión.
+- Validar dinámicamente la capacidad de carga proyectada del vehículo (peso camión en tránsito) en todas las cargas y descargas, consultando el factor peso unitario dinámico desde la tabla remota "productos" de Supabase.
+- Habilitar acceso de consulta y auditoría de cargas (indicadores dinámicos, módulo depósito y drawer) para roles ejecutivos directivos (Compras, CEO y Gerente).
+- Corregir de raíz cualquier warning del compilador y errores de llaves de cierre que bloqueen la compilación en Gradle.
+
+2. SOLUCIÓN IMPLEMENTADA:
+- showAddCargaDialog reescrito para consultar paradas asociadas al viaje, consolidar productos, mostrarlos en chips visuales con DesignTokens y autocompletar la carga con un solo clic.
+- Métodos _calcularStockEnTransito y _validarCapacidadCamion en agregaritem.dart calculan y restringen dinámicamente las cantidades y peso del camión en caliente contra la capacidad declarada del vehículo.
+- CargasStats y stats cargadas dinámicamente en homepage.dart para Compras, CEO y Gerente, habilitando acceso directo en el grid de inicio, Drawer lateral y medidores dinámicos del Home.
+- Warnings de tipo innecesario resueltos en depositohome.dart y missing closing brace corregido en agregaritem.dart, dejando el código con 0 errores estáticos.

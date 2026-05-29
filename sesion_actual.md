@@ -1,45 +1,56 @@
-# Sesión Actual - 27 de Mayo, 2026
+# Sesión Actual - 29 de Mayo, 2026
 
-## Objetivos Alcanzados: Corrección de Teclado, Totales Precisos, Unidades Dinámicas y Menú Refinado
+## Objetivos Alcanzados: Optimización de Tránsito, Validación en Caliente, Pre-población Predictiva de Cargas y Dashboard Directivo Sincronizado
 
-En esta sesión nos centramos en refinar la experiencia de usuario (UX) corrigiendo el bloqueo de teclado en el login, ajustando cálculos y perfeccionando el despliegue de datos en las pantallas principales.
-
----
-
-### ⌨️ 1. Corrección del Bloqueo de Teclado en Login (Credential Manager)
-
-- **Problema Detectado**: El teclado no se desplegaba en los campos de usuario y contraseña porque Android 14+ intentaba invocar el "Credential Manager" nativo, superponiendo un modal invisible (las famosas "3 rayas") que bloqueaba la UI.
-- **Solución Implementada**: Retiramos los `autofillHints` de los `TextFormField` en `login.dart` y ajustamos el manejo de foco manual para saltarnos el gestor de contraseñas de Android, garantizando que el teclado del sistema operativo abra instantáneamente en todos los dispositivos al tocar los campos.
-
-### 💰 2. Cálculo Preciso de "Total Gastos" y Buscador Integral
-
-- **Detalle de Viaje**: Corregimos un error crítico donde el total de los gastos se mostraba como `$0.00`. El cálculo intentaba sumar el campo obsoleto `monto` en lugar de `importe`, que es el campo utilizado por la base de datos de Supabase. Ahora calcula e imprime con exactitud la suma de todos los viáticos asignados al viaje.
-- **Gestión de Gastos (Buscador Global)**: En `gastos_page.dart` añadimos una robusta barra de búsqueda con diseño corporativo que filtra los gastos simultáneamente por nombre del chofer, código de viaje, importe o tipo de gasto (ej: *Combustible*). Incluimos un medidor dinámico de **TOTAL MOSTRADO** que suma en tiempo real exclusivamente los montos de los tickets que coinciden con el filtro.
-
-### 📦 3. Tarjetas de Recolección con Unidades Dinámicas
-
-- **Problema**: La tarjeta en `RecoleccionesPage` forzaba la visualización de la unidad como "KG" (`15.0 KG - TCM`), lo cual era ambiguo para insumos medidos en unidades (como tambores vacíos o con miel).
-- **Solución Automática**: Importamos el `masterCatalog` corporativo desde `productos_data.dart`. Ahora, el renderizado de la tarjeta analiza en caliente el código de producto (ej: `TCM` o `TAMBORES`) e inyecta dinámicamente la unidad correcta (`UNI` en lugar de `KG`), logrando que la UI lea impecablemente: **`15.0 UNI - TCM`**.
-
-### 📊 4. Medidor de Progreso Realista en Gestión de Ruta
-
-- **Limpieza Visual**: Eliminamos la frase confusa "S/D" del cálculo de distancia en las tarjetas de la ruta activa.
-- **Métricas de Rendimiento**: Reconfiguramos la barra de progreso lineal de `rutas_page.dart` para que evalúe y sume los kilos de las paradas realmente terminadas (`collectedKg`) contra el estimado total del viaje (`totalKg`), brindando un porcentaje visual certero del progreso del chofer.
-
-### 🚪 5. Reorganización Lógica del Botón "Salir"
-
-- **Cierre de Sesión vs Cierre de App**: Distinguimos claramente las funciones. "Cerrar Sesión" ahora envía incondicionalmente al usuario al Login sin dejar remanentes.
-- **Menú Lateral (Drawer)**: Agregamos el botón rojo "Salir" (`SystemNavigator.pop()`) directamente en el Drawer lateral del `homepage.dart`, justo debajo del botón de Cerrar Sesión. Con esto, evitamos ensuciar la pantalla de Login con botones de salida y lo integramos en el flujo principal del usuario.
+En esta sesión implementamos con éxito el paquete de mejoras de negocio y auditoría logística para consolidar la robustez física y contable de GeoLogística, asegurando controles en caliente en la ruta y flexibilizando la consulta para los roles de toma de decisiones.
 
 ---
 
-## 💾 Sincronización y Compilación Exitosa
+### 🚚 1. Control de Stock en Tránsito en Ruta
+- **Problema de Negocio**: Los choferes podían registrar entregas (`Distribuciones`) en terreno de insumos que físicamente no se encontraban en el camión por desvíos u omisiones en el depósito.
+- **Solución Implementada**: Desarrollamos en `agregaritem.dart` el método `_calcularStockEnTransito` que computa de forma asíncrona y en tiempo real el inventario en tránsito:
+  $$\text{Stock en Tránsito} = \text{Cargado Inicial (Cargas)} - \text{Entregado (Distribuciones terminadas)} + \text{Recogido (Recolecciones terminadas)}$$
+  Al presionar "GUARDAR ITEM" para una Distribución, el sistema evalúa la cantidad solicitada contra este stock en tránsito. Si la supera, se interrumpe el flujo y se notifica la insuficiencia.
 
-- **Release APK Compilado**: Construimos exitosamente el archivo binario final en modo Release, ubicable en la ruta estándar.
-- **Git Guardar Todo**: Los cambios fueron agregados al repositorio principal. Todos los archivos de código fuente actualizados han sido guardados, consolidados y empujados con éxito a la rama principal en GitHub (`HasselGit/Flutter-Antigravity`).
+### ⚖️ 2. Validación Proyectada de Capacidad del Camión (Peso Dinámico)
+- **Cálculo en Caliente**: Implementamos en `agregaritem.dart` y `depositohome.dart` la fórmula dinámica de control de peso:
+  $$\text{Peso Camión} = \text{Carga Inicial} - \text{Distribuciones Entregadas} + \text{Recolecciones Recogidas}$$
+  - Al realizar una **Recolección** (se sube peso) en ruta, se valida que el peso proyectado no exceda la capacidad máxima (`capacidad_kg`) del vehículo.
+  - Al realizar una **Carga** en depósito, se valida que la suma proyectada de los ítems planificados y manuales no supere el límite.
+- **Catálogo Dinámico de Pesos**: Reemplazamos todos los factores de peso hardcodeados en la aplicación por una consulta dinámica a la columna `peso_unit_kg` de la lista de productos (`_productos`) traída directamente de la base de datos de Supabase, manteniendo fallbacks tradicionales seguros para casos extremos.
 
-## 🖥️ Instrucciones para continuar en otra Computadora
+### 📦 3. Pre-población Predictiva de Cargas en Depósito
+- **Formulario Inteligente**: Modificamos el diálogo de asignación de carga de depósito (`_showAddCargaDialog`). Ahora, al seleccionar un viaje, realiza automáticamente una consulta a la base de datos sobre todas las paradas programadas de tipo "Distribución" de ese viaje.
+- **Visualización Consolidada**: Muestra dinámicamente un resumen con el código de producto y cantidad demandada en forma de chips visuales con colores corporativos premium.
+- **Asignación en un Clic**: Integra un interruptor (habilitado por defecto) que crea transaccionalmente en Supabase todos los ítems de carga planificados consolidados, admitiendo la carga en paralelo de productos manuales adicionales.
 
-1. **Clonar/Sincronizar**: `git pull origin main` (El repositorio ya posee el teclado solucionado, el buscador de gastos y la barra lateral actualizada).
-2. **Limpiar Caché e Instalar**: `flutter clean && flutter pub get`
-3. **Ejecutar**: `flutter run`
+### 👥 4. Consulta de Cargas para Roles de Compras, CEO y Gerente
+- **Habilitación de Dashboards**: Adaptamos la lógica de `lib/pages/homepage.dart` para que los roles ejecutivos y directivos (`_isManagement`):
+  1. Visualicen la fila **ESTADO DE CARGAS** (Pendientes, En Curso, Terminadas) en el Home y puedan hacer tap para abrir el diálogo de depósito en cada pestaña.
+  2. Dispongan de la tarjeta de módulo **Cargas Depósito** en su grid principal.
+  3. Tengan el acceso de navegación en el Drawer lateral.
+- **Bypass de Edición**: Los directivos pueden auditar todo el historial de cargas, ver su estado de avance y descargar los PDFs de remito oficiales exactamente igual que depósito.
+
+### 🧹 5. Cero Warnings y Compilación 100% Limpia
+- **Saneamiento Sintáctico**: Resolvimos una llave de cierre ausente al final de `_loadProductos` en `agregaritem.dart` que anidaba indebidamente los helpers asíncronos y rompía la compilación en Gradle.
+- **Limpieza de Código**: Eliminamos condiciones redundantes (`is List`) en `depositohome.dart` detectadas por el analizador estático al consultar datos en Supabase, logrando un código limpio y eficiente con **0 errores estáticos**.
+
+---
+
+## 💾 Despliegue y Sincronización en la Nube
+- **Copiado de APK**: El archivo compilado y ofuscado se encuentra en el Escritorio: 
+  👉 **`C:\Users\Parque-Apicola\Desktop\Geologistica.apk`** *(87.0 MB)*.
+- **Git Commit & Push**: Todos los archivos del proyecto fueron guardados y subidos exitosamente a GitHub:
+  - **Commit Hash**: `ddee243`
+  - **Estado**: Sincronizado al 100%.
+
+## 🖥️ Instrucciones para continuar en la Computadora de tu Casa
+1. Abre tu terminal de Flutter dentro del proyecto y descarga todo el progreso:
+   ```bash
+   git pull
+   ```
+2. Realiza una limpieza e instala dependencias:
+   ```bash
+   flutter clean && flutter pub get
+   ```
+3. ¡Todo está listo para ejecutar en caliente en tu computadora de casa!
