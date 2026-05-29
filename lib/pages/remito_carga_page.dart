@@ -36,11 +36,26 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     try {
       final res = await Supabase.instance.client
           .from('cargas')
-          .select('*, viaje:viaje_id(*, profiles(nombre, apellido), vehiculos:vehiculo_codigo(*)), carga_items(*)')
+          .select('*, viaje:viaje_id(*, vehiculos:vehiculo_codigo(*)), carga_items(*)')
           .eq('id', widget.cargaId)
           .maybeSingle();
 
       if (res == null) throw Exception('Carga no encontrada');
+
+      // Fetch profile (chofer) separately to avoid foreign key join issues
+      final viaje = res['viaje'];
+      if (viaje != null && viaje['chofer_id'] != null) {
+        try {
+          final chofer = await Supabase.instance.client
+              .from('profiles')
+              .select('nombre, apellido')
+              .eq('id', viaje['chofer_id'])
+              .maybeSingle();
+          viaje['profiles'] = chofer;
+        } catch (e) {
+          print('Error loading chofer profile for remito: $e');
+        }
+      }
       
       setState(() {
         _carga = res;
@@ -54,6 +69,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
 
   Future<void> _shareWhatsApp() async {
     final code = _carga?['carga_codigo'] ?? 'S/C';
+    final remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
     final viaje = _carga?['viaje']?['viaje_codigo'] ?? 'S/V';
     final chofer = '${_carga?['viaje']?['profiles']?['nombre'] ?? ''} ${_carga?['viaje']?['profiles']?['apellido'] ?? ''}'.trim();
     
@@ -63,6 +79,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     }
 
     final String text = '* GeoLogística - Remito de Carga *\n\n'
+        'Remito Nro: $remitoCode\n'
         'ID Carga: $code\n'
         'Viaje: $viaje\n'
         'Chofer: $chofer\n'
@@ -81,6 +98,8 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
   Future<Uint8List> _generatePdfBytes() async {
     final chofer = '${_carga?['viaje']?['profiles']?['nombre'] ?? ''} ${_carga?['viaje']?['profiles']?['apellido'] ?? ''}'.trim();
     final String updatedAtDate = _carga?['updated_at'] ?? DateTime.now().toIso8601String();
+    final String code = _carga?['carga_codigo'] ?? 'S/C';
+    final String remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
 
     Uint8List? logoBytes;
     try {
@@ -91,7 +110,8 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     }
 
     return await PdfInvoiceGenerator.generateCargaManifestPDF(
-      cargaCodigo: _carga?['carga_codigo'] ?? 'S/C',
+      cargaCodigo: code,
+      remitoCodigo: remitoCode,
       viajeCodigo: _carga?['viaje']?['viaje_codigo'] ?? 'S/V',
       choferNombre: chofer,
       vehiculoCodigo: _carga?['viaje']?['vehiculo_codigo'] ?? 'S/D',
@@ -129,8 +149,9 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_error != null) return Scaffold(appBar: AppBar(), body: Center(child: Text(_error!)));
-
+    
     final code = _carga?['carga_codigo'] ?? 'S/C';
+    final remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
     final via = _carga?['viaje']?['viaje_codigo'] ?? 'S/V';
 
     return Scaffold(
@@ -161,13 +182,14 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('COMPROBANTE DIGITAL', style: TextStyle(color: DesignTokens.secondary, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1)),
-                          Text(code, style: DesignTokens.headlineStyle().copyWith(fontSize: 24)),
+                          Text(remitoCode, style: DesignTokens.headlineStyle().copyWith(fontSize: 24)),
                         ],
                       ),
                       const Icon(Icons.qr_code_2, size: 48, color: DesignTokens.primary),
                     ],
                   ),
                   const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider()),
+                  _infoRow('Número de Carga', code),
                   _infoRow('Viaje', via),
                   _infoRow('Fecha', DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(_carga?['updated_at'] ?? DateTime.now().toIso8601String()))),
                   _infoRow('Vehículo', _carga?['viaje']?['vehiculo_codigo'] ?? 'S/D'),

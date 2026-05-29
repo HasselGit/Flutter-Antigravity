@@ -149,8 +149,34 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   void _applyFilters() {
     setState(() {
       _filteredHistory = _cargasTerminadas.where((c) {
-        final codeMatch = (c['carga_codigo'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                          (c['viaje']?['viaje_codigo'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase());
+        final query = _searchQuery.toLowerCase();
+        
+        // 1. Numero de carga y numero de viaje
+        final cargaCode = (c['carga_codigo'] ?? '').toString().toLowerCase();
+        final viajeCode = (c['viaje']?['viaje_codigo'] ?? '').toString().toLowerCase();
+        
+        // 2. Vehiculo
+        final vehiculo = (c['viaje']?['vehiculo_codigo'] ?? '').toString().toLowerCase();
+        
+        // 3. Numero de remito: Ej. PI-1 if carga_codigo is Carga-1 (we replace "carga-" with "pi-")
+        final remitoCode = cargaCode.replaceAll('carga-', 'pi-');
+        
+        // 4. Productos
+        bool productMatch = false;
+        final items = c['carga_items'] as List? ?? [];
+        for (var item in items) {
+          final prodCode = (item['producto_codigo'] ?? '').toString().toLowerCase();
+          if (prodCode.contains(query)) {
+            productMatch = true;
+            break;
+          }
+        }
+        
+        final matchesSearch = cargaCode.contains(query) ||
+                              viajeCode.contains(query) ||
+                              vehiculo.contains(query) ||
+                              remitoCode.contains(query) ||
+                              productMatch;
         
         bool dateMatch = true;
         if (_selectedDate != null) {
@@ -160,7 +186,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       updated.month == _selectedDate!.month && 
                       updated.day == _selectedDate!.day;
         }
-        return codeMatch && dateMatch;
+        return matchesSearch && dateMatch;
       }).toList();
     });
   }
@@ -934,7 +960,6 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   children: [
                     _metricCol('PESO TOTAL', '${totalKg.round()} Kg', Icons.scale),
                     _metricCol('TAMBORES', '$totalTambores un.', Icons.inventory_2),
-                    _metricCol('UNIDAD', v['vehiculo_codigo'] ?? 'S/D', Icons.local_shipping),
                   ],
                 ),
 
@@ -1008,30 +1033,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   const Text('⚠️ Excede capacidad del vehículo', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
 
-                const SizedBox(height: 14),
+                if (type != 'viaje_sin_carga') ...[
+                  const SizedBox(height: 14),
 
-                // Botones de acción
-                Row(
-                  children: [
-                    if (type == 'viaje_sin_carga')
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAddCargaDialog(preselectedViajeId: v['id']?.toString()),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: DesignTokens.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            elevation: 0,
-                          ),
-                          icon: const Icon(Icons.add_box_rounded, size: 16, color: DesignTokens.accent),
-                          label: const Text(
-                            'CREAR CARGA',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ),
-                      )
-                    else ...[
+                  // Botones de acción
+                  Row(
+                    children: [
                       // Botón secundario: Editar Carga
                       Expanded(
                         child: OutlinedButton.icon(
@@ -1072,9 +1079,9 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                           ),
                         ),
                       ),
-                    ]
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1341,7 +1348,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                         final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
 
                         try {
-                          final humanId = 'CAR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                          int count = 0;
+                          try {
+                            final list = await Supabase.instance.client
+                                .from('cargas')
+                                .select('id');
+                            count = list.length;
+                          } catch (e) {
+                            print('DepositoHome: Error counting charges: $e');
+                          }
+                          final humanId = 'Carga-${count + 1}';
                           final cargaResp = await Supabase.instance.client.from('cargas').insert({
                             'viaje_id': viaje['id'],
                             'carga_codigo': humanId,

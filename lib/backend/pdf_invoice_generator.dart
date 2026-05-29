@@ -771,6 +771,7 @@ class PdfInvoiceGenerator {
   // 7. Generate Professional PDF for Warehouse Load Manifests (remito_carga_page.dart)
   static Future<Uint8List> generateCargaManifestPDF({
     required String cargaCodigo,
+    required String remitoCodigo,
     required String viajeCodigo,
     required String choferNombre,
     required String vehiculoCodigo,
@@ -796,9 +797,9 @@ class PdfInvoiceGenerator {
 
               // Metadata card
               _buildMetadataCard([
-                ['Código de Manifiesto:', cargaCodigo, 'Fecha de Despacho:', dateStr],
-                ['Código de Viaje:', viajeCodigo, 'Vehículo / Patente:', vehiculoCodigo],
-                ['Chofer Asignado:', choferNombre, 'Estado de Carga:', 'DESPACHADA / CONFIRMADA'],
+                ['Número de Remito:', remitoCodigo, 'Fecha de Despacho:', dateStr],
+                ['Número de Carga:', cargaCodigo, 'Código de Viaje:', viajeCodigo],
+                ['Vehículo / Patente:', vehiculoCodigo, 'Chofer Asignado:', choferNombre],
               ]),
 
               pw.SizedBox(height: 25),

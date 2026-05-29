@@ -372,26 +372,14 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                         'Seguimiento Satelital',
                         'Monitoreo de camiones en tiempo real',
                         () async {
-                          // Try forcing the specific Fleet app using Android Intent scheme
-                          final intentUrl = Uri.parse('intent://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59#Intent;scheme=http;package=com.gpsgate.fleet;end;');
-                          final fallbackUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
+                          final satelitalUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                           try {
-                            // Intenta abrir el intent (forzando la app Fleet)
-                            final launched = await launchUrl(intentUrl, mode: LaunchMode.externalNonBrowserApplication);
-                            if (!launched) {
-                              // Si falla (ej: iOS o app no instalada), usa el fallback
-                              await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
-                            }
+                            await launchUrl(satelitalUrl, mode: LaunchMode.externalApplication);
                           } catch (e) {
-                            // Fallback seguro si la plataforma no soporta intent://
-                            try {
-                              await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
-                            } catch (e2) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error al abrir sitio: $e2')),
-                                );
-                              }
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error al abrir sitio satelital: $e')),
+                              );
                             }
                           }
                         },

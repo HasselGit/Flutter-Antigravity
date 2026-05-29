@@ -941,8 +941,19 @@ class SupabaseService {
     String? depositoOrigen,
   }) async {
     final String cleanCreatedBy = createdBy.isNotEmpty ? createdBy : 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
+    
+    // Count existing charges to generate a human-readable consecutive code (Carga-1, Carga-2, ...)
+    int count = 0;
+    try {
+      final list = await _client.from('cargas').select('id');
+      count = list.length;
+    } catch (e) {
+      print('SupabaseService: Error counting charges for code generation: $e');
+    }
+    final String humanId = 'Carga-${count + 1}';
+
     final Map<String, dynamic> insertData = {
-      'carga_codigo': 'CARGA-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+      'carga_codigo': humanId,
       'viaje_id': viajeId,
       'estado': AppStates.pendiente,
       'created_by': cleanCreatedBy,
