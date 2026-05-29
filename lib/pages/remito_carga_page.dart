@@ -69,7 +69,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
 
   Future<void> _shareWhatsApp() async {
     final code = _carga?['carga_codigo'] ?? 'S/C';
-    final remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
+    final remitoCode = code.replaceAll(RegExp(r'carga-', caseSensitive: false), 'PI-').replaceAll(RegExp(r'car-', caseSensitive: false), 'PI-');
     final viaje = _carga?['viaje']?['viaje_codigo'] ?? 'S/V';
     final chofer = '${_carga?['viaje']?['profiles']?['nombre'] ?? ''} ${_carga?['viaje']?['profiles']?['apellido'] ?? ''}'.trim();
     
@@ -99,7 +99,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     final chofer = '${_carga?['viaje']?['profiles']?['nombre'] ?? ''} ${_carga?['viaje']?['profiles']?['apellido'] ?? ''}'.trim();
     final String updatedAtDate = _carga?['updated_at'] ?? DateTime.now().toIso8601String();
     final String code = _carga?['carga_codigo'] ?? 'S/C';
-    final String remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
+    final String remitoCode = code.replaceAll(RegExp(r'carga-', caseSensitive: false), 'PI-').replaceAll(RegExp(r'car-', caseSensitive: false), 'PI-');
 
     Uint8List? logoBytes;
     try {
@@ -151,7 +151,7 @@ class _RemitoCargaPageWidgetState extends State<RemitoCargaPageWidget> {
     if (_error != null) return Scaffold(appBar: AppBar(), body: Center(child: Text(_error!)));
     
     final code = _carga?['carga_codigo'] ?? 'S/C';
-    final remitoCode = code.replaceAll(RegExp(r'(?i)carga-'), 'PI-').replaceAll(RegExp(r'(?i)car-'), 'PI-');
+    final remitoCode = code.replaceAll(RegExp(r'carga-', caseSensitive: false), 'PI-').replaceAll(RegExp(r'car-', caseSensitive: false), 'PI-');
     final via = _carga?['viaje']?['viaje_codigo'] ?? 'S/V';
 
     return Scaffold(
