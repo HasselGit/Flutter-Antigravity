@@ -938,6 +938,46 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   ],
                 ),
 
+                // Barra de capacidad del camión
+                if (capKg > 0) ...[ 
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'CAPACIDAD DEL CAMIÓN',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: DesignTokens.primary.withOpacity(0.4), letterSpacing: 0.5),
+                      ),
+                      Text(
+                        excede
+                          ? '⚠️ EXCEDIDO ${(totalKg - capKg).round()} kg'
+                          : 'Libre: ${(capKg - totalKg).round()} kg',
+                        style: TextStyle(
+                          fontSize: 9, fontWeight: FontWeight.bold,
+                          color: excede ? Colors.orange : const Color(0xFF1A6B43),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: (totalKg / capKg).clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: DesignTokens.primary.withOpacity(0.06),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        excede ? Colors.orange : const Color(0xFF1A6B43),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${(totalKg / capKg * 100).clamp(0.0, 150.0).round()}% de ${capKg.round()} kg',
+                    style: TextStyle(fontSize: 9, color: DesignTokens.onSurfaceVariant.withOpacity(0.5)),
+                  ),
+                ],
+
                 // Productos
                 if (aggregatedItems.isNotEmpty) ...[
                   const SizedBox(height: 12),
@@ -1207,8 +1247,22 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   void _showAddCargaDialog({String? preselectedViajeId}) {
     String? selectedViajeId = preselectedViajeId;
     String? selectedProductoCodigo;
-    String? selectedDepositoOrigen = 'Parque Industrial';
     final qtyController = TextEditingController();
+    List<Map<String, dynamic>> allViajes = List.from(_viajesPlanificados);
+
+    // También cargamos viajes pendientes de la BD por si hay más
+    Future<void> refreshViajes(setModalState) async {
+      try {
+        final raw = await Supabase.instance.client
+            .from('viajes')
+            .select('id, viaje_codigo, vehiculo_codigo, estado')
+            .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
+            .order('fecha', ascending: true);
+        if (raw is List && raw.isNotEmpty) {
+          setModalState(() => allViajes = List<Map<String, dynamic>>.from(raw));
+        }
+      } catch (_) {}
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1217,6 +1271,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
+          // Load viajes on first build
+          if (allViajes.isEmpty) {
+            refreshViajes(setModalState);
+          }
+
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
             child: SingleChildScrollView(
@@ -1226,34 +1285,39 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                 children: [
                   Text('Asignar Carga a Viaje', style: DesignTokens.headlineStyle(color: DesignTokens.primary).copyWith(fontSize: 20)),
                   const SizedBox(height: 20),
+                  if (allViajes.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else
                   DropdownButtonFormField<String>(
-                    value: selectedViajeId,
+                    value: selectedViajeId != null && allViajes.any((v) => v['id']?.toString() == selectedViajeId)
+                        ? selectedViajeId : null,
                     decoration: const InputDecoration(labelText: 'Seleccionar Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
-                    items: _viajesPlanificados.map((v) => DropdownMenuItem<String>(
+                    hint: const Text('Seleccionar viaje...'),
+                    items: allViajes.map((v) => DropdownMenuItem<String>(
                       value: v['id']?.toString(),
-                      child: Text(v['viaje_codigo'] ?? 'S/C'),
+                      child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'}'),
                     )).toList(),
                     onChanged: (v) => setModalState(() => selectedViajeId = v),
                   ),
                   const SizedBox(height: 16),
+                  if (_productos.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('Cargando productos...', style: TextStyle(color: Colors.grey)),
+                    )
+                  else
                   DropdownButtonFormField<String>(
                     value: selectedProductoCodigo,
                     decoration: const InputDecoration(labelText: 'Producto', prefixIcon: Icon(Icons.inventory_2_rounded)),
+                    hint: const Text('Seleccionar producto...'),
                     items: _productos.map((p) => DropdownMenuItem<String>(
                       value: p['codigo']?.toString(),
-                      child: Text(p['descripcion'] ?? 'S/N'),
+                      child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? p['codigo'] ?? 'S/N'}'),
                     )).toList(),
                     onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: selectedDepositoOrigen,
-                    decoration: const InputDecoration(labelText: 'Depósito Origen', prefixIcon: Icon(Icons.warehouse_rounded)),
-                    items: const [
-                      DropdownMenuItem(value: 'Parque Industrial', child: Text('Parque Industrial')),
-                      DropdownMenuItem(value: 'Depósito Huinca', child: Text('Depósito Huinca')),
-                    ],
-                    onChanged: (v) => setModalState(() => selectedDepositoOrigen = v),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -1269,8 +1333,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       onPressed: () async {
                         if (selectedViajeId == null || selectedProductoCodigo == null || qtyController.text.isEmpty) return;
                         
-                        final viaje = _viajesPlanificados.firstWhere((v) => v['id']?.toString() == selectedViajeId);
-                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo);
+                        final viaje = allViajes.firstWhere(
+                          (v) => v['id']?.toString() == selectedViajeId,
+                          orElse: () => _viajesPlanificados.firstWhere((v) => v['id']?.toString() == selectedViajeId, orElse: () => {}),
+                        );
+                        if (viaje.isEmpty) return;
+                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
 
                         try {
                           final humanId = 'CAR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';

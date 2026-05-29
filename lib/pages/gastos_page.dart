@@ -19,7 +19,9 @@ class GastosPageWidget extends StatefulWidget {
 
 class _GastosPageWidgetState extends State<GastosPageWidget> {
   List<Map<String, dynamic>> _gastos = [];
+  List<Map<String, dynamic>> _viajesParaGasto = [];
   bool _loading = true;
+  bool _savingGasto = false;
   String _searchQuery = '';
 
   List<Map<String, dynamic>> get _filteredGastos {
@@ -42,9 +44,16 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
   Future<void> _fetchData() async {
     final data = await SupabaseService().getGastos();
+    final viajesRaw = await Supabase.instance.client
+        .from('viajes')
+        .select('id, viaje_codigo, estado')
+        .filter('estado', 'in', ['En Proceso', 'En Curso', 'Terminado'])
+        .order('fecha', ascending: false)
+        .limit(40);
     if (mounted) {
       setState(() {
         _gastos = data;
+        _viajesParaGasto = List<Map<String, dynamic>>.from(viajesRaw);
         _loading = false;
       });
     }
@@ -216,10 +225,8 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     DateTime selectedFecha = DateTime.now();
     String? selectedViajeId;
     XFile? pickedFile;
+    bool savingGasto = false;
 
-    // Local list of trips for the dropdown
-    List<Map<String, dynamic>> availableTrips = [];
-    bool _savingGasto = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -227,22 +234,6 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
-          // Initialize trips if empty
-          if (availableTrips.isEmpty) {
-            Supabase.instance.client
-                .from('viajes')
-                .select('id, viaje_codigo, estado')
-                .filter('estado', 'in', ['En Proceso', 'En Curso', 'Terminado'])
-                .order('fecha', ascending: false)
-                .limit(40)
-                .then((data) {
-              if (ctx.mounted) {
-                setModalState(() {
-                  availableTrips = List<Map<String, dynamic>>.from(data);
-                });
-              }
-            });
-          }
 
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, top: 24, left: 24, right: 24),
@@ -346,7 +337,7 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: DesignTokens.secondary.withOpacity(0.1), width: 2)),
                     ),
                     hint: const Text('Seleccione un viaje...'),
-                    items: availableTrips.map((v) => DropdownMenuItem<String>(
+                    items: _viajesParaGasto.map((v) => DropdownMenuItem<String>(
                       value: v['id']?.toString(),
                       child: Text('${v['viaje_codigo'] ?? 'S/C'} (${v['estado'] ?? ''})'),
                     )).toList(),
@@ -520,12 +511,12 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                      width: double.infinity,
                      height: 56,
                      child: ElevatedButton(
-                       onPressed: _savingGasto ? null : () async {
+                       onPressed: savingGasto ? null : () async {
                          if (amountController.text.isEmpty) {
                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
                            return;
                          }
-                         setModalState(() => _savingGasto = true);
+                         setModalState(() => savingGasto = true);
                          try {
                            String? publicUrl;
                            if (pickedFile != null) {
@@ -580,11 +571,11 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                             ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
                           }
                         } finally {
-                          if (ctx.mounted) setModalState(() => _savingGasto = false);
+                          if (ctx.mounted) setModalState(() => savingGasto = false);
                         }
                       },
                       style: DesignTokens.primaryButtonStyle,
-                      child: _savingGasto 
+                      child: savingGasto 
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('GUARDAR REGISTRO'),
                     ),

@@ -161,9 +161,18 @@ class _RutasPageWidgetState extends State<RutasPageWidget> {
       } else {
         final items = p['parada_items'] as List? ?? [];
         for (final item in items) {
-          final kg = double.tryParse(item['peso_kg']?.toString() ?? '') ?? 0;
-          final qty = (item['cantidad'] as num?)?.toDouble() ?? 1;
-          if (kg > 0) stopKg += kg * qty;
+          final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+          final double qty = (item['cantidad'] as num?)?.toDouble() ?? 0;
+          // Usar peso por unidad segun tipo de producto
+          if (prod == 'TCM' || prod.contains('TAMBOR') || prod.contains('MIEL')) {
+            stopKg += qty * 300; // Tambor con miel ~300 kg
+          } else if (prod.startsWith('TV') || prod.startsWith('TE') || prod.contains('VACIO') || prod.contains('VACÍO')) {
+            stopKg += qty * 20; // Tambor vacio ~20 kg
+          } else if (prod == 'AZ' || prod.contains('AZUCAR')) {
+            stopKg += qty * 50; // Bolsa azucar 50 kg
+          } else if (qty > 0) {
+            stopKg += qty; // fallback: cantidad directamente
+          }
         }
       }
       totalKg += stopKg;
