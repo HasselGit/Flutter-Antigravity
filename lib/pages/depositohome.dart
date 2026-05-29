@@ -202,7 +202,24 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     final Map<String, dynamic> viaje = item['viaje'];
     final Map<String, dynamic>? carga = item['carga'];
 
+    // Obtener peso unitario del catálogo dinámicamente
+    double getProductWeight(String code) {
+      final p = _productos.firstWhere(
+        (prod) => prod['codigo']?.toString().toUpperCase() == code.toUpperCase(),
+        orElse: () => {},
+      );
+      if (p.isNotEmpty && p['peso_unit_kg'] != null) {
+        return (p['peso_unit_kg'] as num).toDouble();
+      }
+      // Fallbacks estándar
+      if (code == 'TCM' || code.contains('TAMBOR')) return 300.0;
+      if ((code.startsWith('T') && code != 'TV' && code != 'TE') || code.contains('VACIO') || code.contains('VACÍO')) return 20.0;
+      if (code == 'AZ') return 50.0;
+      return 1.0;
+    }
+
     if (type == 'carga_activa' && carga != null) {
+      // 1. Carga Inicial en Depósito
       final items = carga['carga_items'] as List? ?? [];
       for (var item in items) {
         final double cant = (item['cantidad'] ?? 0).toDouble();
@@ -210,18 +227,51 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         if (prod.isNotEmpty) {
           aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
         }
+        final double factor = getProductWeight(prod);
+        totalKg += cant * factor;
+        
         if (prod == 'TCM' || prod.contains('TAMBOR')) {
-          totalKg += cant * 300;
           totalTambores += cant.toInt();
-        } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
-            prod.contains('VACIO') ||
-            prod.contains('VACÍO')) {
-          totalKg += cant * 20;
+        } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') || prod.contains('VACIO') || prod.contains('VACÍO')) {
           totalTambores += cant.toInt();
-        } else if (prod == 'AZ') {
-          totalKg += cant * 50;
-        } else {
-          totalKg += cant;
+        }
+      }
+
+      // 2. Ajuste dinámico por paradas finalizadas (restar entregas, sumar recolecciones)
+      final paradas = viaje['paradas'] as List? ?? [];
+      for (var p in paradas) {
+        if (p['estado'] == 'Terminado') {
+          final String paradaTipo = p['tipo'] ?? '';
+          final items = p['parada_items'] as List? ?? [];
+          for (var item in items) {
+            final double cant = (item['cantidad'] ?? 0).toDouble();
+            final String prod = (item['producto_codigo'] ?? '').toString().toUpperCase();
+            final double factor = getProductWeight(prod);
+            final double itemWeight = cant * factor;
+
+            if (paradaTipo == 'Distribución') {
+              totalKg -= itemWeight;
+              if (prod.isNotEmpty) {
+                aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) - cant;
+                if (aggregatedItems[prod]! <= 0) aggregatedItems.remove(prod);
+              }
+              if (prod == 'TCM' || prod.contains('TAMBOR')) {
+                totalTambores -= cant.toInt();
+              } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') || prod.contains('VACIO') || prod.contains('VACÍO')) {
+                totalTambores -= cant.toInt();
+              }
+            } else if (paradaTipo == 'Recolección') {
+              totalKg += itemWeight;
+              if (prod.isNotEmpty) {
+                aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
+              }
+              if (prod == 'TCM' || prod.contains('TAMBOR')) {
+                totalTambores += cant.toInt();
+              } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') || prod.contains('VACIO') || prod.contains('VACÍO')) {
+                totalTambores += cant.toInt();
+              }
+            }
+          }
         }
       }
     } else {
@@ -233,26 +283,21 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           if (prod.isNotEmpty) {
             aggregatedItems[prod] = (aggregatedItems[prod] ?? 0) + cant;
           }
+          final double factor = getProductWeight(prod);
+          totalKg += cant * factor;
+          
           if (prod == 'TCM' || prod.contains('TAMBOR')) {
-            totalKg += cant * 300;
             totalTambores += cant.toInt();
-          } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') ||
-              prod.contains('VACIO') ||
-              prod.contains('VACÍO')) {
-            totalKg += cant * 20;
+          } else if ((prod.startsWith('T') && prod != 'TV' && prod != 'TE') || prod.contains('VACIO') || prod.contains('VACÍO')) {
             totalTambores += cant.toInt();
-          } else if (prod == 'AZ') {
-            totalKg += cant * 50;
-          } else {
-            totalKg += cant;
           }
         }
       }
     }
 
     return {
-      'totalKg': totalKg,
-      'totalTambores': totalTambores,
+      'totalKg': totalKg.clamp(0.0, double.infinity),
+      'totalTambores': totalTambores.clamp(0, 9999),
       'aggregatedItems': aggregatedItems,
     };
   }
@@ -1257,15 +1302,84 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     final qtyController = TextEditingController();
     List<Map<String, dynamic>> allViajes = List.from(_viajesPlanificados);
 
+    List<Map<String, dynamic>> plannedItems = [];
+    bool isLoadingPlanned = false;
+    bool autoLoadPlanned = true;
+    bool hasFetchedOnStartup = false;
+
+    // Obtener peso unitario del catálogo dinámicamente
+    double getProductWeight(String code) {
+      final p = _productos.firstWhere(
+        (prod) => prod['codigo']?.toString().toUpperCase() == code.toUpperCase(),
+        orElse: () => {},
+      );
+      if (p.isNotEmpty && p['peso_unit_kg'] != null) {
+        return (p['peso_unit_kg'] as num).toDouble();
+      }
+      if (code == 'TCM' || code.contains('TAMBOR')) return 300.0;
+      if ((code.startsWith('T') && code != 'TV' && code != 'TE') || code.contains('VACIO') || code.contains('VACÍO')) return 20.0;
+      if (code == 'AZ') return 50.0;
+      return 1.0;
+    }
+
+    Future<void> fetchPlannedItems(String viajeId, Function setModalState) async {
+      setModalState(() {
+        isLoadingPlanned = true;
+        plannedItems = [];
+      });
+      try {
+        final res = await Supabase.instance.client
+            .from('paradas')
+            .select('tipo, parada_items(producto_codigo, cantidad, unidad)')
+            .eq('viaje_id', viajeId)
+            .eq('tipo', 'Distribución');
+        
+        final Map<String, double> consolidated = {};
+        final Map<String, String> units = {};
+        
+        for (var p in res) {
+          final items = p['parada_items'] as List? ?? [];
+          for (var it in items) {
+            final String prod = (it['producto_codigo'] ?? '').toString().trim().toUpperCase();
+            final double cant = (it['cantidad'] ?? 0).toDouble();
+            final String unit = (it['unidad'] ?? 'UN').toString().split('|')[0];
+            if (prod.isNotEmpty && cant > 0) {
+              consolidated[prod] = (consolidated[prod] ?? 0) + cant;
+              units[prod] = unit;
+            }
+          }
+        }
+        
+        final List<Map<String, dynamic>> list = [];
+        consolidated.forEach((prod, cant) {
+          list.add({
+            'producto_codigo': prod,
+            'cantidad': cant,
+            'unidad': units[prod] ?? 'UN',
+          });
+        });
+        
+        setModalState(() {
+          plannedItems = list;
+          isLoadingPlanned = false;
+        });
+      } catch (e) {
+        print('Error fetching planned items: $e');
+        setModalState(() {
+          isLoadingPlanned = false;
+        });
+      }
+    }
+
     // También cargamos viajes pendientes de la BD por si hay más
     Future<void> refreshViajes(setModalState) async {
       try {
         final raw = await Supabase.instance.client
             .from('viajes')
-            .select('id, viaje_codigo, vehiculo_codigo, estado')
+            .select('id, viaje_codigo, vehiculo_codigo, estado, vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
             .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
             .order('fecha', ascending: true);
-        if (raw is List && raw.isNotEmpty) {
+        if (raw.isNotEmpty) {
           setModalState(() => allViajes = List<Map<String, dynamic>>.from(raw));
         }
       } catch (_) {}
@@ -1281,6 +1395,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           // Load viajes on first build
           if (allViajes.isEmpty) {
             refreshViajes(setModalState);
+          }
+
+          if (!hasFetchedOnStartup && selectedViajeId != null) {
+            hasFetchedOnStartup = true;
+            Future.microtask(() => fetchPlannedItems(selectedViajeId!, setModalState));
           }
 
           return Padding(
@@ -1307,9 +1426,95 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       value: v['id']?.toString(),
                       child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'}'),
                     )).toList(),
-                    onChanged: (v) => setModalState(() => selectedViajeId = v),
+                    onChanged: (v) {
+                      setModalState(() {
+                        selectedViajeId = v;
+                      });
+                      if (v != null) {
+                        fetchPlannedItems(v, setModalState);
+                      }
+                    },
                   ),
                   const SizedBox(height: 16),
+                  
+                  if (isLoadingPlanned)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (plannedItems.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: autoLoadPlanned,
+                          activeColor: DesignTokens.primary,
+                          onChanged: (val) {
+                            setModalState(() {
+                              autoLoadPlanned = val ?? true;
+                            });
+                          },
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Pre-poblar carga con ítems planificados de Distribución',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: DesignTokens.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: DesignTokens.primary.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: DesignTokens.primary.withOpacity(0.1)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Ítems planificados detectados:',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: plannedItems.map((item) {
+                              final prod = item['producto_codigo'] ?? '';
+                              final cant = item['cantidad'] ?? 0;
+                              final unit = item['unidad'] ?? 'uni';
+                              return Chip(
+                                label: Text(
+                                  '$prod: ${cant.toStringAsFixed(0)} $unit',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: DesignTokens.primary,
+                                  ),
+                                ),
+                                backgroundColor: DesignTokens.secondary.withOpacity(0.3),
+                                padding: EdgeInsets.zero,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   if (_productos.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
@@ -1318,8 +1523,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   else
                   DropdownButtonFormField<String>(
                     value: selectedProductoCodigo,
-                    decoration: const InputDecoration(labelText: 'Producto', prefixIcon: Icon(Icons.inventory_2_rounded)),
-                    hint: const Text('Seleccionar producto...'),
+                    decoration: const InputDecoration(labelText: 'Producto Adicional', prefixIcon: Icon(Icons.inventory_2_rounded)),
+                    hint: const Text('Seleccionar producto adicional...'),
                     items: _productos.map((p) => DropdownMenuItem<String>(
                       value: p['codigo']?.toString(),
                       child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? p['codigo'] ?? 'S/N'}'),
@@ -1330,7 +1535,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   TextField(
                     controller: qtyController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Cantidad', prefixIcon: Icon(Icons.numbers_rounded)),
+                    decoration: const InputDecoration(labelText: 'Cantidad Adicional', prefixIcon: Icon(Icons.numbers_rounded)),
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
@@ -1338,14 +1543,78 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     height: 56,
                     child: ElevatedButton(
                       onPressed: () async {
-                        if (selectedViajeId == null || selectedProductoCodigo == null || qtyController.text.isEmpty) return;
+                        if (selectedViajeId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Por favor, selecciona un viaje.'), backgroundColor: Colors.orangeAccent),
+                          );
+                          return;
+                        }
                         
                         final viaje = allViajes.firstWhere(
                           (v) => v['id']?.toString() == selectedViajeId,
                           orElse: () => _viajesPlanificados.firstWhere((v) => v['id']?.toString() == selectedViajeId, orElse: () => {}),
                         );
                         if (viaje.isEmpty) return;
-                        final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
+
+                        // Construir lista de ítems a insertar
+                        final List<Map<String, dynamic>> itemsToInsert = [];
+                        double totalProjectedWeight = 0.0;
+
+                        if (autoLoadPlanned) {
+                          for (var item in plannedItems) {
+                            final String prod = item['producto_codigo'] ?? '';
+                            final double cant = (item['cantidad'] ?? 0.0).toDouble();
+                            final String unit = item['unidad'] ?? 'UN';
+                            if (cant > 0) {
+                              itemsToInsert.add({
+                                'producto_codigo': prod,
+                                'cantidad': cant,
+                                'unidad': unit,
+                              });
+                              totalProjectedWeight += cant * getProductWeight(prod);
+                            }
+                          }
+                        }
+
+                        if (selectedProductoCodigo != null && qtyController.text.isNotEmpty) {
+                          final double customQty = double.tryParse(qtyController.text) ?? 0.0;
+                          if (customQty > 0) {
+                            final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
+                            final existingIndex = itemsToInsert.indexWhere((it) => it['producto_codigo'] == selectedProductoCodigo);
+                            if (existingIndex != -1) {
+                              itemsToInsert[existingIndex]['cantidad'] += customQty;
+                            } else {
+                              itemsToInsert.add({
+                                'producto_codigo': selectedProductoCodigo,
+                                'cantidad': customQty,
+                                'unidad': prod['unidad'] ?? 'UN',
+                              });
+                            }
+                            totalProjectedWeight += customQty * getProductWeight(selectedProductoCodigo!);
+                          }
+                        }
+
+                        if (itemsToInsert.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Por favor, selecciona al menos un ítem o activa la pre-población.'),
+                              backgroundColor: Colors.orangeAccent,
+                            ),
+                          );
+                          return;
+                        }
+
+                        // Validar Peso Máximo del Camión
+                        final double capKg = (viaje['vehiculos']?['capacidad_kg'] ?? 0).toDouble();
+                        if (capKg > 0 && totalProjectedWeight > capKg) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: El peso proyectado (${totalProjectedWeight.toStringAsFixed(0)} kg) supera la capacidad del camión (${capKg.toStringAsFixed(0)} kg).'),
+                              backgroundColor: Colors.orangeAccent,
+                            ),
+                          );
+                          return;
+                        }
 
                         try {
                           int count = 0;
@@ -1358,19 +1627,23 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             print('DepositoHome: Error counting charges: $e');
                           }
                           final humanId = 'Carga-${count + 1}';
+                          
+                          // Crear la Carga principal
                           final cargaResp = await Supabase.instance.client.from('cargas').insert({
                             'viaje_id': viaje['id'],
                             'carga_codigo': humanId,
                             'estado': AppStates.pendiente,
                           }).select('id').single();
-                          
+
+                          // Asignar el ID de la carga recién creada a cada uno de los ítems
+                          for (var item in itemsToInsert) {
+                            item['carga_id'] = cargaResp['id'];
+                          }
+
                           final messenger = ScaffoldMessenger.of(context);
-                          await Supabase.instance.client.from('carga_items').insert({
-                            'carga_id': cargaResp['id'],
-                            'producto_codigo': prod['codigo'] ?? prod['descripcion'],
-                            'cantidad': double.tryParse(qtyController.text) ?? 0,
-                            'unidad': prod['unidad'] ?? 'UN',
-                          });
+                          
+                          // Insertar todos los carga_items
+                          await Supabase.instance.client.from('carga_items').insert(itemsToInsert);
 
                           if (ctx.mounted) {
                             Navigator.pop(ctx);

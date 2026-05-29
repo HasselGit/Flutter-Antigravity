@@ -55,6 +55,150 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
     }
   }
 
+  double _getProductWeight(String code) {
+    final p = _productos.firstWhere(
+      (prod) => prod['codigo']?.toString().toUpperCase() == code.toUpperCase(),
+      orElse: () => {},
+    );
+    if (p.isNotEmpty && p['peso_unit_kg'] != null) {
+      return (p['peso_unit_kg'] as num).toDouble();
+    }
+    // Fallbacks estándar
+    if (code == 'TCM' || code.contains('TAMBOR')) return 300.0;
+    if ((code.startsWith('T') && code != 'TV' && code != 'TE') || code.contains('VACIO') || code.contains('VACÍO')) return 20.0;
+    if (code == 'AZ') return 50.0;
+    return 1.0;
+  }
+
+  Future<double> _calcularStockEnTransito(String productoCodigo) async {
+    if (widget.viajeId == null || widget.viajeId!.isEmpty) return 0.0;
+
+    double stock = 0.0;
+
+    // 1. Sumar stock inicial cargado desde Cargas
+    try {
+      final cargas = await Supabase.instance.client
+          .from('cargas')
+          .select('carga_items(producto_codigo, cantidad)')
+          .eq('viaje_id', widget.viajeId!)
+          .or('estado.eq.Terminado,estado.eq.Terminada');
+          
+      for (var c in cargas) {
+        final items = c['carga_items'] as List? ?? [];
+        for (var it in items) {
+          if (it['producto_codigo'].toString().trim().toUpperCase() == productoCodigo.toUpperCase()) {
+            stock += (it['cantidad'] ?? 0).toDouble();
+          }
+        }
+      }
+    } catch (e) {
+      print('Error al calcular stock inicial de carga: $e');
+    }
+
+    // 2. Ajustar por paradas finalizadas (restar entregas, sumar recolecciones)
+    try {
+      final paradas = await Supabase.instance.client
+          .from('paradas')
+          .select('tipo, estado, parada_items(producto_codigo, cantidad)')
+          .eq('viaje_id', widget.viajeId!)
+          .eq('estado', 'Terminado');
+
+      for (var p in paradas) {
+        final String tipo = p['tipo'] ?? '';
+        final items = p['parada_items'] as List? ?? [];
+        for (var it in items) {
+          if (it['producto_codigo'].toString().trim().toUpperCase() == productoCodigo.toUpperCase()) {
+            final double cant = (it['cantidad'] ?? 0).toDouble();
+            if (tipo == 'Distribución') {
+              stock -= cant;
+            } else if (tipo == 'Recolección') {
+              stock += cant;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error al calcular ajustes de paradas para stock: $e');
+    }
+
+    return stock;
+  }
+
+  Future<bool> _validarCapacidadCamion(String productoCodigo, double cantidadAAnadir, String tipoMovimiento) async {
+    if (widget.viajeId == null || widget.viajeId!.isEmpty) return true; // Si no hay viaje, no hay límite
+
+    try {
+      // 1. Obtener la capacidad del vehículo
+      final viaje = await Supabase.instance.client
+          .from('viajes')
+          .select('vehiculos:vehiculo_codigo(capacidad_kg)')
+          .eq('id', widget.viajeId!)
+          .maybeSingle();
+      if (viaje == null) return true;
+      final double capKg = (viaje['vehiculos']?['capacidad_kg'] ?? 0).toDouble();
+      if (capKg <= 0) return true; // Sin límite definido
+
+      // 2. Calcular el peso actual del camión usando la fórmula dinámica
+      double pesoActual = 0.0;
+
+      // Carga inicial
+      final cargas = await Supabase.instance.client
+          .from('cargas')
+          .select('carga_items(producto_codigo, cantidad)')
+          .eq('viaje_id', widget.viajeId!)
+          .or('estado.eq.Terminado,estado.eq.Terminada');
+          
+      for (var c in cargas) {
+        final items = c['carga_items'] as List? ?? [];
+        for (var it in items) {
+          final String prod = it['producto_codigo'].toString().trim().toUpperCase();
+          final double cant = (it['cantidad'] ?? 0).toDouble();
+          pesoActual += cant * _getProductWeight(prod);
+        }
+      }
+
+      // Paradas finalizadas
+      final paradas = await Supabase.instance.client
+          .from('paradas')
+          .select('tipo, estado, parada_items(producto_codigo, cantidad)')
+          .eq('viaje_id', widget.viajeId!)
+          .eq('estado', 'Terminado');
+
+      for (var p in paradas) {
+        final String tipo = p['tipo'] ?? '';
+        final items = p['parada_items'] as List? ?? [];
+        for (var it in items) {
+          final String prod = it['producto_codigo'].toString().trim().toUpperCase();
+          final double cant = (it['cantidad'] ?? 0).toDouble();
+          final double itemWeight = cant * _getProductWeight(prod);
+
+          if (tipo == 'Distribución') {
+            pesoActual -= itemWeight;
+          } else if (tipo == 'Recolección') {
+            pesoActual += itemWeight;
+          }
+        }
+      }
+
+      // 3. Calcular el peso del nuevo ítem que se quiere agregar
+      final double nuevoPeso = cantidadAAnadir * _getProductWeight(productoCodigo);
+
+      double pesoProyectado = pesoActual;
+      if (tipoMovimiento == 'Recolección') {
+        pesoProyectado += nuevoPeso;
+      } else if (tipoMovimiento == 'Distribución') {
+        pesoProyectado -= nuevoPeso;
+      }
+
+      if (pesoProyectado > capKg) {
+        return false;
+      }
+    } catch (e) {
+      print('Error al validar capacidad del camión: $e');
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -204,13 +348,50 @@ class _AgregarItemWidgetState extends State<AgregarItemWidget> {
                 setState(() => _isSaving = true);
                 try {
                   if (widget.paradaId != null && _selectedProduct != null) {
-                    // 1. Insert Item
+                    final double qty = double.tryParse(_textController.text) ?? 0.0;
+                    if (qty <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Por favor, ingresá una cantidad válida.'), backgroundColor: Colors.orangeAccent),
+                      );
+                      setState(() => _isSaving = false);
+                      return;
+                    }
+
+                    // 1. Validar Stock en Tránsito si es Distribución
+                    if (_tipoMovimiento == 'Distribución') {
+                      final double stockDisponible = await _calcularStockEnTransito(_selectedProduct!);
+                      if (qty > stockDisponible) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: No hay suficiente stock en el camión. Disponible: ${stockDisponible.round()} unidades.'),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                        setState(() => _isSaving = false);
+                        return;
+                      }
+                    }
+
+                    // 2. Validar Capacidad del Camión
+                    final bool pesoValido = await _validarCapacidadCamion(_selectedProduct!, qty, _tipoMovimiento);
+                    if (!pesoValido) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Error: Esta operación supera la capacidad máxima de carga del camión.'),
+                          backgroundColor: Colors.orangeAccent,
+                        ),
+                      );
+                      setState(() => _isSaving = false);
+                      return;
+                    }
+
+                    // 3. Insert Item
                     final bool isTCM = _selectedProduct == 'TCM';
                     final String baseUnit = isTCM ? 'uni' : (_selectedUnit ?? 'Uni');
                     await Supabase.instance.client.from('parada_items').insert({
                       'parada_id': widget.paradaId,
                       'producto_codigo': _selectedProduct,
-                      'cantidad': double.tryParse(_textController.text) ?? 0,
+                      'cantidad': qty,
                       'unidad': '$baseUnit|$_tipoMovimiento',
                     });
 

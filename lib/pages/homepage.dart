@@ -216,7 +216,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     ],
 
                     // ── Stats row Cargas ──
-                    if (_isDeposito) ...[
+                    if (_isDeposito || _isManagement) ...[
                       Text('ESTADO DE CARGAS', style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11)),
                       const SizedBox(height: 14),
                       Row(
@@ -257,10 +257,10 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_isDeposito || _isChofer)
+                        if (_isDeposito || _isChofer || _isManagement)
                           _moduleCard(
                             icon: Icons.warehouse_rounded,
-                            title: _isDeposito ? 'Depósito' : 'Depósito Huinca',
+                            title: (_isDeposito || _isManagement) ? 'Cargas Depósito' : 'Depósito Huinca',
                             subtitle: 'Cargas y depósito\ncirculante',
                             bgColor: DesignTokens.primary,
                             accentColor: DesignTokens.secondary,
@@ -579,8 +579,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                   _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                 ],
                 _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
-                if (_isDeposito || _isChofer)
-                  _drawerItem(Icons.warehouse_rounded, _isDeposito ? 'Cargas Depósito' : 'Cargas Dep. Huinca', () => context.push('/depositoHome')),
+                if (_isDeposito || _isChofer || _isManagement)
+                  _drawerItem(Icons.warehouse_rounded, (_isDeposito || _isManagement) ? 'Cargas Depósito' : 'Cargas Dep. Huinca', () => context.push('/depositoHome')),
                 if ((_isAdmin || _isManagement) && !_isDeposito)
                   _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),
                 const Divider(),
