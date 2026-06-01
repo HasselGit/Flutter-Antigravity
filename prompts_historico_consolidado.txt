@@ -2277,3 +2277,20 @@ SESIÓN ADICIONAL: 29 de Mayo de 2026 - OPTIMIZACIÓN DE TRÁNSITO Y ACCESO EJEC
 - Métodos _calcularStockEnTransito y _validarCapacidadCamion en agregaritem.dart calculan y restringen dinámicamente las cantidades y peso del camión en caliente contra la capacidad declarada del vehículo.
 - CargasStats y stats cargadas dinámicamente en homepage.dart para Compras, CEO y Gerente, habilitando acceso directo en el grid de inicio, Drawer lateral y medidores dinámicos del Home.
 - Warnings de tipo innecesario resueltos en depositohome.dart y missing closing brace corregido en agregaritem.dart, dejando el código con 0 errores estáticos.
+
+================================================================================
+SESION ADICIONAL: 1 de Junio de 2026 - HITO DE SEGURIDAD E INTEGRIDAD OPERATIVA
+================================================================================
+
+1. REQUERIMIENTO:
+- Corregir el desastre visual en las tarjetas de cargas de depositohome.dart (desbordamientos horizontales y textos pegados en la cabecera).
+- Implementar validaciones estrictas en gastos_page.dart para impedir guardar gastos con campos vacios (importe, numero de comprobante, viaje y litros de combustible).
+- Corregir el error recurrente de base de datos de PostgreSQL "invalid input syntax for type integer: '150.0'" al editar o agregar items de carga.
+- Saneamiento y decodificacion manual de cargas para evitar que textos crudos se muestren en la UI del deposito.
+- Corregir el filtrado por email local del chofer/deposito debido a que la app usa un bypass local de login (Supabase auth.currentUser es nulo).
+
+2. SOLUCION IMPLEMENTADA:
+- depositohome.dart: Envoltura de cabeceras de tarjeta en Flexible con TextOverflow.ellipsis y maxLines: 1. Agregado icono de almacen para mostrar el deposito origen. Mapeado manual de rawList para limpiar carga_codigo y separar deposito_origen.
+- Supabase integer rounding: Modificadas las inserciones y ediciones de carga_items en depositohome.dart y supabase_service.dart para redondear cantidades con .round() y .toInt() garantizando enteros puros compatibles con Postgres.
+- gastos_page.dart: Agregada validacion estricta que bloquea el guardado si falta importe, comprobante o viaje asignado. Si el tipo es Combustible, tambien valida que los litros sean mayores a cero.
+- SharedPreferences bypass: Recuperacion de userEmail desde SharedPreferences locales para filtrar viajes y cargas en depositohome.dart y gastos_page.dart.

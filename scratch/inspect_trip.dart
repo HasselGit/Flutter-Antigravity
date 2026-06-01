@@ -6,68 +6,48 @@ void main() async {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2NxZGx4bm1mY3ZtbG56aXpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NjQxODYsImV4cCI6MjA4NzQ0MDE4Nn0.zX-EOzrgDj4anNX_guQ9VJPOBqZzdroAWI1Duu0yt-o',
   );
 
+  print('=== DIAGNOSING TRIP V-2805-119 ===');
   try {
-    print('--- Buscando viaje V-1105-925 o similar ---');
-    final trips = await client.from('viajes').select('*');
-    Map<String, dynamic>? targetTrip;
-    
-    for (var v in trips) {
-      final code = v['viaje_codigo']?.toString() ?? '';
-      print('Viaje en BD: ID=${v['id']}, Código=$code, Estado=${v['estado']}');
-      if (code.contains('1105-925') || code.contains('1005-925')) {
-        targetTrip = Map<String, dynamic>.from(v);
-      }
-    }
+    // 1. Fetch trip details
+    final viajes = await client
+        .from('viajes')
+        .select('*')
+        .eq('viaje_codigo', 'V-2805-119');
 
-    if (targetTrip == null) {
-      print('No se encontró viaje con código V-1105-925 o similar.');
+    if (viajes.isEmpty) {
+      print('❌ Trip V-2805-119 not found in "viajes" table!');
       return;
     }
 
-    final String tripId = targetTrip['id'].toString();
-    print('\n>>> Viaje encontrado:');
-    print(targetTrip);
+    final viaje = viajes.first;
+    print('Trip details:');
+    print('  ID: ${viaje['id']}');
+    print('  Codigo: ${viaje['viaje_codigo']}');
+    print('  Estado: ${viaje['estado']}');
+    print('  Chofer ID: ${viaje['chofer_id']}');
 
-    // Buscar paradas
-    final paradas = await client.from('paradas').select('*').eq('viaje_id', tripId);
-    print('\nParadas encontradas (${paradas.length}):');
-    final List<String> paradaIds = [];
+    // 2. Fetch stops for this trip
+    final paradas = await client
+        .from('paradas')
+        .select('*, remitos(*)')
+        .eq('viaje_id', viaje['id']);
+
+    print('\nStops in this trip:');
     for (var p in paradas) {
-      print('Parada ID: ${p['id']}, Secuencia: ${p['orden_secuencia']}, Solicitud ID: ${p['solicitud_id']}');
-      paradaIds.add(p['id'].toString());
-    }
-
-    // Buscar rutas
-    final rutas = await client.from('rutas').select('*').eq('viaje_id', tripId);
-    print('\nRutas encontradas (${rutas.length}):');
-    for (var r in rutas) {
-      print('Ruta ID: ${r['id']}, Código: ${r['ruta_codigo']}, Estado: ${r['estado']}');
-    }
-
-    // Buscar remitos
-    if (paradaIds.isNotEmpty) {
-      final remitos = await client.from('remitos').select('*').inFilter('parada_id', paradaIds);
-      print('\nRemitos encontrados (${remitos.length}):');
+      print('  -------------------------------');
+      print('  Stop ID: ${p['id']}');
+      print('  Nombre/Ubicacion: ${p['ubicacion'] ?? p['persona_nombre']}');
+      print('  Tipo: ${p['tipo']}');
+      print('  Estado: ${p['estado']}');
+      
+      final remitos = p['remitos'] as List? ?? [];
+      print('  Remitos count: ${remitos.length}');
       for (var r in remitos) {
-        print('Remito ID: ${r['id']}, Parada ID: ${r['parada_id']}, Número: ${r['numero_remito']}');
+        print('    - Remito ID: ${r['id']}, Codigo: ${r['remito_codigo']}, PDF: ${r['pdf_url']}');
       }
     }
-
-    // Buscar cargas
-    final cargas = await client.from('cargas').select('*').eq('viaje_id', tripId);
-    print('\nCargas encontradas (${cargas.length}):');
-    for (var c in cargas) {
-      print('Carga ID: ${c['id']}, Código: ${c['carga_codigo']}');
-    }
-
-    // Buscar gastos
-    final gastos = await client.from('gastos').select('*').eq('viaje_id', tripId);
-    print('\nGastos encontrados (${gastos.length}):');
-    for (var g in gastos) {
-      print('Gasto ID: ${g['id']}, Categoria: ${g['categoria']}, Monto: ${g['monto']}');
-    }
-
-  } catch (e) {
-    print('Error: $e');
+  } catch (e, stack) {
+    print('❌ Error occurred during diagnosis: $e');
+    print(stack);
   }
 }

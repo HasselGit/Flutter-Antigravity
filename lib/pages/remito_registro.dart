@@ -75,6 +75,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
   List<Map<String, dynamic>> _pesajes = [];
   Map<String, dynamic>? _paradaData;
   Map<String, dynamic>? _viajeData;
+  String? _depositoOrigen;
 
   Future<void> _loadItems() async {
     try {
@@ -119,6 +120,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
       final parada = results[2] as Map<String, dynamic>?;
       _paradaData = parada;
       
+      String? depositoOrigen;
       if (parada != null && parada['viaje_id'] != null) {
         final viaje = await Supabase.instance.client
             .from('viajes')
@@ -126,6 +128,18 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
             .eq('id', parada['viaje_id'])
             .maybeSingle();
         _viajeData = viaje;
+        
+        try {
+          final cargasRes = await Supabase.instance.client
+              .from('cargas')
+              .select('deposito_origen')
+              .eq('viaje_id', parada['viaje_id']);
+          if (cargasRes.isNotEmpty) {
+            depositoOrigen = cargasRes.map((c) => c['deposito_origen'] ?? '').where((d) => d.toString().isNotEmpty).join(', ');
+          }
+        } catch (e) {
+          print('Error fetching cargas for deposito_origen in remito_registro: $e');
+        }
         
         if (viaje != null && viaje['chofer_id'] != null) {
           try {
@@ -143,6 +157,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
       final apicultoresList = List<Map<String, dynamic>>.from(results[4] as List? ?? []);
       
       setState(() {
+        _depositoOrigen = depositoOrigen;
         _apicultoresList = apicultoresList;
         _availableItems = List<Map<String, dynamic>>.from(results[0]);
         _pesajes = List<Map<String, dynamic>>.from(results[1]);
@@ -372,22 +387,23 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
       }
 
       final pdfBytes = await PdfInvoiceGenerator.generateWeighingRemitoPDF(
-        paradaId: widget.paradaId,
-        tipoOperacion: widget.tipoOperacion,
-        vehiculoCodigo: _viajeData?['vehiculo_codigo'],
-        viajeCodigo: _viajeData?['viaje_codigo'],
-        titularNombre: _titularNombre,
-        titularDni: _titularDni,
-        receptorNombre: receptorNombre,
-        receptorDni: receptorDni,
-        items: itemsToInclude,
-        pesajes: _pesajes,
-        totalBruto: totalBruto,
-        totalTara: totalTara,
-        totalNeto: totalNeto,
-        signatureBytes: signatureBytes,
-        logoBytes: logoBytes,
-      );
+          paradaId: widget.paradaId,
+          tipoOperacion: widget.tipoOperacion,
+          vehiculoCodigo: _viajeData?['vehiculo_codigo'],
+          viajeCodigo: _viajeData?['viaje_codigo'],
+          titularNombre: _titularNombre,
+          titularDni: _titularDni,
+          receptorNombre: receptorNombre,
+          receptorDni: receptorDni,
+          items: itemsToInclude,
+          pesajes: _pesajes,
+          totalBruto: totalBruto,
+          totalTara: totalTara,
+          totalNeto: totalNeto,
+          signatureBytes: signatureBytes,
+          logoBytes: logoBytes,
+          depositoOrigen: _depositoOrigen,
+        );
 
       // 4. Upload PDF using robust helper
       final pdfFileName = 'remito_registro_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';

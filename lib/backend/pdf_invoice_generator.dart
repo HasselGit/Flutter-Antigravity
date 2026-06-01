@@ -254,6 +254,7 @@ class PdfInvoiceGenerator {
     required double totalNeto,
     required Uint8List signatureBytes,
     Uint8List? logoBytes,
+    String? depositoOrigen,
   }) async {
     final pdf = pw.Document();
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
@@ -291,7 +292,7 @@ class PdfInvoiceGenerator {
               _buildMetadataCard([
                 ['Comprobante:', humanId, 'Fecha de Emisión:', fecha],
                 ['Tipo de Operación:', tipoOperacion, 'Vehículo Asignado:', vehiculoCodigo ?? 'S/D'],
-                ['Código de Viaje:', viajeCodigo ?? 'S/D', 'Localidad de Parada:', apicultorLocalidad],
+                ['Código de Viaje:', viajeCodigo ?? 'S/D', 'Depósito de Carga:', depositoOrigen ?? 'Parque Industrial'],
               ]),
 
               pw.SizedBox(height: 20),
@@ -511,6 +512,7 @@ class PdfInvoiceGenerator {
     required double totalNeto,
     required Uint8List signatureBytes,
     Uint8List? logoBytes,
+    String? depositoOrigen,
   }) async {
     final pdf = pw.Document();
     final fecha = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
@@ -548,7 +550,7 @@ class PdfInvoiceGenerator {
               _buildMetadataCard([
                 ['Comprobante:', humanId, 'Fecha de Emisión:', fecha],
                 ['Tipo de Operación:', tipoOperacion, 'Vehículo Asignado:', vehiculoCodigo ?? 'S/D'],
-                ['Código de Viaje:', viajeCodigo ?? 'S/D', 'ID de Parada:', paradaId.split('-').first.toUpperCase()],
+                ['Código de Viaje:', viajeCodigo ?? 'S/D', 'Depósito de Carga:', depositoOrigen ?? 'Parque Industrial'],
               ]),
 
               pw.SizedBox(height: 15),

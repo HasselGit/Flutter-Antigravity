@@ -26,6 +26,9 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   bool _loading = true;
   String _searchQuery = '';
   DateTime? _selectedDate;
+  // Rol del usuario en sesión
+  bool _isChofer = false;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -61,7 +64,19 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       final List<Map<String, dynamic>> rawList = (pendingViajesRaw as List).map((v) {
         final Map<String, dynamic> vMap = Map<String, dynamic>.from(v as Map);
         if (vMap['cargas'] != null) {
-          vMap['cargas'] = (vMap['cargas'] as List).map((c) => Map<String, dynamic>.from(c as Map)).toList();
+          vMap['cargas'] = (vMap['cargas'] as List).map((c) {
+            final Map<String, dynamic> cMap = Map<String, dynamic>.from(c as Map);
+            // Aplicar enriquecimiento manual de cargas para separar carga_codigo y deposito_origen
+            final String rawCode = (cMap['carga_codigo'] ?? '').toString();
+            if (rawCode.contains(' | ')) {
+              final parts = rawCode.split(' | ');
+              cMap['carga_codigo'] = parts.first;
+              cMap['deposito_origen'] = parts.length > 1 ? parts[1] : 'Parque Industrial';
+            } else {
+              cMap['deposito_origen'] = 'Parque Industrial';
+            }
+            return cMap;
+          }).toList();
         }
         return vMap;
       }).toList();
@@ -70,10 +85,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
       
       final prefs = await SharedPreferences.getInstance();
       final userRole = (prefs.getString('user_puesto') ?? '').toLowerCase();
-      final userEmail = (Supabase.instance.client.auth.currentUser?.email ?? '').toLowerCase();
+      final userEmail = (prefs.getString('user_email') ?? '').toLowerCase();
       final isChofer = userRole.contains('chofer') || userEmail.contains('mperez') || userEmail.contains('cmuse') || userEmail.contains('agomez') || userEmail.contains('efernandez');
       final isDeposito = userRole.contains('deposito') || userEmail.contains('cmerlo') || userEmail.contains('csantana');
       final onlyChofer = isChofer && !isDeposito;
+      final currentUserId = prefs.getString('user_id') ?? '';
 
       for (var v in rawList) {
         if (v['chofer_id'] != null) {
@@ -135,6 +151,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           _viajesPlanificados = pendingViajes;
           _cargasTerminadas = history;
           _productos = List<Map<String, dynamic>>.from(prods);
+          _isChofer = onlyChofer;
+          _currentUserId = currentUserId;
           _applyFilters();
           _loading = false;
         });
@@ -795,12 +813,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     for (var v in _viajesPlanificados) {
       final listCargas = v['cargas'] as List? ?? [];
       final activeCargas = listCargas.where((c) => c['estado'] != AppStates.terminado).toList();
-      if (activeCargas.isEmpty) {
-        items.add({'type': 'viaje_sin_carga', 'viaje': v, 'carga': null});
-      } else {
-        for (var c in activeCargas) {
-          items.add({'type': 'carga_activa', 'viaje': v, 'carga': c});
-        }
+      for (var c in activeCargas) {
+        items.add({'type': 'carga_activa', 'viaje': v, 'carga': c});
       }
     }
     return items;
@@ -967,9 +981,13 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  '${v['viaje_codigo'] ?? 'S/C'}${c != null ? ' • ${c['carga_codigo']}' : ' • SIN CARGA'}',
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: DesignTokens.primary),
+                Flexible(
+                  child: Text(
+                    '${v['viaje_codigo'] ?? 'S/C'}${c != null ? ' • ${c['carga_codigo']}' : ' • SIN CARGA'}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: DesignTokens.primary),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
               ],
             ),
@@ -995,6 +1013,19 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     Text(v['vehiculo_codigo'] ?? 'S/D', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
+                if (c != null && c['deposito_origen'] != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.warehouse_rounded, size: 14, color: DesignTokens.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Origen: ${c['deposito_origen']}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 const Divider(height: 1),
                 const SizedBox(height: 12),
@@ -1300,7 +1331,10 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     String? selectedViajeId = preselectedViajeId;
     String? selectedProductoCodigo;
     final qtyController = TextEditingController();
-    List<Map<String, dynamic>> allViajes = List.from(_viajesPlanificados);
+    List<Map<String, dynamic>> allViajes = _isChofer
+        ? _viajesPlanificados.where((v) => v['chofer_id'] == _currentUserId).toList()
+        : List.from(_viajesPlanificados);
+    String selectedDeposito = _isChofer ? 'Depósito Huinca' : 'Parque Industrial';
 
     List<Map<String, dynamic>> plannedItems = [];
     bool isLoadingPlanned = false;
@@ -1341,7 +1375,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
           final items = p['parada_items'] as List? ?? [];
           for (var it in items) {
             final String prod = (it['producto_codigo'] ?? '').toString().trim().toUpperCase();
-            final double cant = (it['cantidad'] ?? 0).toDouble();
+            final double cant = (it['cantidad'] ?? 0.0).toDouble();
             final String unit = (it['unidad'] ?? 'UN').toString().split('|')[0];
             if (prod.isNotEmpty && cant > 0) {
               consolidated[prod] = (consolidated[prod] ?? 0) + cant;
@@ -1374,11 +1408,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
     // También cargamos viajes pendientes de la BD por si hay más
     Future<void> refreshViajes(setModalState) async {
       try {
-        final raw = await Supabase.instance.client
+        var query = Supabase.instance.client
             .from('viajes')
-            .select('id, viaje_codigo, vehiculo_codigo, estado, vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
-            .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso')
-            .order('fecha', ascending: true);
+            .select('id, viaje_codigo, vehiculo_codigo, estado, chofer_id, vehiculos:vehiculo_codigo(capacidad_kg, capacidad_tambores)')
+            .or('estado.eq.Pendiente,estado.eq.En Proceso,estado.eq.En Curso');
+
+        if (_isChofer && _currentUserId != null) {
+          query = query.eq('chofer_id', _currentUserId!);
+        }
+
+        final raw = await query.order('fecha', ascending: true);
         if (raw.isNotEmpty) {
           setModalState(() => allViajes = List<Map<String, dynamic>>.from(raw));
         }
@@ -1432,6 +1471,25 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       });
                       if (v != null) {
                         fetchPlannedItems(v, setModalState);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedDeposito,
+                    decoration: const InputDecoration(
+                      labelText: 'Depósito de Origen',
+                      prefixIcon: Icon(Icons.warehouse_rounded),
+                    ),
+                    items: ['Parque Industrial', 'Depósito Huinca'].map((dep) => DropdownMenuItem<String>(
+                      value: dep,
+                      child: Text(dep),
+                    )).toList(),
+                    onChanged: _isChofer ? null : (v) {
+                      if (v != null) {
+                        setModalState(() {
+                          selectedDeposito = v;
+                        });
                       }
                     },
                   ),
@@ -1527,7 +1585,11 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     hint: const Text('Seleccionar producto adicional...'),
                     items: _productos.map((p) => DropdownMenuItem<String>(
                       value: p['codigo']?.toString(),
-                      child: Text('${p['codigo'] ?? ''} — ${p['descripcion'] ?? p['codigo'] ?? 'S/N'}'),
+                      child: Text(
+                        '${p['codigo'] ?? ''} — ${p['descripcion'] ?? p['codigo'] ?? 'S/N'}',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     )).toList(),
                     onChanged: (v) => setModalState(() => selectedProductoCodigo = v),
                   ),
@@ -1556,6 +1618,19 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                         );
                         if (viaje.isEmpty) return;
 
+                        // BLOQUEO: Depósito PI no puede asignar cargas a viajes En Proceso
+                        final vEstado = AppStates.normalize(viaje['estado']?.toString() ?? '');
+                        if (selectedDeposito == 'Parque Industrial' && vEstado == AppStates.enCurso) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('No se pueden asignar cargas del depósito PI a un viaje que ya está En Proceso. Las cargas en ruta corresponden al Depósito Huinca.'),
+                              backgroundColor: Colors.deepOrange,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                          return;
+                        }
+
                         // Construir lista de ítems a insertar
                         final List<Map<String, dynamic>> itemsToInsert = [];
                         double totalProjectedWeight = 0.0;
@@ -1568,7 +1643,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             if (cant > 0) {
                               itemsToInsert.add({
                                 'producto_codigo': prod,
-                                'cantidad': cant,
+                                'cantidad': cant.round(),
                                 'unidad': unit,
                               });
                               totalProjectedWeight += cant * getProductWeight(prod);
@@ -1582,11 +1657,12 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                             final prod = _productos.firstWhere((p) => p['codigo']?.toString() == selectedProductoCodigo, orElse: () => {});
                             final existingIndex = itemsToInsert.indexWhere((it) => it['producto_codigo'] == selectedProductoCodigo);
                             if (existingIndex != -1) {
-                              itemsToInsert[existingIndex]['cantidad'] += customQty;
+                              final currentVal = itemsToInsert[existingIndex]['cantidad'] as num;
+                              itemsToInsert[existingIndex]['cantidad'] = currentVal.toInt() + customQty.round();
                             } else {
                               itemsToInsert.add({
                                 'producto_codigo': selectedProductoCodigo,
-                                'cantidad': customQty,
+                                'cantidad': customQty.round(),
                                 'unidad': prod['unidad'] ?? 'UN',
                               });
                             }
@@ -1628,12 +1704,16 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                           }
                           final humanId = 'Carga-${count + 1}';
                           
-                          // Crear la Carga principal
-                          final cargaResp = await Supabase.instance.client.from('cargas').insert({
+                          // Crear la Carga principal con created_by y deposito_origen serializado en carga_codigo
+                          final formattedCargaCodigo = '$humanId | $selectedDeposito';
+                          final cargaInsert = {
                             'viaje_id': viaje['id'],
-                            'carga_codigo': humanId,
+                            'carga_codigo': formattedCargaCodigo,
                             'estado': AppStates.pendiente,
-                          }).select('id').single();
+                            if (_currentUserId != null && _currentUserId!.isNotEmpty)
+                              'created_by': _currentUserId,
+                          };
+                          final cargaResp = await Supabase.instance.client.from('cargas').insert(cargaInsert).select('id').single();
 
                           // Asignar el ID de la carga recién creada a cada uno de los ítems
                           for (var item in itemsToInsert) {

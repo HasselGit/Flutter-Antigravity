@@ -191,8 +191,10 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     }
     
     final bool hasNoRemito = remitosList.isEmpty;
-    // El admin tiene acceso total si el viaje comenzó; el chofer puede editar si el viaje comenzó y no hay remito aún en parada terminada. Si no comenzó, es solo lectura para todos.
+    // isReadOnly: solo lectura para todos si el viaje no ha comenzado o si la parada ya terminó (a menos que sea admin)
     final bool isReadOnly = isViajePendiente || (_isAdmin ? false : (!_isChofer || (isParadaTerminada && !hasNoRemito) || isViajeTerminado));
+    // canFinalizarParada: el chofer puede finalizar la parada si el viaje está activo y la parada no está terminada
+    final bool canFinalizarParada = _isChofer && !isViajePendiente && !isViajeTerminado && !isParadaTerminada;
 
     return Scaffold(
       backgroundColor: DesignTokens.surface,
@@ -271,7 +273,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         if ((p['parada_items'] as List? ?? []).any((it) => it['producto_codigo'] == 'TCM')) ...
                           [const SizedBox(height: 32), _buildPesajeSection(p, isReadOnly)],
                         const SizedBox(height: 32),
-                        _buildDigitalRemitoForm(p, isReadOnly),
+                        _buildDigitalRemitoForm(p, isReadOnly, canFinalizarParada: canFinalizarParada, isParadaTerminada: isParadaTerminada),
                         const SizedBox(height: 100),
                       ],
                     ),
@@ -732,7 +734,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
     );
   }
 
-  Widget _buildDigitalRemitoForm(Map<String, dynamic> p, bool isReadOnly) {
+  Widget _buildDigitalRemitoForm(Map<String, dynamic> p, bool isReadOnly, {bool canFinalizarParada = false, bool isParadaTerminada = false}) {
     final remitos = p['remitos'] as List? ?? [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -810,13 +812,15 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
               },
             ),
           )),
-        if (!isReadOnly) ...[
+        // Botones de acción: si la parada no es solo lectura O si el chofer puede finalizar
+        if (!isReadOnly || canFinalizarParada) ...[
           const SizedBox(height: 24),
+          if (!isParadaTerminada) // Botón GENERAR NUEVO REMITO solo si la parada no está terminada
           SizedBox(
             width: double.infinity,
             height: 55,
             child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
+              onPressed: !isReadOnly ? () => Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => RemitoRegistroPage(
@@ -824,7 +828,7 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     apicultorId: p['apicultor_id'],
                     apicultorNombre: p['persona_nombre'] ?? p['ubicacion'],
                     apicultorDni: p['persona_dni'],
-                    tipoOperacion: p['tipo'] ?? 'Recolección',
+                    tipoOperacion: p['tipo'] ?? 'Recoleción',
                   ),
                 ),
               ).then((success) {
@@ -836,16 +840,16 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                     _paradaFuture = _fetchParadaData();
                   });
                 }
-              }),
+              }) : null,
               icon: const Icon(Icons.add_task_rounded, color: Colors.white),
               label: const Text('GENERAR NUEVO REMITO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1A6B43),
+                backgroundColor: !isReadOnly ? const Color(0xFF1A6B43) : Colors.grey,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
-          if (remitos.isNotEmpty) ...[
+          if (remitos.isNotEmpty && canFinalizarParada) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,

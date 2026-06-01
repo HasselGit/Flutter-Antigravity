@@ -39,6 +39,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
   Map<String, dynamic>? _paradaData;
   Map<String, dynamic>? _viajeData;
   List<Map<String, dynamic>> _items = [];
+  String? _depositoOrigen;
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -106,6 +107,18 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
             .eq('id', viajeId)
             .maybeSingle();
         _viajeData = viaje;
+        
+        try {
+          final cargasRes = await Supabase.instance.client
+              .from('cargas')
+              .select('deposito_origen')
+              .eq('viaje_id', viajeId);
+          if (cargasRes.isNotEmpty) {
+            _depositoOrigen = cargasRes.map((c) => c['deposito_origen'] ?? '').where((d) => d.toString().isNotEmpty).join(', ');
+          }
+        } catch (e) {
+          print('Error fetching cargas for deposito_origen in remito_page: $e');
+        }
       }
 
       if (mounted) setState(() => _loading = false);
@@ -255,6 +268,7 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
         totalNeto: totalNeto,
         signatureBytes: signatureBytes,
         logoBytes: logoBytes,
+        depositoOrigen: _depositoOrigen,
       );
 
       final fileName = 'remito_${widget.paradaId.split('-').first}_${DateTime.now().millisecondsSinceEpoch}.pdf';
@@ -281,7 +295,6 @@ class _RemitoPageWidgetState extends State<RemitoPageWidget> {
 
       // Update parada status and link the remito_id
       await Supabase.instance.client.from('paradas').update({
-        'estado': 'Terminado',
         'remito_id': remitoId,
       }).eq('id', widget.paradaId);
       

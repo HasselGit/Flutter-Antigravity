@@ -30,6 +30,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   Map<String, dynamic>? _selectedViaje;
   String? _selectedViajeId;
   String _selectedDeposito = 'Parque Industrial';
+  bool _depositoBloqueado = false; // true cuando el viaje está En Proceso (Huinca)
   final List<Map<String, dynamic>> _newItems = [];
 
   @override
@@ -48,7 +49,9 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       });
     }
     if (widget.isNew) {
-      await _loadCatalogos();
+      // Pasamos el rol como parámetro para evitar problemas de resolución en el analizador
+      final isChoferLocal = _isChofer;
+      await _loadCatalogos(isChofer: isChoferLocal);
       if (mounted) setState(() => _loading = false);
     } else {
       await _loadCarga();
@@ -61,12 +64,21 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
     }
   }
 
-  Future<void> _loadCatalogos() async {
+  Future<void> _loadCatalogos({bool isChofer = false}) async {
     final service = SupabaseService();
     try {
       final viajesData = await service.getViajes();
-      // Solo viajes en Pendiente
-      _viajes = viajesData.where((v) => AppStates.normalize(v['estado']) == AppStates.pendiente).toList();
+      // Si es chofer, mostrar tanto viajes pendientes como en proceso (los en proceso son Huinca)
+      if (isChofer) {
+        _viajes = viajesData.where((v) {
+          final est = AppStates.normalize(v['estado']);
+          return est == AppStates.pendiente || est == AppStates.enCurso;
+        }).toList();
+      } else {
+        // Para depósito PI, solo viajes en Pendiente
+        _viajes = viajesData.where((v) =>
+          AppStates.normalize(v['estado']) == AppStates.pendiente).toList();
+      }
     } catch (e) {
       print('CargaDetalle: Error cargando viajes: $e');
     }
@@ -129,17 +141,38 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
            email.contains('rsteierd');
   }
 
-  bool get _isChoferDepositoHuinca {
+  bool get _isChofer {
     final r = _normalizeRole(_userRole);
-    return r.contains('chofer');
+    final email = (_userEmail ?? '').toLowerCase();
+    return r.contains('chofer') || email.contains('mperez') || email.contains('cmuse') || email.contains('agomez') || email.contains('efernandez');
   }
+
+  // Alias por compatibilidad
+  bool get _isChoferDepositoHuinca => _isChofer;
 
   bool get _canChangeEstado {
     if (_carga == null) return false;
     final estado = AppStates.normalize(_carga!['estado'] ?? '');
-    if (_isDeposito || _isChoferDepositoHuinca) {
+    if (estado == AppStates.terminado) return _isAdmin; // Solo admin puede revertir terminado
+
+    if (_isDeposito) {
+      // Depósito PI gestiona cualquier carga
       return estado == AppStates.pendiente || estado == AppStates.enCurso;
     }
+
+    if (_isChofer) {
+      // El chofer SOLO puede gestionar cargas del depósito Huinca
+      // Una carga es de Huinca cuando:
+      //   a) deposito_origen == 'Depósito Huinca' (dato guardado en BD), o
+      //   b) el viaje asociado está En Proceso (en ruta - lógica de fallback)
+      final String deposito = (_carga!['deposito_origen'] ?? '').toString();
+      final String viajeEstado = AppStates.normalize(
+          (_carga!['viaje'] as Map<String, dynamic>?)?['estado'] ?? '');
+      final bool esHuinca = deposito.toLowerCase().contains('huinca') ||
+          viajeEstado == AppStates.enCurso;
+      return esHuinca && (estado == AppStates.pendiente || estado == AppStates.enCurso);
+    }
+
     if (_isManagement) {
       return estado == AppStates.pendiente;
     }
@@ -167,6 +200,12 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   }
 
   Future<void> _crearCarga() async {
+    // Bloquear a choferes
+    if (_isChofer) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Los choferes no pueden crear cargas'), backgroundColor: Colors.red));
+      return;
+    }
     if (_selectedViaje == null || _newItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Seleccione viaje y agregue al menos un ítem')));
@@ -425,6 +464,19 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       String vehiculoCode, String choferNombre) {
     final bgColor = Color(AppStates.stateBgColor(estado));
     final textColor = Color(AppStates.stateTextColor(estado));
+
+    // Datos del creador
+    final creador = _carga?['creador'] as Map<String, dynamic>?;
+    String creadorNombre = 'Desconocido';
+    if (creador != null) {
+      final nombre = '${creador['nombre'] ?? ''} ${creador['apellido'] ?? ''}'.trim();
+      final puesto = creador['puesto']?.toString() ?? '';
+      creadorNombre = puesto.isNotEmpty ? '$nombre ($puesto)' : nombre;
+    }
+
+    // Depósito de origen
+    final depositoOrigen = _carga?['deposito_origen']?.toString() ?? 'No especificado';
+
     return Container(
       width: double.infinity, padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -448,6 +500,8 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
         _detailRow(Icons.local_shipping_rounded, 'Viaje', viajeCode),
         _detailRow(Icons.directions_car_rounded, 'Vehículo', vehiculoCode),
         _detailRow(Icons.person_rounded, 'Chofer', choferNombre),
+        _detailRow(Icons.warehouse_rounded, 'Depósito Origen', depositoOrigen),
+        _detailRow(Icons.manage_accounts_rounded, 'Registrado por', creadorNombre),
       ]),
     );
   }
@@ -591,6 +645,42 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
   // ─── NUEVA CARGA (formulario) ─────────────────────────────────────────────
 
   Widget _buildNewCarga() {
+    // Los choferes no pueden crear cargas
+    if (_isChofer) {
+      return Scaffold(
+        backgroundColor: DesignTokens.surfaceLow,
+        appBar: AppBar(
+          backgroundColor: DesignTokens.surface,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: DesignTokens.primary),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text('Nueva Carga',
+              style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w800,
+                  fontSize: 17, color: DesignTokens.primary)),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_rounded, size: 64, color: Colors.redAccent),
+                SizedBox(height: 20),
+                Text('Sin permiso', style: TextStyle(fontFamily: 'Manrope',
+                    fontWeight: FontWeight.w800, fontSize: 20, color: DesignTokens.primary)),
+                SizedBox(height: 10),
+                Text('Los choferes no pueden crear cargas de vehículos. Contacte al personal de depósito o administración.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontFamily: 'Inter', fontSize: 14, color: DesignTokens.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: DesignTokens.surfaceLow,
       appBar: AppBar(
@@ -607,7 +697,7 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _labelText('1. SELECCIONAR VIAJE (estado Pendiente)'),
+          _labelText('1. SELECCIONAR VIAJE'),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -621,11 +711,20 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
                 value: _selectedViajeId,
                 items: _viajes.map((v) => DropdownMenuItem<String>(
                   value: v['id'].toString(),
-                  child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'}'),
+                  child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'} [${v['estado'] ?? ''}]'),
                 )).toList(),
                 onChanged: (v) => setState(() {
                   _selectedViajeId = v;
                   _selectedViaje = _viajes.firstWhere((x) => x['id'].toString() == v);
+                  // Si el viaje está En Proceso -> es Huinca, bloquear depósito
+                  final vEstado = AppStates.normalize(_selectedViaje!['estado'] ?? '');
+                  if (vEstado == AppStates.enCurso) {
+                    _selectedDeposito = 'Depósito Huinca';
+                    _depositoBloqueado = true;
+                  } else {
+                    _selectedDeposito = 'Parque Industrial';
+                    _depositoBloqueado = false;
+                  }
                 }),
               ),
             ),
@@ -635,22 +734,45 @@ class _CargaDetalleWidgetState extends State<CargaDetalleWidget> {
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: DesignTokens.primary.withOpacity(0.1))),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: _selectedDeposito,
-                items: ['Parque Industrial', 'Deposito Huinca'].map((d) => DropdownMenuItem<String>(
-                  value: d,
-                  child: Text(d),
-                )).toList(),
-                onChanged: (v) => setState(() {
-                  if (v != null) _selectedDeposito = v;
-                }),
-              ),
-            ),
+            decoration: BoxDecoration(
+              color: _depositoBloqueado ? DesignTokens.surfaceLow : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _depositoBloqueado
+                ? DesignTokens.secondary.withOpacity(0.4)
+                : DesignTokens.primary.withOpacity(0.1))),
+            child: _depositoBloqueado
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(children: [
+                      const Icon(Icons.warehouse_rounded, size: 18, color: DesignTokens.primary),
+                      const SizedBox(width: 10),
+                      Text(_selectedDeposito,
+                          style: const TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700,
+                              fontSize: 14, color: DesignTokens.primary)),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: DesignTokens.secondary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10)),
+                        child: const Text('FIJO', style: TextStyle(fontFamily: 'Work Sans',
+                            fontWeight: FontWeight.w800, fontSize: 9, color: DesignTokens.primary)),
+                      ),
+                    ]),
+                  )
+                : DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _selectedDeposito,
+                      items: ['Parque Industrial', 'Depósito Huinca'].map((d) => DropdownMenuItem<String>(
+                        value: d,
+                        child: Text(d),
+                      )).toList(),
+                      onChanged: (v) => setState(() {
+                        if (v != null) _selectedDeposito = v;
+                      }),
+                    ),
+                  ),
           ),
           const SizedBox(height: 24),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

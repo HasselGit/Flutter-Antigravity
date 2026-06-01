@@ -44,12 +44,35 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
 
   Future<void> _fetchData() async {
     final data = await SupabaseService().getGastos();
-    final viajesRaw = await Supabase.instance.client
+    
+    // Detectar si el usuario es chofer para filtrar sus viajes
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id');
+    final userRole = (prefs.getString('user_puesto') ?? '').toLowerCase();
+    final userEmail = (prefs.getString('user_email') ?? '').toLowerCase();
+    final isChofer = userRole.contains('chofer') ||
+        userEmail.contains('mperez') || userEmail.contains('cmuse') ||
+        userEmail.contains('agomez') || userEmail.contains('efernandez');
+
+    var query = Supabase.instance.client
         .from('viajes')
-        .select('id, viaje_codigo, estado')
+        .select('id, viaje_codigo, estado, chofer_id')
         .filter('estado', 'in', ['En Proceso', 'En Curso', 'Terminado'])
         .order('fecha', ascending: false)
         .limit(40);
+
+    // Los choferes solo ven sus propios viajes en curso (En Proceso / En Curso)
+    if (isChofer && userId != null && userId.isNotEmpty) {
+      query = Supabase.instance.client
+          .from('viajes')
+          .select('id, viaje_codigo, estado, chofer_id')
+          .filter('estado', 'in', ['En Proceso', 'En Curso'])
+          .eq('chofer_id', userId)
+          .order('fecha', ascending: false)
+          .limit(20);
+    }
+
+    final viajesRaw = await query;
     if (mounted) {
       setState(() {
         _gastos = data;
@@ -223,9 +246,15 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
     String? selectedTipo = 'Combustible';
     String? selectedMetodo = 'Efectivo';
     DateTime selectedFecha = DateTime.now();
-    String? selectedViajeId;
     XFile? pickedFile;
     bool savingGasto = false;
+
+    // Pre-seleccionar el viaje En Proceso/En Curso si existe
+    final viajeEnCurso = _viajesParaGasto.where((v) {
+      final est = (v['estado'] ?? '').toString().toLowerCase();
+      return est.contains('proceso') || est.contains('curso');
+    }).toList();
+    String? selectedViajeId = viajeEnCurso.isNotEmpty ? viajeEnCurso.first['id']?.toString() : null;
 
     showModalBottomSheet(
       context: context,
@@ -512,9 +541,28 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                      height: 56,
                      child: ElevatedButton(
                        onPressed: savingGasto ? null : () async {
-                         if (amountController.text.isEmpty) {
-                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe')));
+                         if (amountController.text.trim().isEmpty) {
+                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Ingrese el importe del gasto'), backgroundColor: Colors.orangeAccent));
                            return;
+                         }
+                         if (comprobanteController.text.trim().isEmpty) {
+                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Debe ingresar el número de comprobante'), backgroundColor: Colors.orangeAccent));
+                           return;
+                         }
+                         if (selectedViajeId == null) {
+                           ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Debe seleccionar un viaje para vincular el gasto'), backgroundColor: Colors.orangeAccent));
+                           return;
+                         }
+                         if (selectedTipo == 'Combustible') {
+                           if (litrosController.text.trim().isEmpty) {
+                             ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Debe ingresar la cantidad en litros para Combustible'), backgroundColor: Colors.orangeAccent));
+                             return;
+                           }
+                           final litresVal = double.tryParse(litrosController.text.replaceAll(',', '.')) ?? 0.0;
+                           if (litresVal <= 0.0) {
+                             ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Debe ingresar una cantidad válida en litros'), backgroundColor: Colors.orangeAccent));
+                             return;
+                           }
                          }
                          setModalState(() => savingGasto = true);
                          try {
@@ -548,16 +596,31 @@ class _GastosPageWidgetState extends State<GastosPageWidget> {
                           
                           final auditSuffix = '\n[Registrado por: $userNombre $userApellido ($userPuesto)]';
 
+                          // Buscar el chofer real asignado al viaje seleccionado para evitar violar restricciones de clave foránea
+                          final selectedTrip = _viajesParaGasto.firstWhere(
+                            (v) => v['id']?.toString() == selectedViajeId,
+                            orElse: () => <String, dynamic>{},
+                          );
+                          final tripChoferId = selectedTrip['chofer_id'];
+                          final choferIdToInsert = tripChoferId ?? userId;
+
+                          if (choferIdToInsert == null || choferIdToInsert.isEmpty) {
+                            throw Exception('No se pudo determinar el chofer del viaje seleccionado. Asegúrese de que el viaje tenga un chofer asignado.');
+                          }
+
+                          final litresVal = selectedTipo == 'Combustible' ? (double.tryParse(litrosController.text.replaceAll(',', '.')) ?? 0.0) : 0.0;
+                          final String prefix = selectedTipo == 'Combustible' ? 'Litros: $litresVal L\n' : '';
+                          final String descWithLitres = prefix + descController.text + auditSuffix;
+
                           await Supabase.instance.client.from('gastos').insert({
                             'tipo_gasto': selectedTipo,
-                            'importe': double.tryParse(amountController.text) ?? 0,
-                            'cantidad_litros': selectedTipo == 'Combustible' ? (double.tryParse(litrosController.text) ?? 0.0) : null,
-                            'descripcion': descController.text + auditSuffix,
+                            'importe': double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0.0,
+                            'descripcion': descWithLitres,
                             'nro_comprobante': comprobanteController.text,
                             'forma_pago': selectedMetodo,
                             'viaje_id': selectedViajeId,
                             'fecha': selectedFecha.toIso8601String(),
-                            'chofer_id': userId,
+                            'chofer_id': choferIdToInsert,
                             'comprobante_url': publicUrl,
                           });
                           if (ctx.mounted) {

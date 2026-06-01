@@ -257,7 +257,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_isDeposito || _isChofer || _isManagement)
+                        if (_isDeposito || _isManagement)
                           _moduleCard(
                             icon: Icons.warehouse_rounded,
                             title: (_isDeposito || _isManagement) ? 'Cargas Depósito' : 'Depósito Huinca',
@@ -311,7 +311,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
-                        if (!_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia') && !_isDeposito) ...[
+                        if (!_isChofer && !_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia') && !_isDeposito) ...[
                           _moduleCard(
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
@@ -337,7 +337,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gastos'),
                           ),
                         ],
-                        if (!_isDeposito)
+                        if (!_isDeposito && !_isChofer)
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
                             title: 'Control de Ruta',
@@ -361,11 +361,12 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     if (!_isDeposito) ...[                      
                       _quickAction(Icons.inventory_2_rounded, 'Inventario de Productos', 'Gestión de stock e insumos', () => context.push('/productos')),
                       const SizedBox(height: 10),
-                      _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
-                      const SizedBox(height: 10),
                       _quickAction(Icons.group_rounded, 'Apicultores', 'Directorio de productores', () => context.push('/apicultores')),
                       const SizedBox(height: 10),
                     ],
+                    // Gestión de Gastos visible para todos los roles
+                    _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
+                    const SizedBox(height: 10),
                     if (!_isChofer) ...[
                       _quickAction(
                         Icons.map_rounded,
@@ -576,10 +577,12 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
                 if (!_isDeposito && !_isChofer) ...[
                   _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
-                  _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                 ],
-                _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
-                if (_isDeposito || _isChofer || _isManagement)
+                if (!_isChofer) ...[
+                  _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
+                  _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
+                ],
+                if (_isDeposito || _isManagement)
                   _drawerItem(Icons.warehouse_rounded, (_isDeposito || _isManagement) ? 'Cargas Depósito' : 'Cargas Dep. Huinca', () => context.push('/depositoHome')),
                 if ((_isAdmin || _isManagement) && !_isDeposito)
                   _drawerItem(Icons.inventory_2_rounded, 'Gestión de Cargas', () => context.push('/cargas')),

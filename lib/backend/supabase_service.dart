@@ -13,6 +13,35 @@ class SupabaseService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  Map<String, dynamic> _enrichCarga(Map<String, dynamic> c) {
+    final String rawCode = (c['carga_codigo'] ?? '').toString();
+    if (rawCode.contains(' | ')) {
+      final parts = rawCode.split(' | ');
+      c['carga_codigo'] = parts.first;
+      c['deposito_origen'] = parts.length > 1 ? parts[1] : 'Parque Industrial';
+    } else {
+      c['deposito_origen'] = 'Parque Industrial';
+    }
+    return c;
+  }
+
+  Map<String, dynamic> _enrichGasto(Map<String, dynamic> g) {
+    if (g['descripcion'] != null) {
+      final desc = g['descripcion'].toString();
+      if (desc.startsWith('Litros: ')) {
+        final lines = desc.split('\n');
+        final litresLine = lines.first;
+        final litresStr = litresLine.replaceAll('Litros: ', '').replaceAll(' L', '').trim();
+        final parsedLitres = double.tryParse(litresStr);
+        if (parsedLitres != null) {
+          g['cantidad_litros'] = parsedLitres;
+          g['descripcion'] = lines.skip(1).join('\n');
+        }
+      }
+    }
+    return g;
+  }
+
   // ─── AUTH ─────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -223,22 +252,9 @@ class SupabaseService {
 
 
 
-      // Auto-synchronize paradas that have remitos but are still in 'Pendiente' or 'En Proceso' state
-      try {
-        final List<dynamic> paradasList = viaje['paradas'] ?? [];
-        for (var p in paradasList) {
-          final String estado = AppStates.normalize(p['estado']);
-          final List<dynamic> remitos = p['remitos'] as List? ?? [];
-          if (remitos.isNotEmpty && estado != AppStates.terminado) {
-            final String vehiculoCodigo = viaje['vehiculo_codigo']?.toString() ?? 'CAMION-01';
-            await finalizarParada(p['id'].toString(), vehiculoCodigo);
-            p['estado'] = AppStates.terminado;
-            print('SupabaseService: Auto-finalizada parada ${p['id']} que tenía remito.');
-          }
-        }
-      } catch (e) {
-        print('SupabaseService: Error en auto-finalización de parada: $e');
-      }
+      // NOTA: El auto-cierre de paradas fue eliminado deliberadamente.
+      // La parada solo se cierra cuando el chofer presiona "FINALIZAR PARADA COMPLETA".
+      // Esto permite registrar múltiples remitos antes de finalizar la parada.
 
       // ENRICHMENT OF PARADA_ITEMS WITH COMPLETED SOLICITUDES
       try {
@@ -384,7 +400,8 @@ class SupabaseService {
             .eq('viaje_id', viajeId).order('created_at');
         
         final List<Map<String, dynamic>> cargas = (cargasRaw as List).map((c) {
-          return Map<String, dynamic>.from(c as Map);
+          final cMap = Map<String, dynamic>.from(c as Map);
+          return _enrichCarga(cMap);
         }).toList();
 
         // Fallback directo si carga_items viene vacío por RLS stale
@@ -411,7 +428,8 @@ class SupabaseService {
             .select('*, profiles(nombre, apellido)')
             .eq('viaje_id', viajeId)
             .order('fecha', ascending: false);
-        viaje['gastos'] = gastosRaw;
+        final list = List<Map<String, dynamic>>.from(gastosRaw as List);
+        viaje['gastos'] = list.map((g) => _enrichGasto(g)).toList();
         print('SupabaseService: Gastos cargados para viaje: ${gastosRaw.length}');
       } catch (gastosErr) {
         print('SupabaseService: Error cargando gastos del viaje: $gastosErr');
@@ -512,7 +530,7 @@ class SupabaseService {
       final toInsert = items.map((item) => {
         'carga_id': cargaId,
         'producto_codigo': item['producto_codigo'],
-        'cantidad': (item['cantidad'] as num).toDouble(),
+        'cantidad': (item['cantidad'] as num).toInt(),
         'unidad': item['unidad'] ?? 'UN',
       }).toList();
       await _client.from('carga_items').insert(toInsert);
@@ -535,7 +553,7 @@ class SupabaseService {
         if (cMap['viaje'] != null) {
           cMap['viaje'] = Map<String, dynamic>.from(cMap['viaje'] as Map);
         }
-        return cMap;
+        return _enrichCarga(cMap);
       }).toList();
 
       for (var c in list) {
@@ -871,11 +889,11 @@ class SupabaseService {
   Future<Map<String, dynamic>?> getCargaDetalle(String cargaId) async {
     try {
       final res = await _client.from('cargas')
-          .select('id, carga_codigo, viaje_id, estado, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
+          .select('id, carga_codigo, viaje_id, estado, created_by, created_at, updated_at, carga_items(id, producto_codigo, cantidad, unidad)')
           .eq('id', cargaId).maybeSingle();
       if (res == null) return null;
       
-      final Map<String, dynamic> carga = Map<String, dynamic>.from(res as Map);
+      final Map<String, dynamic> carga = _enrichCarga(Map<String, dynamic>.from(res as Map));
       
       final items = carga['carga_items'] as List? ?? [];
       if (items.isEmpty) {
@@ -888,10 +906,20 @@ class SupabaseService {
         } catch (_) {}
       }
 
+      // Obtener perfil del creador de la carga
+      if (carga['created_by'] != null) {
+        try {
+          final creador = await _client.from('profiles')
+              .select('nombre, apellido, puesto')
+              .eq('id', carga['created_by']).maybeSingle();
+          carga['creador'] = creador;
+        } catch (_) {}
+      }
+
       if (carga['viaje_id'] != null) {
         try {
           final viaje = await _client.from('viajes')
-              .select('viaje_codigo, vehiculo_codigo, chofer_id, fecha')
+              .select('viaje_codigo, vehiculo_codigo, chofer_id, fecha, estado')
               .eq('id', carga['viaje_id']).maybeSingle();
           carga['viaje'] = viaje;
           if (viaje?['chofer_id'] != null) {
@@ -940,6 +968,15 @@ class SupabaseService {
     required String createdBy,
     String? depositoOrigen,
   }) async {
+    // Validación: no se permite crear una carga sin ítems
+    final validItems = items.where((it) {
+      final qty = (it['cantidad'] as num?)?.toDouble() ?? 0;
+      return qty > 0 && (it['producto_codigo']?.toString().isNotEmpty ?? false);
+    }).toList();
+    if (validItems.isEmpty) {
+      throw Exception('No se puede crear una carga vacía. Agregue al menos un producto con cantidad mayor a cero.');
+    }
+
     final String cleanCreatedBy = createdBy.isNotEmpty ? createdBy : 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
     
     // Count existing charges to generate a human-readable consecutive code (Carga-1, Carga-2, ...)
@@ -953,26 +990,23 @@ class SupabaseService {
     final String humanId = 'Carga-${count + 1}';
 
     final Map<String, dynamic> insertData = {
-      'carga_codigo': humanId,
+      'carga_codigo': (depositoOrigen != null && depositoOrigen.isNotEmpty) ? '$humanId | $depositoOrigen' : humanId,
       'viaje_id': viajeId,
       'estado': AppStates.pendiente,
       'created_by': cleanCreatedBy,
     };
-    // deposito_origen eliminado
     
     final cargaResp = await _client.from('cargas').insert(insertData).select('id').single();
     final cargaId = cargaResp['id'] as String;
 
     try {
-      if (items.isNotEmpty) {
-        final itemsToInsert = items.map((item) => {
-          'carga_id': cargaId,
-          'producto_codigo': item['producto_codigo'],
-          'cantidad': (item['cantidad'] as num).toInt(),
-          'unidad': item['unidad'] ?? 'UN',
-        }).toList();
-        await _client.from('carga_items').insert(itemsToInsert);
-      }
+      final itemsToInsert = validItems.map((item) => {
+        'carga_id': cargaId,
+        'producto_codigo': item['producto_codigo'],
+        'cantidad': (item['cantidad'] as num).toInt(),
+        'unidad': item['unidad'] ?? 'UN',
+      }).toList();
+      await _client.from('carga_items').insert(itemsToInsert);
       return cargaId;
     } catch (e) {
       // Rollback manual para no dejar cargas huérfanas en la base de datos
@@ -1240,7 +1274,8 @@ class SupabaseService {
           .select('*, profiles(nombre, apellido), viajes(viaje_codigo)')
           .order('fecha', ascending: false)
           .timeout(const Duration(seconds: 10));
-      return List<Map<String, dynamic>>.from(data);
+      final list = List<Map<String, dynamic>>.from(data);
+      return list.map((g) => _enrichGasto(g)).toList();
     } catch (e) {
       print('SupabaseService: Error en getGastos: $e');
       return [];
