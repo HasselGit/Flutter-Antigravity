@@ -188,3 +188,16 @@ Las solicitudes y viajes siguen un circuito de estados estricto:
   - Si el usuario es un **Chofer**, el dropdown se muestra inhabilitado y pre-seleccionado en `'Depósito Huinca'`. El chofer conserva el permiso de agregar cargas a un viaje activo únicamente bajo este depósito.
   - Si el usuario es **Depósito, CEO, Compras o Gerente**, el selector está totalmente desbloqueado y pueden elegir entre `'Parque Industrial'` y `'Depósito Huinca'`.
 - **Origen en PDF de Remitos**: Las plantillas profesionales de remitos (tanto remitos de cliente/distribución en `remito_page.dart` como remitos de pesaje/báscula en `remito_registro.dart`) recuperan el `deposito_origen` de forma asíncrona de las cargas asociadas al viaje y lo renderizan visiblemente en la sección de metadatos bajo el campo **'Depósito de Carga'**.
+
+## 21. Unificación de Remitos, Persistencia de Pesajes y Simplificación en Home (2 de Junio de 2026)
+### A. Unificación Estética del Remito de Pesajes
+- **Pie de Remito Estandarizado**: El remito de pesajes y conformidad (`generateWeighingRemitoPDF` en `pdf_invoice_generator.dart`) debe utilizar la insignia verde `"FIRMA DIGITAL VERIFICADA"` con borde en color `secondaryColor` (#1A6B43) y leyenda `"Fecha de firma"`, unificando su diseño con el de cargas para estandarizar la formalidad del firmado digital.
+- **Caja de Totales Coherente**: La caja de totales de pesajes debe utilizar el diseño minimalista de cargas: color de fondo `backgroundColor` (#F8FAFC), borde sutil `borderColor` (#E2E8F0) de ancho 1.0, y mostrar el peso neto destacado en Success Green (`secondaryColor`).
+- **Preservación de Cabecera**: Se mantiene la proporción y elementos de cabecera que incluyen el logo de Geomiel con dirección/teléfono a la izquierda y el logo de GeoLogística a la derecha.
+
+### B. Persistencia de Datos e Historial de Pesajes
+- **Eliminación de Limpieza de Pesajes**: Se prohíbe el borrado automático de los pesajes en Supabase al momento de firmar y emitir el remito. Los pesajes asociados a la parada deben conservarse en la base de datos para que la tarjeta interactiva de pesajes en `viaje_detalle.dart` y el listado de `pesajes_page.dart` puedan cargar y desglosar el historial completo de tambores.
+- **Eliminación de la palabra "Balanza/Báscula" en la UI**: Las alertas de discrepancia en la UI deben usar la frase `"según pesajes registrados"` en lugar de `"según pesaje de balanza"` para acatar la regla de no mencionar balanzas o básculas físicas.
+
+### C. Limpieza de Interfaz en Home
+- **Ocultamiento de Estado de Cargas**: Se elimina por completo la sección de estadísticas `"ESTADO DE CARGAS"` en `homepage.dart` para simplificar la vista y evitar redundancias operativas con los paneles dedicados de depósito y choferes.

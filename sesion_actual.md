@@ -93,3 +93,24 @@ En esta sesión implementamos con éxito salvaguardas universales contra retroce
 ## 🖥️ Recordatorio para Futuros Agentes / Desarrolladores:
 > [!CAUTION]
 > **NO MODIFICAR**: La advertencia de IA en el README, los archivos de reglas .cursorrules/.clinerules, el filtrado de cargas vacías y las restricciones de depósitos PI/Huinca con viajes en curso son reglas inmutables del negocio para asegurar cero regresiones en producción.
+
+---
+
+## ⚖️ Hito de Integridad: Unificación de Remitos, Persistencia de Pesajes y Limpieza en Home (2 de Junio, 2026 - Continuación)
+
+En esta sesión unificamos estéticamente los remitos oficiales de pesaje y cargas, y garantizamos la persistencia y auditoría de los pesajes realizados en terreno:
+
+### 🛑 12. Unificación Estética del Remito de Pesajes
+* **Estandarización de Firma Digital**: Modificamos el generador de PDF `generateWeighingRemitoPDF` en `pdf_invoice_generator.dart` para reemplazar la insignia `"CERTIFICADO DE TRÁNSITO GEOMIEL"` (Honey Gold) por el sello verde `"FIRMA DIGITAL VERIFICADA"`, alineándolo con la estética del remito de cargas.
+* **Caja de Totales Elegante**: Rediseñamos la visualización de los totales en el PDF para usar la estética minimalista de cargas (fondo gris claro `#F8FAFC`, borde sutil `#E2E8F0`, desglose de peso bruto, tara y neto total, con el neto destacado en verde `secondaryColor`).
+* **Soporte de Cabecera**: Se mantuvo intacto el diseño proporcional de la cabecera con el logo de Geomiel y dirección a la izquierda y el logo de GeoLogística a la derecha.
+* **Corrección de Typos**: Se corrigió el typo de `"FIRMATE / RESPONSABLE:"` por `"FIRMANTE / RESPONSABLE:"` en la sección de datos.
+
+### 🛑 13. Persistencia de Pesajes y Solución a la Desaparición de Datos
+* **Persistencia en base de datos**: Eliminamos el borrado automático de pesajes en caliente que se ejecutaba en `remito_registro.dart` (línea 517) al emitir un remito. Ahora los datos de pesaje de tambores se preservan indefinidamente en Supabase.
+* **Visualización en Detalle de Viaje**: Gracias a la persistencia de pesajes, la tarjeta interactiva de pesajes en `viaje_detalle.dart` y la pantalla global de pesajes (`pesajes_page.dart`) ahora se muestran y desglosan correctamente con todos sus detalles.
+* **Limpieza de Alertas**: Se reemplazó la palabra "balanza" en la advertencia de mismatch por `'Sugerido: ${_pesajes.length} TCM según pesajes registrados.'` en `remito_registro.dart` (línea 1647).
+
+### 🛑 14. Simplificación del Panel de Inicio (Home)
+* **Remoción de Estado de Cargas**: Se eliminó por completo el widget de la franja de estadísticas de `"ESTADO DE CARGAS"` en `homepage.dart` para limpiar la UI y evitar redundancias operativas.
+
