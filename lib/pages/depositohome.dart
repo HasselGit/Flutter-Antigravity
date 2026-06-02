@@ -799,12 +799,14 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
               _buildTerminadasTab(),
             ],
           ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddCargaDialog,
-        backgroundColor: DesignTokens.primary,
-        icon: Icon(Icons.add_box_rounded, color: DesignTokens.accent),
-        label: const Text('AGREGAR CARGA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
+      floatingActionButton: _isChofer
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showAddCargaDialog,
+              backgroundColor: DesignTokens.primary,
+              icon: Icon(Icons.add_box_rounded, color: DesignTokens.accent),
+              label: const Text('AGREGAR CARGA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
     );
   }
 
@@ -1567,13 +1569,18 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     )
                   else
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: selectedViajeId != null && allViajes.any((v) => v['id']?.toString() == selectedViajeId)
                         ? selectedViajeId : null,
                     decoration: const InputDecoration(labelText: 'Seleccionar Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
                     hint: const Text('Seleccionar viaje...'),
                     items: allViajes.map((v) => DropdownMenuItem<String>(
                       value: v['id']?.toString(),
-                      child: Text('${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'} (${v['estado'] ?? ''})'),
+                      child: Text(
+                        '${v['viaje_codigo'] ?? 'S/C'} — ${v['vehiculo_codigo'] ?? 'S/V'} (${v['estado'] ?? ''})',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     )).toList(),
                     onChanged: (v) {
                       setModalState(() {
@@ -1596,6 +1603,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     key: ValueKey(selectedViajeId), // Forzar reconstrucción limpia si cambia el viaje
                     value: selectedDeposito,
                     decoration: const InputDecoration(
@@ -1614,7 +1622,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                       return ['Parque Industrial', 'Depósito Huinca'];
                     }()).map((dep) => DropdownMenuItem<String>(
                       value: dep,
-                      child: Text(dep),
+                      child: Text(dep, overflow: TextOverflow.ellipsis, maxLines: 1),
                     )).toList(),
                     onChanged: (_isChofer || (() {
                       final selectedTrip = allViajes.firstWhere(
@@ -1717,6 +1725,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     )
                   else
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: selectedProductoCodigo,
                     decoration: const InputDecoration(labelText: 'Producto Adicional', prefixIcon: Icon(Icons.inventory_2_rounded)),
                     hint: const Text('Seleccionar producto adicional...'),
