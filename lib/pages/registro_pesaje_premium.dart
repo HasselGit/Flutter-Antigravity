@@ -97,7 +97,7 @@ class _RegistroPesajePremiumWidgetState extends State<RegistroPesajePremiumWidge
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(20)),
-                  child: const Text('EN PROCESO', style: TextStyle(color: Color(0xFFC68E17), fontWeight: FontWeight.w800, fontSize: 10)),
+                  child: const Text('EN CURSO', style: TextStyle(color: Color(0xFFC68E17), fontWeight: FontWeight.w800, fontSize: 10)),
                 ),
               ],
             ),

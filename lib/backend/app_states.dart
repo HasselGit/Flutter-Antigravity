@@ -6,7 +6,7 @@ class AppStates {
   // ── Estados comunes ────────────────────────────────────────────────────────
   static const String pendiente  = 'Pendiente';
   static const String asignada   = 'Asignada';
-  static const String enCurso    = 'En Proceso';
+  static const String enCurso    = 'En Curso';
   static const String terminado  = 'Terminado';
 
   // ── Estados de Solicitudes ─────────────────────────────────────────────────

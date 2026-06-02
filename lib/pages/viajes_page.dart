@@ -28,8 +28,8 @@ class _ViajesPageWidgetState extends State<ViajesPageWidget>
   String? _userRole;
   bool _isAdmin = false; // hassel00@gmail.com tiene acceso total
 
-  final List<String> _tabs = ['PENDIENTE', 'EN PROCESO', 'TERMINADOS'];
-  final List<String> _statusKeys = ['Pendiente', 'En Proceso', 'Terminado'];
+  final List<String> _tabs = ['PENDIENTE', 'EN CURSO', 'TERMINADOS'];
+  final List<String> _statusKeys = [AppStates.pendiente, AppStates.enCurso, AppStates.terminado];
 
   @override
   void initState() {

@@ -835,7 +835,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                             Expanded(
                               child: _operacionBadgeCard(
                                 'Estado Parada',
-                                'EN PROCESO',
+                                'EN CURSO',
                                 const Color(0xFFF1F5F9),
                                 const Color(0xFF475569),
                               ),
