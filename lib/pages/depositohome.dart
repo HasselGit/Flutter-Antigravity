@@ -799,7 +799,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
               _buildTerminadasTab(),
             ],
           ),
-      floatingActionButton: _isChofer
+      floatingActionButton: _loading || _isChofer
           ? null
           : FloatingActionButton.extended(
               onPressed: _showAddCargaDialog,
@@ -1440,13 +1440,20 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
   }
 
   void _showAddCargaDialog({String? preselectedViajeId}) {
+    if (_isChofer) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Los choferes no tienen permisos para crear cargas.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     String? selectedViajeId = preselectedViajeId;
     String? selectedProductoCodigo;
     final qtyController = TextEditingController();
-    List<Map<String, dynamic>> allViajes = _isChofer
-        ? _viajesPlanificados.where((v) => v['chofer_id'] == _currentUserId).toList()
-        : List.from(_viajesPlanificados);
-    String selectedDeposito = _isChofer ? 'Depósito Huinca' : 'Parque Industrial';
+    List<Map<String, dynamic>> allViajes = List.from(_viajesPlanificados);
+    String selectedDeposito = 'Parque Industrial';
 
     List<Map<String, dynamic>> plannedItems = [];
     bool isLoadingPlanned = false;
@@ -1573,7 +1580,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     value: selectedViajeId != null && allViajes.any((v) => v['id']?.toString() == selectedViajeId)
                         ? selectedViajeId : null,
                     decoration: const InputDecoration(labelText: 'Seleccionar Viaje', prefixIcon: Icon(Icons.local_shipping_rounded)),
-                    hint: const Text('Seleccionar viaje...'),
+                    hint: const Text('Seleccionar viaje...', overflow: TextOverflow.ellipsis, maxLines: 1),
                     items: allViajes.map((v) => DropdownMenuItem<String>(
                       value: v['id']?.toString(),
                       child: Text(
@@ -1728,7 +1735,7 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                     isExpanded: true,
                     value: selectedProductoCodigo,
                     decoration: const InputDecoration(labelText: 'Producto Adicional', prefixIcon: Icon(Icons.inventory_2_rounded)),
-                    hint: const Text('Seleccionar producto adicional...'),
+                    hint: const Text('Seleccionar producto...', overflow: TextOverflow.ellipsis, maxLines: 1),
                     items: _productos.map((p) => DropdownMenuItem<String>(
                       value: p['codigo']?.toString(),
                       child: Text(
