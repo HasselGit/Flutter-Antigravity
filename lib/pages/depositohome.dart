@@ -1186,7 +1186,23 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
-                       if (type != 'viaje_sin_cargo') ...[
+                                  '${entry.value.round()} un.',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+
+                if (type != 'viaje_sin_cargo') ...[
                   const SizedBox(height: 14),
 
                   // Botones de acción
