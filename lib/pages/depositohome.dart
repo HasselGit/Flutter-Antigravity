@@ -825,7 +825,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
         // 2. Si el viaje ya está En Curso, cualquier carga de Parque Industrial ya debe estar Terminada
         // Por ende, no debe mostrarse como pendiente/activa en el depósito
         final String origen = c['deposito_origen'] ?? 'Parque Industrial';
-        if (v['estado'] == 'En Curso' && origen == 'Parque Industrial') {
+        final String normalizedViajeState = AppStates.normalize(v['estado']?.toString());
+        if (normalizedViajeState == AppStates.enCurso && origen == 'Parque Industrial') {
           continue;
         }
 
@@ -1599,7 +1600,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                           orElse: () => {},
                         );
                         final String tripState = selectedTrip['estado'] ?? '';
-                        if (tripState == 'En Curso') {
+                        final String normalizedState = AppStates.normalize(tripState);
+                        if (normalizedState == AppStates.enCurso) {
                           selectedDeposito = 'Depósito Huinca';
                         }
                       });
@@ -1623,7 +1625,8 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                         orElse: () => {},
                       );
                       final String tripState = selectedTrip['estado'] ?? '';
-                      if (tripState == 'En Curso') {
+                      final String normalizedState = AppStates.normalize(tripState);
+                      if (normalizedState == AppStates.enCurso) {
                         return ['Depósito Huinca'];
                       }
                       return ['Parque Industrial', 'Depósito Huinca'];
@@ -1636,7 +1639,9 @@ class _DepositohomeWidgetState extends State<DepositohomeWidget> with SingleTick
                         (trip) => trip['id']?.toString() == selectedViajeId,
                         orElse: () => {},
                       );
-                      return (selectedTrip['estado'] ?? '') == 'En Curso';
+                      final String tripState = selectedTrip['estado'] ?? '';
+                      final String normalizedState = AppStates.normalize(tripState);
+                      return normalizedState == AppStates.enCurso;
                     }())) ? null : (v) {
                       if (v != null) {
                         setModalState(() {
