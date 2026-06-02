@@ -1,3 +1,12 @@
+<!-- AI_AGENT_INSTRUCTIONS: YOU MUST READ ARQUITECTURA_GEOLOGISTICA.md AND sesion_actual.md BEFORE TOUCHING ANY CODE. FAILING TO DO SO WILL BREAK CRITICAL BUSINESS LOGIC AND DATABASE CONSTRAINTS. -->
+
+# ⚠️ INSTRUCCIÓN CRÍTICA PARA AGENTES DE IA / AI AGENTS
+**Antes de realizar cualquier modificación, análisis o propuesta de cambio de código en este repositorio, es obligatorio leer y asimilar en su totalidad los siguientes documentos de directrices inmutables:**
+* [ARQUITECTURA_GEOLOGISTICA.md](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/ARQUITECTURA_GEOLOGISTICA.md) (Master Blueprint)
+* [sesion_actual.md](file:///c:/Users/Parque-Apicola/Desktop/Geologistica/sesion_actual.md) (Bitácora de Cambios de Sesión)
+
+---
+
 # geo_logistica
 
 A new Flutter project.

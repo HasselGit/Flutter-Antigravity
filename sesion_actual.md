@@ -62,13 +62,34 @@ En esta sesión implementamos con éxito el paquete de seguridad operativo, audi
   - No hay un **viaje seleccionado / asociado**.
   - Si el tipo de gasto es **Combustible**, valida estrictamente que el campo de **litros** no esté vacío y contenga un valor numérico mayor a cero.
 
+
+---
+
+## 🛡️ Hito de Seguridad: Reglas de Proyecto y Consistencia de Cargas en Depósito (2 de Junio, 2026)
+
+En esta sesión implementamos con éxito salvaguardas universales contra retrocesos de asistentes de IA y resolvimos de raíz los problemas visuales, de navegación y consistencia lógica en el visor de depósitos (`depositohome.dart`):
+
+### 🛑 9. Inyección de Salvaguardas del Sistema (Anti-Regresiones de IA)
+- **Instrucción Crítica en `README.md`**: Agregamos un banner ineludible en el encabezado de `README.md` que obliga a cualquier agente futuro a consultar el Master Blueprint y la bitácora de sesión antes de realizar cualquier cambio en el código.
+- **Creación de `.cursorrules` y `.clinerules`**: Creamos estos archivos en la raíz del proyecto para bloquear de forma inmutable las directrices de bypass de autenticación (uso de `SharedPreferences`), la conversión obligatoria a enteros en Supabase para evitar el error `"invalid input syntax for type integer: '150.0'"`, el cierre manual de paradas por choferes y la exclusividad de creación de cargas para roles administrativos.
+
+### 🛑 10. Saneamiento de Tarjetas Vacías y Navegación de Cargas
+- **Filtrado de Cargas Vacías/Corruptas**: Corregimos el método `_getActiveItems()` para filtrar y omitir cargas vacías (`carga_items.isEmpty`), resolviendo el problema de las tarjetas fantasma con 0 kg y 0 tambores en la pestaña de Pendientes.
+- **Redirección de Navegación (`onTap`)**: Cambiamos la acción de presionar la tarjeta de carga para que redirija de manera correcta al visor de detalle de carga (`/cargaDetalle?id=X`) en lugar del detalle de viaje.
+- **Visualización Premium Vertical de Insumos**: Rediseñamos el cuerpo de la tarjeta de carga (`_buildViajeCard`) para desplegar una lista vertical elegante que detalla explícitamente los nombres y códigos de los productos cargados junto a sus cantidades en badges, resolviendo descripciones en base al catálogo y asignando iconos según el tipo de producto.
+
+### 🛑 11. Restricciones y Permisos de Parque Industrial (PI) vs. Depósito Huinca
+- **Restricción de PI con Viaje en Proceso**:
+  - En `_getActiveItems()`, si el viaje está `'En Curso'`, cualquier carga activa de Parque Industrial se omite automáticamente del listado (ya que debe estar finalizada para que el viaje pueda haber iniciado).
+  - En `_showAddCargaDialog`, si el viaje seleccionado está `'En Curso'`, el dropdown de depósito de origen se bloquea y restringe mostrando únicamente la opción `'Depósito Huinca'`, impidiendo la creación de cargas de PI con el viaje en proceso.
+- **Habilitación de Acciones Huinca Exclusivas al Chofer Asignado**: Los botones de acción física "INICIAR CARGA" y "FINALIZAR CARGA" de cargas de Huinca en ruta se habilitan **únicamente** si el usuario en sesión es el chofer asignado a dicho viaje. Para otros usuarios o choferes no asignados, los botones se deshabilitan mostrando la indicación `'ASIGNADO A OTRO CHOFER'`, mientras que el botón "EDITAR" se oculta por completo para todos los choferes, reservándose a roles administrativos.
+
 ---
 
 ## 💾 Estado del Proyecto y Verificación
-- **Flutter Analyze**: **0 errores estáticos.** Todo el código de producción cumple con las directrices más estrictas de Flutter/Dart.
-- **Tests Unitarios y de Integración**: Todos los tests de carga y paradas (`test_deposito.dart`, `test_cargas.dart`, `test_parada_items.dart`) pasan con éxito.
-- **GitHub**: Cambios listos para sincronización.
+- **Flutter Analyze**: **0 errores estáticos.** Todo el código cumple con las directrices más estrictas de Flutter/Dart.
+- **GitHub**: Cambios listos para commit y push.
 
 ## 🖥️ Recordatorio para Futuros Agentes / Desarrolladores:
 > [!CAUTION]
-> **NO MODIFICAR**: La lógica de permisos en el depósito PI, la inmutabilidad de paradas finalizadas por el chofer y el bypass de roles de creación de cargas son reglas de negocio críticas acordadas directamente con la gerencia. Cualquier alteración de estos archivos sin aprobación explícita resultará en fallos de compilación e inconsistencias en la base de datos de producción.
+> **NO MODIFICAR**: La advertencia de IA en el README, los archivos de reglas .cursorrules/.clinerules, el filtrado de cargas vacías y las restricciones de depósitos PI/Huinca con viajes en curso son reglas inmutables del negocio para asegurar cero regresiones en producción.

@@ -315,6 +315,43 @@ Hemos diagnosticado, corregido de forma definitiva y validado los inconvenientes
   - **Botón de Deletreo Condicional**: Agregamos un botón de acción premium de **"ELIMINAR CARGA"** en `carga_detalle.dart` visible únicamente para los roles `_isManagement` cuando la carga está en estado `Pendiente`. Al pulsarlo, abre un cuadro de diálogo de confirmación seguro.
   - **Restricción de Flujo de Estados**: Envolvimos el bloque de botones de acción de estados ("INICIAR CARGA", "CONFIRMAR CARGA TERMINADA") con un validador que requiere que el usuario posea estrictamente el rol de depósito (`_isDeposito`), ocultándolos de forma definitiva para los puestos corporativos/gerenciales y resguardando la integridad operativa de los flujos de terreno.
 
+---
+
+# Walkthrough: Reglas de Proyecto y Consistencia de Cargas en Depósito (2 de Junio, 2026)
+
+Hemos finalizado y verificado con éxito las directivas de seguridad para el sistema (anti-regresiones de IA) e implementado de raíz la consistencia lógica de las tarjetas de cargas en el panel de depósito.
+
+---
+
+## 🛠️ Resumen de Implementación y Verificaciones
+
+### 1. Inyección de Salvaguardas y Directrices del Sistema (Anti-Regresiones de IA)
+- ** README.md**: Agregamos un banner informativo e instrucciones en las primeras líneas para agentes de IA, advirtiendo sobre la obligatoriedad de leer `ARQUITECTURA_GEOLOGISTICA.md` y `sesion_actual.md` antes de realizar cambios de código.
+- ** .cursorrules y .clinerules**: Creamos ambos archivos en la raíz del proyecto. Estos definen las reglas del sistema para cualquier modelo o asistente de IA sobre el bypass de autenticación (uso estricto de `SharedPreferences`), la conversión de cantidad a entero (`.round()` / `.toInt()`) para evitar errores en PostgreSQL, la inmutabilidad de paradas manuales y el bloqueo de creación de cargas para choferes.
+
+### 2. Saneamiento de Tarjetas Vacías o Fantasmas (`depositohome.dart`)
+- **Filtro de Cargas Vacías**: Modificamos el método `_getActiveItems()` para omitir cualquier carga cuyo listado de productos (`carga_items`) esté vacío. Esto elimina de inmediato las tarjetas fantasmas de cargas vacías (con 0 kg y 0 tambores) del panel de depósito.
+- **Navegación al Detalle de Carga (`onTap`)**: Corregimos el redireccionamiento al presionar la tarjeta de carga. Ahora el sistema navega correctamente al visor del detalle de carga `/cargaDetalle?id=X` en lugar de abrir el detalle del viaje.
+
+### 3. Rediseño Premium de Tarjetas con Ítems Planificados (`depositohome.dart`)
+- **Lista Vertical de Insumos**: Reemplazamos la sección de métricas vacías por un diseño premium de lista vertical. Para cada producto a cargar:
+  - Se resuelve de forma asíncrona la descripción humana del catálogo (ej. `'Tambores con Miel'`).
+  - Se asignan iconos representativos de manera dinámica (ej. reloj de arena para envases vacíos, caja de inventario para tambores llenos).
+  - Se muestra la cantidad de forma destacada en un badge de color corporativo de la paleta.
+
+### 4. Lógica de Parque Industrial (PI) vs. Depósito Huinca (`depositohome.dart`)
+- **Restricción de Cargas PI con Viaje en Proceso**:
+  - Si un viaje está `'En Curso'`, el método `_getActiveItems()` filtra y descarta cualquier carga de Parque Industrial asociada, ya que debe estar finalizada antes de la partida del camión.
+  - En `_showAddCargaDialog`, si el viaje seleccionado está `'En Curso'`, el dropdown de depósito de origen se inactiva y pre-selecciona automáticamente `'Depósito Huinca'`, ocultando por completo la opción `'Parque Industrial'` para evitar violaciones lógicas.
+- **Acciones Restringidas al Chofer Asignado**: Los botones de acción "INICIAR CARGA" y "FINALIZAR CARGA" para cargas Huinca en ruta se habilitan exclusivamente si el ID de usuario local coincide con el `chofer_id` del viaje de la carga. Para otros usuarios o choferes, el botón se bloquea mostrando `'ASIGNADO A OTRO CHOFER'`, resguardando el flujo del chofer asignado en terreno. El botón "EDITAR" se oculta por completo para todos los choferes en la vista.
+
+---
+
+## 🧪 Verificación y Compilación
+Ejecutamos la herramienta de análisis de Flutter en todo el espacio de producción:
+- **`flutter analyze lib/`**: **0 errores estáticos de análisis.** Todo el código cumple estrictamente con el sistema y los tipos de Flutter/Dart.
+
+
 
 
 

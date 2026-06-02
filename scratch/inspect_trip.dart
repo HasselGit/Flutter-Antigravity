@@ -46,6 +46,24 @@ void main() async {
         print('    - Remito ID: ${r['id']}, Codigo: ${r['remito_codigo']}, PDF: ${r['pdf_url']}');
       }
     }
+    // 3. Fetch charges for this trip
+    final cargas = await client
+        .from('cargas')
+        .select('*, carga_items(*)')
+        .eq('viaje_id', viaje['id']);
+
+    print('\nCargas for this trip:');
+    print('  Cargas count: ${cargas.length}');
+    for (var c in cargas) {
+      print('  -------------------------------');
+      print('  Carga ID: ${c['id']}');
+      print('  Codigo: ${c['carga_codigo']}');
+      print('  Estado: ${c['estado']}');
+      print('  Items count: ${(c['carga_items'] as List).length}');
+      for (var item in (c['carga_items'] as List)) {
+        print('    - Item: ${item['producto_codigo']} x ${item['cantidad']}');
+      }
+    }
   } catch (e, stack) {
     print('❌ Error occurred during diagnosis: $e');
     print(stack);

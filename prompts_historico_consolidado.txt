@@ -2294,3 +2294,25 @@ SESION ADICIONAL: 1 de Junio de 2026 - HITO DE SEGURIDAD E INTEGRIDAD OPERATIVA
 - Supabase integer rounding: Modificadas las inserciones y ediciones de carga_items en depositohome.dart y supabase_service.dart para redondear cantidades con .round() y .toInt() garantizando enteros puros compatibles con Postgres.
 - gastos_page.dart: Agregada validacion estricta que bloquea el guardado si falta importe, comprobante o viaje asignado. Si el tipo es Combustible, tambien valida que los litros sean mayores a cero.
 - SharedPreferences bypass: Recuperacion de userEmail desde SharedPreferences locales para filtrar viajes y cargas en depositohome.dart y gastos_page.dart.
+
+================================================================================
+SESION ADICIONAL: 2 de Junio de 2026 - SALVAGUARDAS DE IA Y CONSISTENCIA DE DEPOSITO
+================================================================================
+
+1. REQUERIMIENTO:
+- Inyectar salvaguardas ineludibles para evitar regresiones de IA en README.md, .cursorrules y .clinerules.
+- Eliminar de depositohome.dart las tarjetas fantasmas de cargas vacias (con 0 kg y 0 tambores).
+- Corregir el onTap de las tarjetas de carga para redirigir a /cargaDetalle?id=X en lugar de /viajedetalle.
+- Rediseñar el cuerpo de la tarjeta de carga para listar los productos y cantidades planificadas en una vista vertical premium resolviendo los nombres del catalogo.
+- Restringir la creacion de cargas de Parque Industrial (PI) si el viaje esta En Curso, forzando y bloqueando la opcion a Deposito Huinca.
+- Restringir los botones de accion de cargas Huinca en ruta para que esten habilitados unicamente para el chofer asignado al viaje, y ocultar el boton Editar para todos los choferes.
+
+2. SOLUCION IMPLEMENTADA:
+- README.md: Banner inyectado en el encabezado exigiendo la lectura de ARQUITECTURA_GEOLOGISTICA.md y sesion_actual.md.
+- .cursorrules y .clinerules: Creados en la raiz conteniendo las directrices obligatorias de bypass de auth por SharedPreferences, enteros en Postgres para cantidades, bloqueo de creacion a choferes y paradas manuales.
+- depositohome.dart:
+  - _getActiveItems(): Agregado filtro que omite cargas con carga_items.isEmpty y omite cargas de PI activas si el viaje esta En Curso.
+  - onTap: Redirige a /cargaDetalle?id=cargaId si no es nula.
+  - _buildViajeCard(): Rediseñada la seccion de productos a una lista vertical premium que resuelve las descripciones y renderiza iconos dinamicos y cantidades en badges de color corporativo.
+  - _showAddCargaDialog: Agregada reactividad para forzar selectedDeposito a 'Deposito Huinca' y deshabilitar el dropdown si el viaje esta En Curso, previniendo assert crashes mediante key ValueKey.
+  - Botones de accion: Ocultado boton Editar si es chofer, y deshabilitados Iniciar/Finalizar carga con label 'ASIGNADO A OTRO CHOFER' si el usuario no es el conductor asignado del viaje.
