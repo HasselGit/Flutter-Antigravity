@@ -27,14 +27,88 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
+      List<dynamic> rawPesajes = [];
+      
+      try {
+        // Intento 1: Consulta con joins explícitos usando la sintaxis robusta de PostgREST
+        final data = await client
+            .from('pesajes')
+            .select('*, paradas!parada_id(tipo, localidad, ubicacion, viajes!viaje_id(viaje_codigo, fecha))')
+            .order('created_at', ascending: false)
+            .timeout(const Duration(seconds: 10));
+        rawPesajes = List<dynamic>.from(data);
+      } catch (joinErr) {
+        print('PesajesPage: Error en consulta con joins: $joinErr. Ejecutando fallback directo...');
+        // Fallback: consulta directa a pesajes y resoluciones manuales
+        final data = await client
+            .from('pesajes')
+            .select('*')
+            .order('created_at', ascending: false)
+            .timeout(const Duration(seconds: 10));
+        
+        final List<Map<String, dynamic>> pesajesDirectos = List<Map<String, dynamic>>.from(data);
+        
+        if (pesajesDirectos.isNotEmpty) {
+          // Obtener todas las paradas involucradas
+          final Set<String> paradaIds = pesajesDirectos
+              .map((p) => p['parada_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+              
+          Map<String, Map<String, dynamic>> paradasMap = {};
+          if (paradaIds.isNotEmpty) {
+            try {
+              final paradasData = await client
+                  .from('paradas')
+                  .select('id, tipo, localidad, ubicacion, viaje_id')
+                  .filter('id', 'in', paradaIds.toList());
+              for (var p in (paradasData as List)) {
+                paradasMap[p['id'].toString()] = Map<String, dynamic>.from(p);
+              }
+            } catch (paradasErr) {
+              print('PesajesPage: Error en fallback paradas: $paradasErr');
+            }
+          }
+          
+          // Obtener todos los viajes involucrados
+          final Set<String> viajeIds = paradasMap.values
+              .map((p) => p['viaje_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+              
+          Map<String, Map<String, dynamic>> viajesMap = {};
+          if (viajeIds.isNotEmpty) {
+            try {
+              final viajesData = await client
+                  .from('viajes')
+                  .select('id, viaje_codigo, fecha')
+                  .filter('id', 'in', viajeIds.toList());
+              for (var v in (viajesData as List)) {
+                viajesMap[v['id'].toString()] = Map<String, dynamic>.from(v);
+              }
+            } catch (viajesErr) {
+              print('PesajesPage: Error en fallback viajes: $viajesErr');
+            }
+          }
+          
+          // Reconstruir la estructura esperada por el código
+          for (var p in pesajesDirectos) {
+            final pId = p['parada_id']?.toString();
+            final parada = paradasMap[pId];
+            if (parada != null) {
+              final vId = parada['viaje_id']?.toString();
+              final viaje = viajesMap[vId];
+              if (viaje != null) {
+                parada['viaje'] = viaje;
+              }
+              p['parada'] = parada;
+            }
+            rawPesajes.add(p);
+          }
+        }
+      }
 
-      // Usar joins de Supabase para traer los datos relacionados directamente
-      final data = await client
-          .from('pesajes')
-          .select('*, parada:parada_id(tipo, localidad, ubicacion, viaje:viaje_id(viaje_codigo, fecha))')
-          .order('created_at', ascending: false);
-
-      final pesajes = List<Map<String, dynamic>>.from(data);
+      final pesajes = List<Map<String, dynamic>>.from(rawPesajes);
 
       if (pesajes.isEmpty) {
         if (mounted) setState(() { _grupos = []; _loading = false; });
@@ -53,13 +127,12 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
         final paradaId = entry.key;
         final items = entry.value;
         final firstItem = items[0];
-        final parada = (firstItem['parada'] as Map?) ?? {};
-        final viaje = (parada['viaje'] as Map?) ?? {};
+        final parada = (firstItem['paradas'] as Map?) ?? (firstItem['parada'] as Map?) ?? {};
+        final viaje = (parada['viajes'] as Map?) ?? (parada['viaje'] as Map?) ?? {};
 
         final totalBruto = items.fold(0.0, (s, p) => s + (double.tryParse(p['peso_bruto']?.toString() ?? '0') ?? 0));
         final totalTara = items.fold(0.0, (s, p) => s + (double.tryParse(p['tara']?.toString() ?? '0') ?? 0));
         
-        // Calcular neto si no viene de la DB (por si es generada)
         final totalNetoCalc = items.fold(0.0, (s, p) {
           final netoDB = double.tryParse(p['peso_neto']?.toString() ?? '');
           if (netoDB != null) return s + netoDB;
@@ -68,7 +141,6 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
           return s + (b - t);
         });
 
-        // Asegurar que apicultor_id sea string
         final apicId = firstItem['apicultor_id']?.toString() ?? 'S/D';
 
         return {
@@ -80,7 +152,6 @@ class _PesajesPageWidgetState extends State<PesajesPageWidget> {
           'localidad': parada['localidad'] ?? 'S/D',
           'tipo': parada['tipo'] ?? 'Recolección',
           'items': items.map((it) {
-            // Aseguramos que cada item tenga peso neto
             if (it['peso_neto'] == null) {
                final b = double.tryParse(it['peso_bruto']?.toString() ?? '0') ?? 0;
                final t = double.tryParse(it['tara']?.toString() ?? '0') ?? 0;

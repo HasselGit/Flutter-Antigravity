@@ -1778,6 +1778,9 @@ class SupabaseService {
     try {
       // Realizar borrado lógico cambiando el estado de la solicitud a 'Eliminada'
       await _client.from('solicitudes').update({'estado': 'Eliminada'}).eq('id', id);
+      
+      // Sincronizar parada y carga asociada
+      await _syncSolicitudChange(id, isDelete: true);
     } catch (e) {
       print('SupabaseService: Error en borrado lógico de solicitud: $e');
       throw 'No se pudo eliminar la solicitud: $e';
@@ -1787,9 +1790,145 @@ class SupabaseService {
   Future<void> updateSolicitud(String id, Map<String, dynamic> data) async {
     try {
       await _client.from('solicitudes').update(data).eq('id', id);
+      
+      // Sincronizar parada y carga asociada
+      await _syncSolicitudChange(id, isDelete: false, newData: data);
     } catch (e) {
       print('SupabaseService: Error actualizando solicitud: $e');
       throw 'No se pudo actualizar la solicitud: $e';
+    }
+  }
+
+  Future<void> syncCargaPendiente(String viajeId) async {
+    try {
+      // 1. Limpiar cargas pendientes previas del viaje
+      final prevCargas = await _client.from('cargas')
+          .select('id')
+          .eq('viaje_id', viajeId)
+          .eq('estado', AppStates.pendiente);
+      final List<dynamic> cargasList = prevCargas as List<dynamic>;
+      if (cargasList.isNotEmpty) {
+        final List<String> cargaIds = cargasList.map((c) => c['id'].toString()).toList();
+        await _client.from('carga_items').delete().filter('carga_id', 'in', cargaIds);
+        await _client.from('cargas').delete().filter('id', 'in', cargaIds);
+      }
+
+      // 2. Obtener todas las paradas del viaje con sus items para ver qué distribuciones hay
+      final paradasData = await _client.from('paradas')
+          .select('id, tipo, solicitud_id, parada_items(producto_codigo, cantidad, unidad)')
+          .eq('viaje_id', viajeId);
+      
+      final Map<String, double> grouped = {};
+      for (final p in (paradasData as List)) {
+        final String tipo = (p['tipo'] ?? '').toString().toLowerCase();
+        // Si la parada es una distribución, agregamos sus items a la carga
+        if (tipo.contains('dist')) {
+          final items = List<Map<String, dynamic>>.from(p['parada_items'] ?? []);
+          for (final item in items) {
+            final prod = (item['producto_codigo'] ?? '').toString();
+            if (prod.isNotEmpty) {
+              final double qty = (item['cantidad'] as num?)?.toDouble() ?? 0.0;
+              grouped[prod] = (grouped[prod] ?? 0.0) + qty;
+            }
+          }
+        }
+      }
+
+      // 3. Si hay distribuciones acumuladas, crear la nueva carga pendiente
+      if (grouped.isNotEmpty) {
+        final List<Map<String, dynamic>> itemsToLoad = grouped.entries.map((e) {
+          final lowerProd = e.key.toLowerCase();
+          final esUnidades = lowerProd.contains('tambor') ||
+              lowerProd.contains('insumo') ||
+              lowerProd.contains('alimento') ||
+              lowerProd.contains('tcm') ||
+              lowerProd.contains('tv');
+          return {
+            'producto_codigo': e.key,
+            'cantidad': e.value,
+            'unidad': esUnidades ? 'UN' : 'KG',
+          };
+        }).toList();
+
+        // Obtener el viaje para el creador
+        final viajeData = await _client.from('viajes').select('id, chofer_id').eq('id', viajeId).maybeSingle();
+        final creatorId = viajeData != null ? await _getCreatorId(viajeData) : 'd0744e5c-3d9c-4e17-be9e-90e55f4a4c61';
+        
+        await createCarga(
+          viajeId: viajeId,
+          items: itemsToLoad,
+          createdBy: creatorId,
+        );
+      }
+    } catch (e) {
+      print('SupabaseService: Error en syncCargaPendiente para viaje $viajeId: $e');
+    }
+  }
+
+  Future<void> _syncSolicitudChange(String solicitudId, {bool isDelete = false, Map<String, dynamic>? newData}) async {
+    try {
+      // 1. Buscar si hay una parada asociada a esta solicitud
+      final parada = await _client.from('paradas')
+          .select('id, viaje_id')
+          .eq('solicitud_id', solicitudId)
+          .maybeSingle();
+      
+      if (parada == null) return;
+      
+      final String paradaId = parada['id'].toString();
+      final String viajeId = parada['viaje_id'].toString();
+      
+      if (isDelete) {
+        // Si se elimina la solicitud, eliminamos los items de la parada y la parada misma
+        await _client.from('parada_items').delete().eq('parada_id', paradaId);
+        await _client.from('paradas').delete().eq('id', paradaId);
+      } else if (newData != null) {
+        // Si se edita la solicitud, actualizamos el parada_item correspondiente
+        final String? producto = newData['producto']?.toString();
+        final double? cantidad = newData['cantidad'] != null ? (newData['cantidad'] as num).toDouble() : null;
+        
+        if (producto != null || cantidad != null) {
+          final existingItem = await _client.from('parada_items')
+              .select('id, producto_codigo, cantidad')
+              .eq('parada_id', paradaId)
+              .maybeSingle();
+          
+          if (existingItem != null) {
+            final Map<String, dynamic> updates = {};
+            if (producto != null) updates['producto_codigo'] = producto;
+            if (cantidad != null) updates['cantidad'] = cantidad;
+            
+            if (producto != null) {
+              final String lowerProd = producto.toLowerCase();
+              final esUnidades = lowerProd.contains('tambor') ||
+                  lowerProd.contains('insumo') ||
+                  lowerProd.contains('alimento') ||
+                  lowerProd.contains('tcm') ||
+                  lowerProd.contains('tv');
+              updates['unidad'] = esUnidades ? 'UN' : 'KG';
+            }
+            await _client.from('parada_items').update(updates).eq('id', existingItem['id']);
+          } else if (producto != null && cantidad != null) {
+            final String lowerProd = producto.toLowerCase();
+            final esUnidades = lowerProd.contains('tambor') ||
+                lowerProd.contains('insumo') ||
+                lowerProd.contains('alimento') ||
+                lowerProd.contains('tcm') ||
+                lowerProd.contains('tv');
+            await _client.from('parada_items').insert({
+              'parada_id': paradaId,
+              'producto_codigo': producto,
+              'cantidad': cantidad,
+              'unidad': esUnidades ? 'UN' : 'KG',
+            });
+          }
+        }
+      }
+      
+      // 2. Sincronizar la carga pendiente del viaje asociado
+      await syncCargaPendiente(viajeId);
+    } catch (e) {
+      print('SupabaseService: Error en _syncSolicitudChange para solicitud $solicitudId: $e');
     }
   }
 

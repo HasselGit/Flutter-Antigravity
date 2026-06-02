@@ -114,6 +114,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     return r.contains('ceo') || r.contains('gerente') || r.contains('gerencia');
   }
 
+  bool get _isCompras {
+    final r = _normalizeRole(_userRole);
+    return r.contains('compras');
+  }
+
   String get _initials {
     final parts = _displayName.split(' ').where((s) => s.isNotEmpty).toList();
     if (parts.isEmpty) return 'U';
@@ -289,7 +294,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/gerenteHome'),
                           ),
-                        if (!_isDeposito && (_isManagement && !_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia')))
+                        if (!_isDeposito && (_isManagement && !_isCeoOrGerente && !_isCompras))
                           _moduleCard(
                             icon: Icons.inventory_2_rounded,
                             title: 'Gestión de Cargas',
@@ -316,7 +321,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/necesidades'),
                           ),
                         ],
-                        if (!_isChofer && !_normalizeRole(_userRole).contains('ceo') && !_normalizeRole(_userRole).contains('gerente') && !_normalizeRole(_userRole).contains('gerencia') && !_isDeposito) ...[
+                        if (!_isChofer && !_isCeoOrGerente && !_isDeposito) ...[
                           _moduleCard(
                             icon: Icons.scale_rounded,
                             title: 'Control Pesajes',
@@ -325,22 +330,24 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/pesajes'),
                           ),
-                          _moduleCard(
-                            icon: Icons.inventory_2_rounded,
-                            title: 'Productos',
-                            subtitle: 'Gestión de stock\ne insumos',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/productos'),
-                          ),
-                          _moduleCard(
-                            icon: Icons.payments_rounded,
-                            title: 'Gastos',
-                            subtitle: 'Peajes, comida\ny combustible',
-                            bgColor: DesignTokens.primary,
-                            accentColor: DesignTokens.secondary,
-                            onTap: () => context.push('/gastos'),
-                          ),
+                          if (!_isCompras) ...[
+                            _moduleCard(
+                              icon: Icons.inventory_2_rounded,
+                              title: 'Productos',
+                              subtitle: 'Gestión de stock\ne insumos',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/productos'),
+                            ),
+                            _moduleCard(
+                              icon: Icons.payments_rounded,
+                              title: 'Gastos',
+                              subtitle: 'Peajes, comida\ny combustible',
+                              bgColor: DesignTokens.primary,
+                              accentColor: DesignTokens.secondary,
+                              onTap: () => context.push('/gastos'),
+                            ),
+                          ],
                         ],
                         if (!_isDeposito && !_isChofer && !_isCeoOrGerente)
                           _moduleCard(
@@ -364,14 +371,18 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     const SizedBox(height: 12),
 
                     if (!_isDeposito) ...[                      
-                      _quickAction(Icons.inventory_2_rounded, 'Inventario de Productos', 'Gestión de stock e insumos', () => context.push('/productos')),
-                      const SizedBox(height: 10),
+                      if (!_isCompras) ...[
+                        _quickAction(Icons.inventory_2_rounded, 'Inventario de Productos', 'Gestión de stock e insumos', () => context.push('/productos')),
+                        const SizedBox(height: 10),
+                      ],
                       _quickAction(Icons.group_rounded, 'Apicultores', 'Directorio de productores', () => context.push('/apicultores')),
                       const SizedBox(height: 10),
                     ],
-                    // Gestión de Gastos visible para todos los roles
-                    _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
-                    const SizedBox(height: 10),
+                    // Gestión de Gastos visible para todos los roles (excepto Compras)
+                    if (!_isCompras) ...[
+                      _quickAction(Icons.payments_rounded, 'Gestión de Gastos', 'Registro de peajes y combustible', () => context.push('/gastos')),
+                      const SizedBox(height: 10),
+                    ],
                     if (!_isChofer) ...[
                       _quickAction(
                         Icons.map_rounded,
@@ -587,11 +598,12 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                 if (_isAdmin || _isManagement)
                   _drawerItem(Icons.alt_route_rounded, 'Gestión de Viajes', () => context.push('/viajes')),
                 _drawerItem(Icons.local_shipping_rounded, 'Vehículos', () => context.push('/vehiculos')),
-                if (!_isDeposito && !_isChofer) ...[
+                if (!_isDeposito && !_isChofer && !_isCompras) ...[
                   _drawerItem(Icons.inventory_2_rounded, 'Productos', () => context.push('/productos')),
                 ],
                 if (!_isChofer) ...[
-                  _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
+                  if (!_isCompras)
+                    _drawerItem(Icons.payments_rounded, 'Gestión de Gastos', () => context.push('/gastos')),
                   _drawerItem(Icons.scale_rounded, 'Control de Pesajes', () => context.push('/pesajes')),
                 ],
                 if (_isDeposito || _isManagement)
