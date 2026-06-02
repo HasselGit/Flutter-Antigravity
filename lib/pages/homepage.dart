@@ -225,21 +225,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                       const SizedBox(height: 28),
                     ],
 
-                    // ── Stats row Cargas ──
-                    if ((_isDeposito || _isManagement) && !_isCeoOrGerente) ...[
-                      Text('ESTADO DE CARGAS', style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11)),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _statCard('PENDIENTES', _cargasStats['planificadas']!, const Color(0xFF1565C0), const Color(0xFFD6E4FF), onTap: () => context.push('/depositoHome?tab=0')),
-                          const SizedBox(width: 10),
-                          _statCard('EN CURSO', _cargasStats['en_curso']!, const Color(0xFF7D5700), const Color(0xFFFDEFCC), onTap: () => context.push('/depositoHome?tab=1')),
-                          const SizedBox(width: 10),
-                          _statCard('TERMINADAS', _cargasStats['terminadas']!, const Color(0xFF1A6B43), const Color(0xFFD4F0E1), onTap: () => context.push('/depositoHome?tab=2')),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
-                    ],
+
 
                     const SizedBox(height: 28),
 

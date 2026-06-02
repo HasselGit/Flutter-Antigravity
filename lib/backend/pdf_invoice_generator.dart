@@ -575,7 +575,7 @@ class PdfInvoiceGenerator {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('FIRMATE / RESPONSABLE:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
+                        pw.Text('FIRMANTE / RESPONSABLE:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: primaryColor)),
                         pw.SizedBox(height: 3),
                         pw.Text(receptorNombre, style: pw.TextStyle(fontSize: 10)),
                         if (receptorDni.isNotEmpty)
@@ -690,25 +690,26 @@ class PdfInvoiceGenerator {
                 ),
                 pw.SizedBox(height: 10),
 
-                // Total weight highlighting board
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.end,
                   children: [
                     pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: pw.BoxDecoration(
-                        color: PdfColor.fromHex('#FEF3C7'), // Light Amber 100
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                        border: pw.Border.all(color: accentColor, width: 1.5),
+                        color: backgroundColor,
+                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                        border: pw.Border.all(color: borderColor),
                       ),
                       child: pw.Row(
                         children: [
-                          pw.Text('TOTAL BRUTO: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                          pw.Text('${totalBruto.toStringAsFixed(1)} kg | ', style: const pw.TextStyle(fontSize: 9)),
-                          pw.Text('TOTAL TARA: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                          pw.Text('${totalTara.toStringAsFixed(1)} kg | ', style: const pw.TextStyle(fontSize: 9)),
-                          pw.Text('TOTAL NETO DE MIEL: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: accentColor)),
-                          pw.Text('${totalNeto.toStringAsFixed(1)} kg', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: accentColor)),
+                          pw.Text('Total Bruto: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                          pw.Text('${totalBruto.toStringAsFixed(1)} kg', style: const pw.TextStyle(fontSize: 9)),
+                          pw.SizedBox(width: 15),
+                          pw.Text('Total Tara: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                          pw.Text('${totalTara.toStringAsFixed(1)} kg', style: const pw.TextStyle(fontSize: 9)),
+                          pw.SizedBox(width: 15),
+                          pw.Text('Total Neto de Miel: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: secondaryColor)),
+                          pw.Text('${totalNeto.toStringAsFixed(1)} kg', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: secondaryColor)),
                         ],
                       ),
                     ),
@@ -726,22 +727,23 @@ class PdfInvoiceGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
+                  // Verification Stamp
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Container(
-                        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: pw.BoxDecoration(
-                          border: pw.Border.all(color: accentColor, width: 1.5),
+                          border: pw.Border.all(color: secondaryColor, width: 1.5),
                           borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                         ),
                         child: pw.Text(
-                          'CERTIFICADO DE TRÁNSITO GEOMIEL',
-                          style: pw.TextStyle(color: accentColor, fontWeight: pw.FontWeight.bold, fontSize: 7),
+                          'FIRMA DIGITAL VERIFICADA',
+                          style: pw.TextStyle(color: secondaryColor, fontWeight: pw.FontWeight.bold, fontSize: 7),
                         ),
                       ),
                       pw.SizedBox(height: 2),
-                      pw.Text('Validación de remito: $fecha', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey500)),
+                      pw.Text('Fecha de firma: $fecha', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey500)),
                     ],
                   ),
                   pw.Column(

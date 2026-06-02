@@ -514,9 +514,10 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
 
       // 5.2 Limpiar datos activos de la parada para el próximo remito continuo (Preservando parada_items para el resumen final del viaje)
       try {
-        await Supabase.instance.client.from('pesajes').delete().eq('parada_id', widget.paradaId);
+        // Preservamos los pesajes para que aparezcan en el detalle del viaje y en la pantalla de control de pesajes
+        // await Supabase.instance.client.from('pesajes').delete().eq('parada_id', widget.paradaId);
         // await Supabase.instance.client.from('parada_items').update({'cantidad': 0}).eq('parada_id', widget.paradaId);
-        print('RemitoRegistro: Pesajes limpios. parada_items preservados para el resumen del viaje.');
+        print('RemitoRegistro: Pesajes y parada_items preservados para el resumen del viaje.');
       } catch (e) {
         print('RemitoRegistro: Error al limpiar datos activos de la parada: $e');
       }
@@ -1644,7 +1645,7 @@ class _RemitoRegistroPageState extends State<RemitoRegistroPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Sugerido: ${_pesajes.length} TCM según pesaje de balanza.',
+                              'Sugerido: ${_pesajes.length} TCM según pesajes registrados.',
                               style: TextStyle(
                                 color: Colors.orange[900],
                                 fontSize: 10,
