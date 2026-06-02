@@ -474,6 +474,15 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
         }
       }
     }
+
+    final List<Map<String, dynamic>> pesajes = [];
+    if (p['pesajes'] is List) {
+      for (var pe in p['pesajes']) {
+        if (pe is Map) {
+          pesajes.add(Map<String, dynamic>.from(pe));
+        }
+      }
+    }
     
     final bool isViajeTerminado = AppStates.normalize(_viaje?['estado']) == AppStates.terminado;
     
@@ -570,6 +579,64 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                   ],
                 ),
               )).toList(),
+              const SizedBox(height: 12),
+            ],
+            if (pesajes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'PESAJES DE TAMBORES (TCM):',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFC68E17),
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: () => _showPesajeDetalle(p, pesajes),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFDF5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFEF3C7)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFEF3C7),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.scale_rounded, size: 16, color: Color(0xFFB45309)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pesaje de ${pesajes.length} tambores',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF78350F)),
+                            ),
+                            Text(
+                              'Neto total: ${pesajes.fold<double>(0.0, (sum, pe) {
+                                final bruto = (pe['peso_bruto'] as num?)?.toDouble() ?? 0.0;
+                                final tara = (pe['tara'] as num?)?.toDouble() ?? 0.0;
+                                return sum + (bruto - tara);
+                              }).toStringAsFixed(1)} kg',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFFB45309), fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFFB45309)),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             if (remitos.isNotEmpty) ...[
@@ -683,6 +750,315 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showPesajeDetalle(Map<String, dynamic> p, List<Map<String, dynamic>> pesajes) {
+    final apicultor = p['ubicacion'] ?? p['localidad'] ?? 'S/D';
+    final localidad = p['localidad'] ?? 'S/D';
+    final viajeCode = _viaje?['viaje_codigo'] ?? 'V-S/N';
+    
+    final totalBruto = pesajes.fold(0.0, (s, pe) => s + (double.tryParse(pe['peso_bruto']?.toString() ?? '0') ?? 0));
+    final totalTara = pesajes.fold(0.0, (s, pe) => s + (double.tryParse(pe['tara']?.toString() ?? '0') ?? 0));
+    final totalNeto = pesajes.fold(0.0, (s, pe) {
+      final netoDB = double.tryParse(pe['peso_neto']?.toString() ?? '');
+      if (netoDB != null) return s + netoDB;
+      final b = double.tryParse(pe['peso_bruto']?.toString() ?? '0') ?? 0;
+      final t = double.tryParse(pe['tara']?.toString() ?? '0') ?? 0;
+      return s + (b - t);
+    });
+
+    final bool isViajeTerminado = AppStates.normalize(_viaje?['estado']) == AppStates.terminado;
+    final bool canEdit = !isViajeTerminado && (_isChofer || _isAdmin);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (ctx, sc) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFFFBFBFB),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detalle de Pesajes',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: DesignTokens.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$apicultor  •  $localidad',
+                            style: const TextStyle(fontSize: 13, color: Colors.black45),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDF7E7),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${pesajes.length} TCM',
+                        style: const TextStyle(
+                          fontFamily: 'Work Sans',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          color: Color(0xFFC68E17),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Totales
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                child: Row(
+                  children: [
+                    _totalBox('BRUTO TOTAL', totalBruto, false),
+                    const SizedBox(width: 10),
+                    _totalBox('TARA TOTAL', totalTara, false),
+                    const SizedBox(width: 10),
+                    _totalBox('NETO TOTAL', totalNeto, true),
+                  ],
+                ),
+              ),
+              // Tabla
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF1E302C),
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                        ),
+                        child: Row(
+                          children: [
+                            _th('#', 1),
+                            _th('CÓD. SENASA', 4),
+                            _th('BRUTO', 2, right: true),
+                            _th('TARA', 2, right: true),
+                            _th('NETO', 2, right: true),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: sc,
+                          itemCount: pesajes.length,
+                          itemBuilder: (ctx, i) => _detalleRow(i + 1, pesajes[i]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (canEdit)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        context.push(
+                          '/agregarPesaje',
+                          extra: {
+                            'paradaId': p['id']?.toString() ?? '',
+                            'viajeId': _viaje?['id']?.toString() ?? '',
+                            'viajeCode': viajeCode,
+                            'apicultorNombre': apicultor,
+                            'localidad': localidad,
+                            'apicultorId': p['apicultor_id']?.toString(),
+                          },
+                        ).then((_) => _loadData());
+                      },
+                      icon: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
+                      label: const Text(
+                        'MODIFICAR REGISTROS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DesignTokens.secondary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _totalBox(String label, double value, bool highlight) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: highlight ? DesignTokens.secondary.withOpacity(0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: highlight ? DesignTokens.secondary.withOpacity(0.2) : const Color(0xFFEEEEEE),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 7,
+                fontWeight: FontWeight.bold,
+                color: highlight ? DesignTokens.secondary : Colors.black38,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${value.toStringAsFixed(0)} kg',
+              style: TextStyle(
+                fontFamily: 'Manrope',
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                color: highlight ? DesignTokens.secondary : const Color(0xFF424846),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _th(String text, int flex, {bool right = false}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        textAlign: right ? TextAlign.right : TextAlign.left,
+        style: const TextStyle(
+          fontFamily: 'Work Sans',
+          color: Colors.white,
+          fontSize: 7,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _detalleRow(int index, Map<String, dynamic> item) {
+    final bruto = double.tryParse(item['peso_bruto']?.toString() ?? '0') ?? 0;
+    final tara = double.tryParse(item['tara']?.toString() ?? '0') ?? 0;
+    final neto = double.tryParse(item['peso_neto']?.toString() ?? '0') ?? (bruto - tara);
+    final isEven = index % 2 == 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isEven ? const Color(0xFFFAFAFA) : Colors.white,
+        border: const Border(bottom: BorderSide(color: Color(0xFFF5F5F5))),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 1, child: Text('$index', style: const TextStyle(fontSize: 11, color: Colors.black38))),
+          Expanded(
+            flex: 4,
+            child: Text(
+              item['senasa_codigo']?.toString() ?? 'TCM',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF424846),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${bruto.toStringAsFixed(0)} kg',
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF424846)),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${tara.toStringAsFixed(0)} kg',
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF424846)),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${neto.toStringAsFixed(0)} kg',
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: DesignTokens.secondary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1457,12 +1833,19 @@ class _ViajeDetalleWidgetState extends State<ViajeDetalleWidget> {
                 onPressed: () async {
                   final satelitalUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                   try {
-                    await launchUrl(satelitalUrl, mode: LaunchMode.externalApplication);
+                    bool launched = await launchUrl(satelitalUrl, mode: LaunchMode.externalApplication);
+                    if (!launched) {
+                      await launchUrl(satelitalUrl, mode: LaunchMode.platformDefault);
+                    }
                   } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error al abrir sitio satelital: $e')),
-                      );
+                    try {
+                      await launchUrl(satelitalUrl, mode: LaunchMode.platformDefault);
+                    } catch (err) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al abrir sitio satelital: $err')),
+                        );
+                      }
                     }
                   }
                 },

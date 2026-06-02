@@ -175,7 +175,7 @@ class SupabaseService {
       try {
         print('SupabaseService: Intentando consulta de rutas para viajeId: $viajeId');
         final rutas = await _client.from('rutas')
-            .select('*, paradas(*, parada_items(*), remitos(*))')
+            .select('*, paradas(*, parada_items(*), remitos(*), pesajes(*))')
             .eq('viaje_id', viajeId).order('created_at');
         
         // Verificar si el join anidado devolvió paradas. Si no, hacer query directa.
@@ -187,13 +187,13 @@ class SupabaseService {
           print('SupabaseService: Join anidado de paradas en rutas vacío, intentando consulta directa de paradas...');
           try {
             paradasDirectas = await _client.from('paradas')
-                .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
+                .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*), pesajes(*)')
                 .eq('viaje_id', viajeId).order('orden_secuencia');
           } catch (paradasDirectasErr) {
             print('SupabaseService: Error en paradasDirectas con remitos(*): $paradasDirectasErr. Reintentando sin remitos(*)...');
             try {
               paradasDirectas = await _client.from('paradas')
-                  .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+                  .select('id, viaje_id, ruta_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), pesajes(*) ')
                   .eq('viaje_id', viajeId).order('orden_secuencia');
             } catch (pDirectasErr2) {
               print('SupabaseService: Error crítico en paradasDirectas simplificado: $pDirectasErr2');
@@ -233,14 +233,14 @@ class SupabaseService {
         // Fallback a paradas directas si no hay rutas aún
         try {
           final paradas = await _client.from('paradas')
-              .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*)')
+              .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), remitos(*), pesajes(*)')
               .eq('viaje_id', viajeId).order('orden_secuencia');
           viaje['paradas'] = paradas;
         } catch (paradasErr) {
           print('SupabaseService: Error en paradas fallback con remitos(*): $paradasErr. Reintentando sin remitos(*)...');
           try {
             final paradas = await _client.from('paradas')
-                .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad)')
+                .select('id, viaje_id, solicitud_id, orden_secuencia, tipo, ubicacion, localidad, estado, remito_id, parada_items(id, producto_codigo, cantidad, unidad), pesajes(*)')
                 .eq('viaje_id', viajeId).order('orden_secuencia');
             viaje['paradas'] = paradas;
           } catch (paradasErr2) {

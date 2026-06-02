@@ -109,6 +109,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     return r.contains('chofer') || email.contains('mperez') || email.contains('cmuse') || email.contains('agomez') || email.contains('efernandez');
   }
 
+  bool get _isCeoOrGerente {
+    final r = _normalizeRole(_userRole);
+    return r.contains('ceo') || r.contains('gerente') || r.contains('gerencia');
+  }
+
   String get _initials {
     final parts = _displayName.split(' ').where((s) => s.isNotEmpty).toList();
     if (parts.isEmpty) return 'U';
@@ -216,7 +221,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                     ],
 
                     // ── Stats row Cargas ──
-                    if (_isDeposito || _isManagement) ...[
+                    if ((_isDeposito || _isManagement) && !_isCeoOrGerente) ...[
                       Text('ESTADO DE CARGAS', style: DesignTokens.labelStyle().copyWith(letterSpacing: 1.1, fontSize: 11)),
                       const SizedBox(height: 14),
                       Row(
@@ -257,7 +262,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             accentColor: DesignTokens.secondary,
                             onTap: () => context.push('/choferHome'),
                           ),
-                        if (_isDeposito || _isManagement)
+                        if ((_isDeposito || _isManagement) && !_isCeoOrGerente)
                           _moduleCard(
                             icon: Icons.warehouse_rounded,
                             title: (_isDeposito || _isManagement) ? 'Cargas Depósito' : 'Depósito Huinca',
@@ -337,7 +342,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                             onTap: () => context.push('/gastos'),
                           ),
                         ],
-                        if (!_isDeposito && !_isChofer)
+                        if (!_isDeposito && !_isChofer && !_isCeoOrGerente)
                           _moduleCard(
                             icon: Icons.alt_route_rounded,
                             title: 'Control de Ruta',
@@ -375,12 +380,19 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                         () async {
                           final satelitalUrl = Uri.parse('http://satelital.uninet.com.ar/GpsGateServer/VehicleTracker/VehicleTracker.html?appid=59');
                           try {
-                            await launchUrl(satelitalUrl, mode: LaunchMode.externalApplication);
+                            bool launched = await launchUrl(satelitalUrl, mode: LaunchMode.externalApplication);
+                            if (!launched) {
+                              await launchUrl(satelitalUrl, mode: LaunchMode.platformDefault);
+                            }
                           } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error al abrir sitio satelital: $e')),
-                              );
+                            try {
+                              await launchUrl(satelitalUrl, mode: LaunchMode.platformDefault);
+                            } catch (err) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error al abrir sitio satelital: $err')),
+                                );
+                              }
                             }
                           }
                         },

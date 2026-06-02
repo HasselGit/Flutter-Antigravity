@@ -239,6 +239,11 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                   final p = snapshot.data;
                   if (p == null) return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('No se encontró la parada')));
                   
+                  final String pTipo = (p['tipo'] ?? '').toString().trim();
+                  final bool isRecoleccion = pTipo == 'Recolección' || pTipo == 'Recoleccion';
+                  final bool hasPesajes = (p['pesajes'] as List? ?? []).isNotEmpty;
+                  final bool hasTcmItem = (p['parada_items'] as List? ?? []).any((it) => it['producto_codigo'] == 'TCM');
+
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -269,9 +274,11 @@ class _ParadaDetalleWidgetState extends State<ParadaDetalleWidget> {
                         _buildHeader(p),
                         const SizedBox(height: 32),
                         _buildItemsSection(isReadOnly),
-                        // Sección de pesaje — visible si hay algún item TCM
-                        if ((p['parada_items'] as List? ?? []).any((it) => it['producto_codigo'] == 'TCM')) ...
-                          [const SizedBox(height: 32), _buildPesajeSection(p, isReadOnly)],
+                        // Sección de pesaje — visible si es Recolección, hay pesajes, o hay algún item TCM
+                        if (isRecoleccion || hasPesajes || hasTcmItem) ...[
+                          const SizedBox(height: 32),
+                          _buildPesajeSection(p, isReadOnly),
+                        ],
                         const SizedBox(height: 32),
                         _buildDigitalRemitoForm(p, isReadOnly, canFinalizarParada: canFinalizarParada, isParadaTerminada: isParadaTerminada),
                         const SizedBox(height: 100),
